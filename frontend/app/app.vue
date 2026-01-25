@@ -1,12 +1,10 @@
 <template>
-  <div>
-    <NuxtRouteAnnouncer />
+  <NuxtLayout>
     <NuxtPage />
-  </div>
+  </NuxtLayout>
 </template>
 
 <script setup lang="ts">
-// Add dark class to html element
 onMounted(() => {
   document.documentElement.classList.add('dark')
 })
