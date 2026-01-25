@@ -10,6 +10,10 @@ export function DeleteService(arg1) {
   return window['go']['main']['App']['DeleteService'](arg1);
 }
 
+export function GetBackupContent(arg1, arg2) {
+  return window['go']['main']['App']['GetBackupContent'](arg1, arg2);
+}
+
 export function GetLogs(arg1, arg2) {
   return window['go']['main']['App']['GetLogs'](arg1, arg2);
 }
@@ -22,12 +26,20 @@ export function GetService(arg1) {
   return window['go']['main']['App']['GetService'](arg1);
 }
 
+export function ListBackups(arg1) {
+  return window['go']['main']['App']['ListBackups'](arg1);
+}
+
 export function ListServices() {
   return window['go']['main']['App']['ListServices']();
 }
 
 export function RestartService(arg1) {
   return window['go']['main']['App']['RestartService'](arg1);
+}
+
+export function RestoreBackup(arg1, arg2) {
+  return window['go']['main']['App']['RestoreBackup'](arg1, arg2);
 }
 
 export function StartService(arg1) {
