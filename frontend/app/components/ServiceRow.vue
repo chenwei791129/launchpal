@@ -2,7 +2,7 @@
   <div
     class="group flex items-center px-4 py-3 hover:bg-surface-200 cursor-pointer border-b border-surface-100 transition-colors"
     :class="{ 'bg-surface-200': selected }"
-    @click="$emit('select', service)"
+    @click="navigateTo(`/services/${service.name}`)"
   >
     <!-- Checkbox -->
     <div class="w-8 mr-2">
