@@ -212,9 +212,10 @@ func (m *UserManager) getServiceStatus(label string) (string, int) {
 		return "stopped", 0
 	}
 
-	// Parse output to find PID
+	// Parse output to find PID and Program
 	// Format: "PID" = <number> or similar
 	lines := strings.Split(string(output), "\n")
+	var program string
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.Contains(line, "\"PID\"") || strings.HasPrefix(line, "PID") {
@@ -228,9 +229,28 @@ func (m *UserManager) getServiceStatus(label string) (string, int) {
 				}
 			}
 		}
+		// Extract Program path for fallback pgrep check
+		if strings.Contains(line, "\"Program\"") {
+			parts := strings.Split(line, "=")
+			if len(parts) >= 2 {
+				program = strings.TrimSpace(parts[1])
+				program = strings.Trim(program, ";\"")
+			}
+		}
 	}
 
-	// Service is loaded but may not have a PID (not running or one-shot)
+	// Fallback: use pgrep to check if process is running
+	if program != "" {
+		pgrepCmd := exec.Command("pgrep", "-f", program)
+		if pgrepOutput, err := pgrepCmd.Output(); err == nil {
+			pidStr := strings.TrimSpace(strings.Split(string(pgrepOutput), "\n")[0])
+			if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
+				return "running", pid
+			}
+		}
+	}
+
+	// Service is loaded but not running
 	return "loaded", 0
 }
 
