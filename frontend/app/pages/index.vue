@@ -49,15 +49,6 @@
 
     <!-- Table header -->
     <div class="flex items-center px-4 py-2 bg-surface-400 border-b border-surface-100 text-xs text-gray-400 uppercase tracking-wider">
-      <div class="w-8 shrink-0 mr-2">
-        <input
-          type="checkbox"
-          :checked="allChecked"
-          :indeterminate="someChecked"
-          class="w-4 h-4 rounded border-gray-600 bg-surface-300 text-primary-600 focus:ring-primary-600 focus:ring-offset-0"
-          @change="toggleAllChecked"
-        />
-      </div>
       <div class="w-16 shrink-0">Status</div>
       <div class="flex-1 min-w-0">Name</div>
       <div class="w-24 shrink-0 text-center">Type</div>
@@ -114,9 +105,7 @@
           :key="service.name"
           :service="service"
           :selected="selectedService?.name === service.name"
-          :checked="checkedServices.has(service.name)"
           @select="handleSelect"
-          @check="handleCheck"
           @delete="handleDelete"
           @refresh="loadServices"
         />
@@ -170,7 +159,6 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const searchQuery = ref('')
 const selectedService = ref<Service | null>(null)
-const checkedServices = ref<Set<string>>(new Set())
 const showDeleteDialog = ref(false)
 const serviceToDelete = ref<Service | null>(null)
 const showCreateModal = ref(false)
@@ -183,15 +171,6 @@ const filteredServices = computed(() => {
   return services.value.filter(
     service => service.label.toLowerCase().includes(query)
   )
-})
-
-
-const allChecked = computed(() => {
-  return filteredServices.value.length > 0 && filteredServices.value.every(s => checkedServices.value.has(s.name))
-})
-
-const someChecked = computed(() => {
-  return filteredServices.value.some(s => checkedServices.value.has(s.name)) && !allChecked.value
 })
 
 async function loadServices() {
@@ -218,22 +197,6 @@ async function loadServices() {
 
 function handleSelect(service: Service) {
   selectedService.value = service
-}
-
-function handleCheck(service: Service) {
-  if (checkedServices.value.has(service.name)) {
-    checkedServices.value.delete(service.name)
-  } else {
-    checkedServices.value.add(service.name)
-  }
-}
-
-function toggleAllChecked() {
-  if (allChecked.value) {
-    checkedServices.value.clear()
-  } else {
-    filteredServices.value.forEach(s => checkedServices.value.add(s.name))
-  }
 }
 
 function handleDelete(service: Service) {

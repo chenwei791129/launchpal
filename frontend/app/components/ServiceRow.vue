@@ -4,17 +4,6 @@
     :class="{ 'bg-surface-200': selected }"
     @click="navigateTo(`/services/${service.name}`)"
   >
-    <!-- Checkbox -->
-    <div class="w-8 shrink-0 mr-2">
-      <input
-        type="checkbox"
-        :checked="checked"
-        class="w-4 h-4 rounded border-gray-600 bg-surface-300 text-primary-600 focus:ring-primary-600 focus:ring-offset-0"
-        @click.stop
-        @change="$emit('check', service)"
-      />
-    </div>
-
     <!-- Status indicator -->
     <div class="w-16 shrink-0 flex items-center justify-center">
       <span
@@ -101,12 +90,10 @@ import type { Service } from '~/types/wails'
 const props = defineProps<{
   service: Service
   selected?: boolean
-  checked?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [service: Service]
-  check: [service: Service]
   delete: [service: Service]
   refresh: []
 }>()
