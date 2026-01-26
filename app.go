@@ -78,8 +78,14 @@ func (a *App) UpdateService(name string, config launchctl.ServiceConfig) error {
 	return a.manager.Update(name, &config)
 }
 
-// DeleteService deletes a service
+// DeleteService deletes a service (auto-backup before delete)
 func (a *App) DeleteService(name string) error {
+	// Auto-backup before deleting
+	svc, err := a.manager.Get(name)
+	if err == nil {
+		// Ignore backup errors - delete should proceed regardless
+		_, _ = a.backup.Create(name, svc.Path)
+	}
 	return a.manager.Delete(name)
 }
 
