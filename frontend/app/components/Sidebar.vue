@@ -3,7 +3,7 @@
     <nav class="flex flex-col gap-2">
       <NuxtLink
         to="/"
-        class="p-3 rounded-lg transition-colors"
+        class="block p-3 rounded-lg transition-colors"
         :class="route.path === '/' ? 'bg-primary-600 text-white' : 'text-gray-400 hover:bg-surface-200 hover:text-white'"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -15,7 +15,7 @@
     <div class="mt-auto">
       <NuxtLink
         to="/settings"
-        class="p-3 rounded-lg transition-colors"
+        class="block p-3 rounded-lg transition-colors"
         :class="route.path === '/settings' ? 'bg-primary-600 text-white' : 'text-gray-400 hover:bg-surface-200 hover:text-white'"
       >
         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
