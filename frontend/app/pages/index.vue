@@ -49,7 +49,7 @@
 
     <!-- Table header -->
     <div class="flex items-center px-4 py-2 bg-surface-400 border-b border-surface-100 text-xs text-gray-400 uppercase tracking-wider">
-      <div class="w-8 mr-2">
+      <div class="w-8 shrink-0 mr-2">
         <input
           type="checkbox"
           :checked="allChecked"
@@ -58,10 +58,10 @@
           @change="toggleAllChecked"
         />
       </div>
-      <div class="w-8">Status</div>
-      <div class="flex-1">Name</div>
-      <div class="w-24 text-center">Type</div>
-      <div class="w-24">Actions</div>
+      <div class="w-16 shrink-0">Status</div>
+      <div class="flex-1 min-w-0">Name</div>
+      <div class="w-24 shrink-0 text-center">Type</div>
+      <div class="w-24 shrink-0">Actions</div>
     </div>
 
     <!-- Services list -->

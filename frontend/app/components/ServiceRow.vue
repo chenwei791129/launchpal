@@ -5,7 +5,7 @@
     @click="navigateTo(`/services/${service.name}`)"
   >
     <!-- Checkbox -->
-    <div class="w-8 mr-2">
+    <div class="w-8 shrink-0 mr-2">
       <input
         type="checkbox"
         :checked="checked"
@@ -16,7 +16,7 @@
     </div>
 
     <!-- Status indicator -->
-    <div class="w-8 flex items-center justify-center">
+    <div class="w-16 shrink-0 flex items-center justify-center">
       <span
         class="w-2.5 h-2.5 rounded-full"
         :class="{
@@ -37,7 +37,7 @@
     </div>
 
     <!-- Schedule badge -->
-    <div class="w-24 text-center">
+    <div class="w-24 shrink-0 text-center">
       <span
         v-if="service.schedule"
         class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-600/20 text-purple-400"
@@ -56,7 +56,7 @@
     </div>
 
     <!-- Action buttons -->
-    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div class="w-24 shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
       <!-- Start/Stop button -->
       <button
         v-if="service.status === 'running'"
