@@ -335,6 +335,20 @@ func (m *UserManager) Create(config *ServiceConfig) error {
 		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
 	}
 
+	// Ensure log directories exist
+	if config.StdoutPath != "" {
+		logDir := filepath.Dir(expandTilde(config.StdoutPath))
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return fmt.Errorf("failed to create log directory: %w", err)
+		}
+	}
+	if config.StderrPath != "" {
+		logDir := filepath.Dir(expandTilde(config.StderrPath))
+		if err := os.MkdirAll(logDir, 0755); err != nil {
+			return fmt.Errorf("failed to create log directory: %w", err)
+		}
+	}
+
 	return m.writePlist(plistPath, config)
 }
 
@@ -428,6 +442,18 @@ func (m *UserManager) GetLogs(name string, logType string) (string, error) {
 	return string(data), nil
 }
 
+// expandTilde expands ~ to the user's home directory
+func expandTilde(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			home = os.Getenv("HOME")
+		}
+		return filepath.Join(home, path[2:])
+	}
+	return path
+}
+
 // writePlist writes a ServiceConfig to a plist file
 func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
 	pd := map[string]interface{}{
@@ -453,10 +479,10 @@ func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
 		pd["WorkingDirectory"] = config.WorkingDir
 	}
 	if config.StdoutPath != "" {
-		pd["StandardOutPath"] = config.StdoutPath
+		pd["StandardOutPath"] = expandTilde(config.StdoutPath)
 	}
 	if config.StderrPath != "" {
-		pd["StandardErrorPath"] = config.StderrPath
+		pd["StandardErrorPath"] = expandTilde(config.StderrPath)
 	}
 	if len(config.Environment) > 0 {
 		pd["EnvironmentVariables"] = config.Environment

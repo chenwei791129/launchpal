@@ -77,26 +77,18 @@
           </label>
         </div>
 
-        <!-- Log Paths -->
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Stdout Path</label>
-            <input
-              v-model="form.stdoutPath"
-              type="text"
-              placeholder="/tmp/myservice.log"
-              class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-            />
+        <!-- Log Paths (Auto-generated) -->
+        <div v-if="form.label">
+          <label class="block text-sm text-gray-400 mb-1">Log Paths</label>
+          <div class="space-y-1">
+            <div class="px-3 py-2 bg-surface-500 rounded text-gray-400 text-sm font-mono truncate">
+              stdout: {{ logPaths.stdout }}
+            </div>
+            <div class="px-3 py-2 bg-surface-500 rounded text-gray-400 text-sm font-mono truncate">
+              stderr: {{ logPaths.stderr }}
+            </div>
           </div>
-          <div>
-            <label class="block text-sm text-gray-400 mb-1">Stderr Path</label>
-            <input
-              v-model="form.stderrPath"
-              type="text"
-              placeholder="/tmp/myservice.err"
-              class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-            />
-          </div>
+          <p class="text-xs text-gray-500 mt-1">Log paths are auto-generated based on service label</p>
         </div>
 
         <!-- Error Message -->
@@ -136,20 +128,23 @@ const emit = defineEmits<{
   created: []
 }>()
 
-const form = reactive<ServiceConfig>({
+const form = reactive({
   label: '',
   program: '',
-  arguments: [],
+  arguments: [] as string[],
   runAtLoad: true,
   keepAlive: false,
-  stdoutPath: '',
-  stderrPath: '',
   workingDirectory: '',
 })
 
 const argumentsText = ref('')
 const loading = ref(false)
 const error = ref('')
+
+const logPaths = computed(() => ({
+  stdout: `~/Library/Logs/${form.label}/stdout.log`,
+  stderr: `~/Library/Logs/${form.label}/stderr.log`,
+}))
 
 async function handleSubmit() {
   if (!form.label || !form.program) return
@@ -161,6 +156,8 @@ async function handleSubmit() {
     const config: ServiceConfig = {
       ...form,
       arguments: argumentsText.value ? argumentsText.value.split(/\s+/).filter(Boolean) : [],
+      stdoutPath: logPaths.value.stdout,
+      stderrPath: logPaths.value.stderr,
     }
 
     await window.go.main.App.CreateService(config)
@@ -172,8 +169,6 @@ async function handleSubmit() {
     form.program = ''
     form.runAtLoad = true
     form.keepAlive = false
-    form.stdoutPath = ''
-    form.stderrPath = ''
     form.workingDirectory = ''
     argumentsText.value = ''
   } catch (err: any) {
