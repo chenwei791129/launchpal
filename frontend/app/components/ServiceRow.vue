@@ -40,7 +40,7 @@
         v-else-if="service.runAtLoad"
         class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-600/20 text-blue-400"
       >
-        Auto
+        RunAtLoad
       </span>
     </div>
 
