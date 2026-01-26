@@ -17,9 +17,9 @@ build:
 build-debug:
 	wails build -debug
 
-# Run development mode
-dev:
-	wails dev
+# Build and run app
+dev: build-debug
+	open build/bin/launchpal.app
 
 # Clean build artifacts
 clean:
