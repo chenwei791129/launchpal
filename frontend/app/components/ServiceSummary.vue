@@ -19,7 +19,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
       </div>
-      <p v-if="copied" class="text-xs text-primary-400 mt-1">Copied!</p>
+      <p v-if="copiedField === 'path'" class="text-xs text-primary-400 mt-1">Copied!</p>
     </div>
 
     <div class="grid grid-cols-2 gap-4">
@@ -49,11 +49,35 @@
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Stdout Path</label>
-        <p class="text-gray-100 mt-1 font-mono text-sm truncate">{{ service.stdoutPath || '-' }}</p>
+        <div
+          v-if="service.stdoutPath"
+          class="mt-1 flex items-center gap-2 px-2 py-1 bg-surface-400 rounded cursor-pointer hover:bg-surface-300 transition-colors group"
+          title="Click to copy"
+          @click="copyText(service.stdoutPath, 'stdout')"
+        >
+          <span class="flex-1 text-gray-100 font-mono text-sm truncate">{{ service.stdoutPath }}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-gray-500 group-hover:text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <p v-else class="text-gray-100 mt-1 font-mono text-sm">-</p>
+        <p v-if="copiedField === 'stdout'" class="text-xs text-primary-400 mt-1">Copied!</p>
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Stderr Path</label>
-        <p class="text-gray-100 mt-1 font-mono text-sm truncate">{{ service.stderrPath || '-' }}</p>
+        <div
+          v-if="service.stderrPath"
+          class="mt-1 flex items-center gap-2 px-2 py-1 bg-surface-400 rounded cursor-pointer hover:bg-surface-300 transition-colors group"
+          title="Click to copy"
+          @click="copyText(service.stderrPath, 'stderr')"
+        >
+          <span class="flex-1 text-gray-100 font-mono text-sm truncate">{{ service.stderrPath }}</span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-gray-500 group-hover:text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </div>
+        <p v-else class="text-gray-100 mt-1 font-mono text-sm">-</p>
+        <p v-if="copiedField === 'stderr'" class="text-xs text-primary-400 mt-1">Copied!</p>
       </div>
     </div>
 
@@ -75,17 +99,21 @@ const props = defineProps<{
   service: Service
 }>()
 
-const copied = ref(false)
+const copiedField = ref<string | null>(null)
 
-async function copyPath() {
+async function copyText(text: string, field: string) {
   try {
-    await navigator.clipboard.writeText(props.service.path)
-    copied.value = true
+    await navigator.clipboard.writeText(text)
+    copiedField.value = field
     setTimeout(() => {
-      copied.value = false
+      copiedField.value = null
     }, 2000)
   } catch (e) {
     console.error('Failed to copy:', e)
   }
+}
+
+function copyPath() {
+  copyText(props.service.path, 'path')
 }
 </script>
