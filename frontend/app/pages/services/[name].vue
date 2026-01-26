@@ -141,7 +141,8 @@
               </svg>
             </button>
           </div>
-          <pre v-if="plistContent" class="bg-surface-500 rounded-lg p-4 font-mono text-sm text-gray-300 whitespace-pre-wrap overflow-auto">{{ plistContent }}</pre>
+          <div v-if="highlightedPlist" v-html="highlightedPlist" class="bg-surface-500 rounded-lg p-4 font-mono overflow-auto [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0 [&_code]:!text-sm"></div>
+          <pre v-else-if="plistContent" class="bg-surface-500 rounded-lg p-4 font-mono text-sm text-gray-300 whitespace-pre-wrap overflow-auto">{{ plistContent }}</pre>
           <div v-else class="flex items-center justify-center h-48 text-gray-500">
             <p>No plist content available</p>
           </div>
@@ -153,12 +154,14 @@
 
 <script setup lang="ts">
 import type { Service } from '~/types/wails'
+import { highlightCode } from '~/composables/useHighlighter'
 
 const route = useRoute()
 const name = computed(() => route.params.name as string)
 
 const service = ref<Service | null>(null)
 const plistContent = ref<string | null>(null)
+const highlightedPlist = ref('')
 const loading = ref(true)
 const error = ref<string | null>(null)
 const actionLoading = ref(false)
@@ -248,4 +251,11 @@ onMounted(() => {
 watch(name, () => {
   loadService()
 })
+
+// Highlight plist content when it changes
+watch(() => plistContent.value, async (content) => {
+  if (content) {
+    highlightedPlist.value = await highlightCode(content)
+  }
+}, { immediate: true })
 </script>
