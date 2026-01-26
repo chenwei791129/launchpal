@@ -26,6 +26,10 @@ export function GetService(arg1) {
   return window['go']['main']['App']['GetService'](arg1);
 }
 
+export function ListAllBackups() {
+  return window['go']['main']['App']['ListAllBackups']();
+}
+
 export function ListBackups(arg1) {
   return window['go']['main']['App']['ListBackups'](arg1);
 }

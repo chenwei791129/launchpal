@@ -83,6 +83,37 @@ func (m *BackupManager) Create(serviceName, plistPath string) (*Backup, error) {
 	}, nil
 }
 
+// ListAll returns all backups for all services sorted by time (newest first)
+func (m *BackupManager) ListAll() ([]Backup, error) {
+	entries, err := os.ReadDir(m.baseDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Backup{}, nil
+		}
+		return nil, fmt.Errorf("failed to read backup directory: %w", err)
+	}
+
+	var allBackups []Backup
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		serviceName := entry.Name()
+		backups, err := m.List(serviceName)
+		if err != nil {
+			continue
+		}
+		allBackups = append(allBackups, backups...)
+	}
+
+	// Sort by timestamp descending (newest first)
+	sort.Slice(allBackups, func(i, j int) bool {
+		return allBackups[i].Timestamp.After(allBackups[j].Timestamp)
+	})
+
+	return allBackups, nil
+}
+
 // List returns all backups for a service sorted by time (newest first)
 func (m *BackupManager) List(serviceName string) ([]Backup, error) {
 	backupDir := m.getBackupDir(serviceName)

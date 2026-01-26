@@ -74,7 +74,87 @@
             </div>
           </div>
         </div>
+
+        <!-- Backup List -->
+        <div class="mt-6 border-t border-surface-100 pt-4">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-white font-medium">Backup History</p>
+            <button
+              class="p-1.5 rounded hover:bg-surface-200 text-gray-400 hover:text-white transition-colors"
+              title="Refresh"
+              @click="loadBackups"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
+
+          <div v-if="loadingBackups" class="text-center py-4 text-gray-400">
+            Loading backups...
+          </div>
+
+          <div v-else-if="backups.length === 0" class="text-center py-4 text-gray-500">
+            No backups found
+          </div>
+
+          <div v-else class="space-y-2 max-h-64 overflow-y-auto">
+            <div
+              v-for="backup in backups"
+              :key="`${backup.service}-${backup.id}`"
+              class="flex items-center justify-between p-3 bg-surface-500 rounded-lg"
+            >
+              <div class="min-w-0 flex-1">
+                <p class="text-white text-sm font-medium truncate">{{ backup.service }}</p>
+                <p class="text-gray-500 text-xs">{{ formatTimestamp(backup.timestamp) }}</p>
+              </div>
+              <button
+                class="ml-3 px-3 py-1.5 text-xs bg-primary-600 hover:bg-primary-700 text-white rounded transition-colors"
+                @click="confirmRestore(backup)"
+              >
+                Restore
+              </button>
+            </div>
+          </div>
+        </div>
       </section>
+
+      <!-- Restore Confirmation Dialog -->
+      <Teleport to="body">
+        <div
+          v-if="showRestoreDialog"
+          class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          @click.self="showRestoreDialog = false"
+        >
+          <div class="bg-surface-400 rounded-xl shadow-xl p-6 w-96">
+            <h3 class="text-lg font-semibold text-white mb-2">Restore Backup</h3>
+            <p class="text-gray-400 mb-4">
+              Are you sure you want to restore this backup?
+            </p>
+            <div class="bg-surface-500 rounded-lg p-3 mb-4">
+              <p class="text-white text-sm font-medium">{{ backupToRestore?.service }}</p>
+              <p class="text-gray-500 text-xs">{{ backupToRestore ? formatTimestamp(backupToRestore.timestamp) : '' }}</p>
+            </div>
+            <p class="text-yellow-500 text-sm mb-6">
+              This will overwrite the current plist file.
+            </p>
+            <div class="flex justify-end gap-3">
+              <button
+                class="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                @click="showRestoreDialog = false"
+              >
+                Cancel
+              </button>
+              <button
+                class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+                @click="executeRestore"
+              >
+                Restore
+              </button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- About Section -->
       <section class="bg-surface-400 rounded-xl p-4">
@@ -126,8 +206,21 @@
 </template>
 
 <script setup lang="ts">
+interface Backup {
+  id: string
+  service: string
+  timestamp: string
+  path: string
+  originalPath?: string
+}
+
 const appVersion = 'v0.1.0'
 const backupPath = '~/.launchpal/backups/'
+
+const backups = ref<Backup[]>([])
+const loadingBackups = ref(false)
+const showRestoreDialog = ref(false)
+const backupToRestore = ref<Backup | null>(null)
 
 async function copyBackupPath() {
   try {
@@ -136,4 +229,58 @@ async function copyBackupPath() {
     console.error('Failed to copy to clipboard:', e)
   }
 }
+
+async function loadBackups() {
+  loadingBackups.value = true
+  try {
+    if (window.go?.main?.App?.ListAllBackups) {
+      backups.value = await window.go.main.App.ListAllBackups()
+    }
+  } catch (e) {
+    console.error('Failed to load backups:', e)
+  } finally {
+    loadingBackups.value = false
+  }
+}
+
+function formatTimestamp(timestamp: string) {
+  const date = new Date(timestamp)
+  return date.toLocaleString('zh-TW', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+function confirmRestore(backup: Backup) {
+  backupToRestore.value = backup
+  showRestoreDialog.value = true
+}
+
+async function executeRestore() {
+  if (!backupToRestore.value) return
+
+  try {
+    if (window.go?.main?.App?.RestoreBackup) {
+      await window.go.main.App.RestoreBackup(
+        backupToRestore.value.service,
+        backupToRestore.value.id
+      )
+    }
+    showRestoreDialog.value = false
+    backupToRestore.value = null
+    // Reload backups after restore
+    await loadBackups()
+  } catch (e) {
+    console.error('Failed to restore backup:', e)
+    alert('Failed to restore backup: ' + (e as Error).message)
+  }
+}
+
+onMounted(() => {
+  loadBackups()
+})
 </script>

@@ -15,6 +15,8 @@ export function GetPlist(arg1:string):Promise<string>;
 
 export function GetService(arg1:string):Promise<launchctl.Service>;
 
+export function ListAllBackups():Promise<Array<backup.Backup>>;
+
 export function ListBackups(arg1:string):Promise<Array<backup.Backup>>;
 
 export function ListServices():Promise<Array<launchctl.Service>>;

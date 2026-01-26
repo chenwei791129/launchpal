@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"launchpal/internal/backup"
 	"launchpal/internal/launchctl"
@@ -89,6 +90,11 @@ func (a *App) DeleteService(name string) error {
 	return a.manager.Delete(name)
 }
 
+// ListAllBackups returns all backups for all services
+func (a *App) ListAllBackups() ([]backup.Backup, error) {
+	return a.backup.ListAll()
+}
+
 // ListBackups returns all backups for a service
 func (a *App) ListBackups(serviceName string) ([]backup.Backup, error) {
 	return a.backup.List(serviceName)
@@ -101,9 +107,22 @@ func (a *App) GetBackupContent(serviceName, backupID string) (string, error) {
 
 // RestoreBackup restores a backup to the service's plist path
 func (a *App) RestoreBackup(serviceName, backupID string) error {
+	// Try to get existing service path first
 	svc, err := a.manager.Get(serviceName)
+	if err == nil {
+		return a.backup.Restore(serviceName, backupID, svc.Path)
+	}
+
+	// Service doesn't exist, use original path from backup metadata
+	backups, err := a.backup.List(serviceName)
 	if err != nil {
 		return err
 	}
-	return a.backup.Restore(serviceName, backupID, svc.Path)
+	for _, b := range backups {
+		if b.ID == backupID && b.OriginalPath != "" {
+			return a.backup.Restore(serviceName, backupID, b.OriginalPath)
+		}
+	}
+
+	return fmt.Errorf("cannot restore: service not found and no original path in backup")
 }
