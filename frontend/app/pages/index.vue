@@ -178,15 +178,13 @@ const showCreateModal = ref(false)
 const updateCounts = inject<(total: number, running: number) => void>('updateCounts')
 
 const filteredServices = computed(() => {
-  if (!searchQuery.value) return services.value
-  const query = searchQuery.value.toLowerCase()
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return services.value
   return services.value.filter(
-    service =>
-      service.label.toLowerCase().includes(query) ||
-      service.name.toLowerCase().includes(query) ||
-      service.path.toLowerCase().includes(query)
+    service => service.label.toLowerCase().includes(query)
   )
 })
+
 
 const allChecked = computed(() => {
   return filteredServices.value.length > 0 && filteredServices.value.every(s => checkedServices.value.has(s.name))
