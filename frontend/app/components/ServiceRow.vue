@@ -10,7 +10,7 @@
         class="w-2.5 h-2.5 rounded-full"
         :class="{
           'bg-green-500': service.status === 'running',
-          'bg-gray-500': service.status === 'stopped',
+          'bg-gray-500': service.status === 'stopped' || service.status === 'loaded',
           'bg-yellow-500': service.status === 'unknown'
         }"
       ></span>
