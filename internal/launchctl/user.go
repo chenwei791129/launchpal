@@ -240,7 +240,12 @@ func (m *UserManager) getServiceStatus(label string) (string, int) {
 	}
 
 	// Fallback: use pgrep to check if process is running
-	if program != "" {
+	// Skip common shells as they would match unrelated processes
+	commonShells := map[string]bool{
+		"/bin/bash": true, "/bin/sh": true, "/bin/zsh": true,
+		"/usr/bin/bash": true, "/usr/bin/sh": true, "/usr/bin/zsh": true,
+	}
+	if program != "" && !commonShells[program] {
 		pgrepCmd := exec.Command("pgrep", "-f", program)
 		if pgrepOutput, err := pgrepCmd.Output(); err == nil {
 			pidStr := strings.TrimSpace(strings.Split(string(pgrepOutput), "\n")[0])
