@@ -9,3 +9,33 @@ frontend/dist
 
 # Worktrees
 .worktrees/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials*
+secrets*
+
+# IDE specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Testing and coverage
+coverage/
+*.test
+*.out
+
+# Backup files
+*.bak
+*.backup
