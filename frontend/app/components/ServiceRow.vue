@@ -45,7 +45,7 @@
     </div>
 
     <!-- Action buttons -->
-    <div class="w-24 shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div class="w-24 shrink-0 flex items-center gap-1">
       <!-- Start/Stop button -->
       <button
         v-if="service.status === 'running'"
