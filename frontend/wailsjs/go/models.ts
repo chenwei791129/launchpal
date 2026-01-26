@@ -6,6 +6,7 @@ export namespace backup {
 	    // Go type: time
 	    timestamp: any;
 	    path: string;
+	    originalPath?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Backup(source);
@@ -17,6 +18,7 @@ export namespace backup {
 	        this.service = source["service"];
 	        this.timestamp = this.convertValues(source["timestamp"], null);
 	        this.path = source["path"];
+	        this.originalPath = source["originalPath"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -12,10 +13,16 @@ import (
 
 // Backup represents a single backup entry
 type Backup struct {
-	ID        string    `json:"id"`
-	Service   string    `json:"service"`
-	Timestamp time.Time `json:"timestamp"`
-	Path      string    `json:"path"`
+	ID           string    `json:"id"`
+	Service      string    `json:"service"`
+	Timestamp    time.Time `json:"timestamp"`
+	Path         string    `json:"path"`
+	OriginalPath string    `json:"originalPath,omitempty"`
+}
+
+// backupMeta stores metadata for a backup
+type backupMeta struct {
+	OriginalPath string `json:"originalPath"`
 }
 
 // BackupManager handles backup operations for service plists
@@ -51,20 +58,28 @@ func (m *BackupManager) Create(serviceName, plistPath string) (*Backup, error) {
 	timestamp := time.Now()
 	id := timestamp.Format("20060102-150405")
 	backupPath := filepath.Join(backupDir, id+".plist")
+	metaPath := filepath.Join(backupDir, id+".meta.json")
 
 	// Copy the plist file to backup location
 	if err := copyFile(plistPath, backupPath); err != nil {
 		return nil, fmt.Errorf("failed to copy plist to backup: %w", err)
 	}
 
+	// Save metadata with original path
+	meta := backupMeta{OriginalPath: plistPath}
+	if metaData, err := json.Marshal(meta); err == nil {
+		os.WriteFile(metaPath, metaData, 0644)
+	}
+
 	// Prune old backups to keep only the 10 most recent
 	m.pruneBackups(serviceName)
 
 	return &Backup{
-		ID:        id,
-		Service:   serviceName,
-		Timestamp: timestamp,
-		Path:      backupPath,
+		ID:           id,
+		Service:      serviceName,
+		Timestamp:    timestamp,
+		Path:         backupPath,
+		OriginalPath: plistPath,
 	}, nil
 }
 
@@ -93,11 +108,22 @@ func (m *BackupManager) List(serviceName string) ([]Backup, error) {
 			continue
 		}
 
+		// Try to read metadata for original path
+		var originalPath string
+		metaPath := filepath.Join(backupDir, id+".meta.json")
+		if metaData, err := os.ReadFile(metaPath); err == nil {
+			var meta backupMeta
+			if json.Unmarshal(metaData, &meta) == nil {
+				originalPath = meta.OriginalPath
+			}
+		}
+
 		backups = append(backups, Backup{
-			ID:        id,
-			Service:   serviceName,
-			Timestamp: timestamp,
-			Path:      filepath.Join(backupDir, entry.Name()),
+			ID:           id,
+			Service:      serviceName,
+			Timestamp:    timestamp,
+			Path:         filepath.Join(backupDir, entry.Name()),
+			OriginalPath: originalPath,
 		})
 	}
 
@@ -178,10 +204,10 @@ func (m *BackupManager) pruneBackups(serviceName string) error {
 
 	// Remove older backups
 	for _, backup := range backups[maxBackups:] {
-		if err := os.Remove(backup.Path); err != nil {
-			// Log but don't fail on cleanup errors
-			continue
-		}
+		os.Remove(backup.Path)
+		// Also remove metadata file
+		metaPath := strings.TrimSuffix(backup.Path, ".plist") + ".meta.json"
+		os.Remove(metaPath)
 	}
 
 	return nil
