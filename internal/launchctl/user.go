@@ -283,9 +283,27 @@ func (m *UserManager) Stop(name string) error {
 		return fmt.Errorf("service %s not found", name)
 	}
 
+	// Get service info to find label and program
+	service, err := m.Get(name)
+	if err != nil {
+		return err
+	}
+
+	// Try launchctl unload first
 	cmd := exec.Command("launchctl", "unload", plistPath)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to stop service: %s", string(output))
+	cmd.CombinedOutput() // Ignore error, may fail for root-owned processes
+
+	// Check if process is still running and kill it
+	if service.Program != "" {
+		pgrepCmd := exec.Command("pgrep", "-f", service.Program)
+		if output, err := pgrepCmd.Output(); err == nil {
+			pidStr := strings.TrimSpace(strings.Split(string(output), "\n")[0])
+			if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
+				// Try to kill the process
+				killCmd := exec.Command("kill", pidStr)
+				killCmd.Run()
+			}
+		}
 	}
 
 	return nil
