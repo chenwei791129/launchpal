@@ -1,5 +1,27 @@
 <template>
   <div class="p-6 space-y-4">
+    <!-- Plist Path -->
+    <div>
+      <label class="text-xs text-gray-400 uppercase tracking-wider">Plist File</label>
+      <div
+        class="mt-1 flex items-center gap-2 px-3 py-2 bg-surface-400 rounded cursor-pointer hover:bg-surface-300 transition-colors group"
+        title="Click to copy"
+        @click="copyPath"
+      >
+        <code class="flex-1 text-gray-100 font-mono text-sm truncate">{{ service.path }}</code>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-4 h-4 text-gray-500 group-hover:text-gray-300 flex-shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <p v-if="copied" class="text-xs text-primary-400 mt-1">Copied!</p>
+    </div>
+
     <div class="grid grid-cols-2 gap-4">
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Program</label>
@@ -49,7 +71,21 @@
 <script setup lang="ts">
 import type { Service } from '~/types/wails'
 
-defineProps<{
+const props = defineProps<{
   service: Service
 }>()
+
+const copied = ref(false)
+
+async function copyPath() {
+  try {
+    await navigator.clipboard.writeText(props.service.path)
+    copied.value = true
+    setTimeout(() => {
+      copied.value = false
+    }, 2000)
+  } catch (e) {
+    console.error('Failed to copy:', e)
+  }
+}
 </script>
