@@ -35,15 +35,15 @@
         </button>
 
         <!-- Add service button -->
-        <NuxtLink
-          to="/create"
+        <button
+          @click="showCreateModal = true"
           class="flex items-center gap-2 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-lg transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
           </svg>
           New Service
-        </NuxtLink>
+        </button>
       </div>
     </header>
 
@@ -95,16 +95,16 @@
           </svg>
           <p v-if="searchQuery">No services found matching "{{ searchQuery }}"</p>
           <p v-else>No services found</p>
-          <NuxtLink
+          <button
             v-if="!searchQuery"
-            to="/create"
+            @click="showCreateModal = true"
             class="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
           >
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
             </svg>
             Create your first service
-          </NuxtLink>
+          </button>
         </div>
       </div>
 
@@ -152,6 +152,13 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Create Service Modal -->
+    <CreateServiceModal
+      :is-open="showCreateModal"
+      @close="showCreateModal = false"
+      @created="loadServices"
+    />
   </div>
 </template>
 
@@ -166,6 +173,7 @@ const selectedService = ref<Service | null>(null)
 const checkedServices = ref<Set<string>>(new Set())
 const showDeleteDialog = ref(false)
 const serviceToDelete = ref<Service | null>(null)
+const showCreateModal = ref(false)
 
 const updateCounts = inject<(total: number, running: number) => void>('updateCounts')
 
