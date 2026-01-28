@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"launchpal/internal/backup"
 	"launchpal/internal/launchctl"
@@ -10,16 +11,20 @@ import (
 
 // App struct
 type App struct {
-	ctx     context.Context
-	manager *launchctl.UserManager
-	backup  *backup.BackupManager
+	ctx            context.Context
+	manager        *launchctl.UserManager
+	systemManager  *launchctl.SystemManager
+	appleSystemMgr *launchctl.AppleSystemManager
+	backup         *backup.BackupManager
 }
 
 // NewApp creates a new App application struct
 func NewApp() *App {
 	return &App{
-		manager: launchctl.NewUserManager(),
-		backup:  backup.NewBackupManager(),
+		manager:        launchctl.NewUserManager(),
+		systemManager:  launchctl.NewSystemManager(),
+		appleSystemMgr: launchctl.NewAppleSystemManager(),
+		backup:         backup.NewBackupManager(),
 	}
 }
 
@@ -125,4 +130,64 @@ func (a *App) RestoreBackup(serviceName, backupID string) error {
 	}
 
 	return fmt.Errorf("cannot restore: service not found and no original path in backup")
+}
+
+// ListSystemServices returns all LaunchDaemon services from /Library
+func (a *App) ListSystemServices() ([]launchctl.Service, error) {
+	return a.systemManager.List()
+}
+
+// ListAppleSystemServices returns all LaunchDaemon services from /System/Library
+func (a *App) ListAppleSystemServices() ([]launchctl.Service, error) {
+	return a.appleSystemMgr.List()
+}
+
+// GetSystemService returns a system service by name and type
+func (a *App) GetSystemService(name string, serviceType string) (*launchctl.Service, error) {
+	switch serviceType {
+	case "system":
+		return a.systemManager.Get(name)
+	case "apple-system":
+		return a.appleSystemMgr.Get(name)
+	default:
+		return nil, fmt.Errorf("invalid service type: %s", serviceType)
+	}
+}
+
+// GetSystemPlist returns raw plist content for system services
+func (a *App) GetSystemPlist(name string, serviceType string) (string, error) {
+	switch serviceType {
+	case "system":
+		return a.systemManager.GetPlist(name)
+	case "apple-system":
+		return a.appleSystemMgr.GetPlist(name)
+	default:
+		return "", fmt.Errorf("invalid service type: %s", serviceType)
+	}
+}
+
+// GetSystemLogs returns log content for system services
+func (a *App) GetSystemLogs(name string, serviceType string, logType string) (string, error) {
+	switch serviceType {
+	case "system":
+		return a.systemManager.GetLogs(name, logType)
+	case "apple-system":
+		return a.appleSystemMgr.GetLogs(name, logType)
+	default:
+		return "", fmt.Errorf("invalid service type: %s", serviceType)
+	}
+}
+
+// CheckPermissions returns permission status for each service domain
+func (a *App) CheckPermissions() map[string]bool {
+	canReadDir := func(path string) bool {
+		_, err := os.ReadDir(path)
+		return err == nil
+	}
+
+	return map[string]bool{
+		"user":         true,
+		"system":       canReadDir("/Library/LaunchDaemons"),
+		"apple-system": canReadDir("/System/Library/LaunchDaemons"),
+	}
 }
