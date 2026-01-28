@@ -25,15 +25,15 @@
     <div class="grid grid-cols-2 gap-4">
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Program</label>
-        <p class="text-gray-100 mt-1 font-mono text-sm">{{ service.program || '-' }}</p>
+        <p class="text-gray-100 mt-1 font-mono text-sm break-words overflow-wrap-anywhere">{{ service.program || '-' }}</p>
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Working Directory</label>
-        <p class="text-gray-100 mt-1 font-mono text-sm">{{ service.workingDirectory || '-' }}</p>
+        <p class="text-gray-100 mt-1 font-mono text-sm break-words overflow-wrap-anywhere">{{ service.workingDirectory || '-' }}</p>
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Arguments</label>
-        <p class="text-gray-100 mt-1 font-mono text-sm">{{ service.arguments?.join(' ') || '-' }}</p>
+        <p class="text-gray-100 mt-1 font-mono text-sm break-words overflow-wrap-anywhere">{{ service.arguments?.join(' ') || '-' }}</p>
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">PID</label>
@@ -70,7 +70,7 @@
           title="Click to copy"
           @click="copyText(service.stdoutPath, 'stdout')"
         >
-          <span class="flex-1 text-gray-100 font-mono text-sm truncate">{{ service.stdoutPath }}</span>
+          <span class="flex-1 text-gray-100 font-mono text-sm break-words overflow-wrap-anywhere">{{ service.stdoutPath }}</span>
           <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-gray-500 group-hover:text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
@@ -86,7 +86,7 @@
           title="Click to copy"
           @click="copyText(service.stderrPath, 'stderr')"
         >
-          <span class="flex-1 text-gray-100 font-mono text-sm truncate">{{ service.stderrPath }}</span>
+          <span class="flex-1 text-gray-100 font-mono text-sm break-words overflow-wrap-anywhere">{{ service.stderrPath }}</span>
           <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-gray-500 group-hover:text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
           </svg>
