@@ -1,5 +1,7 @@
 package launchctl
 
+import "errors"
+
 // Service represents a LaunchAgent service
 type Service struct {
 	Name        string            `json:"name"`
@@ -16,6 +18,8 @@ type Service struct {
 	StdoutPath  string            `json:"stdoutPath,omitempty"`
 	StderrPath  string            `json:"stderrPath,omitempty"`
 	WorkingDir  string            `json:"workingDirectory,omitempty"`
+	Type        string            `json:"type"`     // "user", "system", "apple-system"
+	ReadOnly    bool              `json:"readOnly"` // true for system services
 }
 
 // ScheduleConfig represents StartCalendarInterval
@@ -40,3 +44,6 @@ type ServiceConfig struct {
 	StderrPath  string            `json:"stderrPath,omitempty"`
 	WorkingDir  string            `json:"workingDirectory,omitempty"`
 }
+
+// ErrReadOnlyManager is returned when attempting write operations on read-only managers
+var ErrReadOnlyManager = errors.New("this manager is read-only")

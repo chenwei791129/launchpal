@@ -1,7 +1,7 @@
 export interface Service {
   name: string
   label: string
-  status: 'running' | 'stopped' | 'unknown'
+  status: 'running' | 'stopped' | 'unknown' | 'loaded'
   pid?: number
   path: string
   program?: string
@@ -13,6 +13,8 @@ export interface Service {
   stdoutPath?: string
   stderrPath?: string
   workingDirectory?: string
+  type: 'user' | 'system' | 'apple-system'
+  readOnly: boolean
 }
 
 export interface ScheduleConfig {
@@ -51,6 +53,12 @@ declare global {
           CreateService(config: ServiceConfig): Promise<void>
           UpdateService(name: string, config: ServiceConfig): Promise<void>
           DeleteService(name: string): Promise<void>
+          ListSystemServices(): Promise<Service[]>
+          ListAppleSystemServices(): Promise<Service[]>
+          GetSystemService(name: string, serviceType: string): Promise<Service>
+          GetSystemPlist(name: string, serviceType: string): Promise<string>
+          GetSystemLogs(name: string, serviceType: string, logType: string): Promise<string>
+          CheckPermissions(): Promise<Record<string, boolean>>
         }
       }
     }

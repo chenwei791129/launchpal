@@ -125,6 +125,8 @@ func (m *UserManager) Get(name string) (*Service, error) {
 		StdoutPath:  pd.StandardOutPath,
 		StderrPath:  pd.StandardErrorPath,
 		WorkingDir:  pd.WorkingDirectory,
+		Type:        "user",
+		ReadOnly:    false,
 	}
 
 	// Handle KeepAlive which can be bool or dict

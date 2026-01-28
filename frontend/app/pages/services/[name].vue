@@ -4,13 +4,19 @@
     <header class="px-4 py-3 border-b border-surface-100">
       <!-- Breadcrumb -->
       <div class="flex items-center gap-2 text-sm mb-3">
-        <NuxtLink to="/" class="text-gray-400 hover:text-white transition-colors">
-          Services
+        <NuxtLink :to="backLink" class="text-gray-400 hover:text-white transition-colors">
+          {{ backLinkLabel }}
         </NuxtLink>
         <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
         <span class="text-white">{{ service?.label || name }}</span>
+        <span
+          v-if="service?.readOnly"
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-600/30 text-gray-400"
+        >
+          Read-only
+        </span>
       </div>
 
       <!-- Title and actions -->
@@ -38,8 +44,8 @@
           </span>
         </div>
 
-        <!-- Action buttons -->
-        <div class="flex items-center gap-2">
+        <!-- Action buttons (hidden for read-only services) -->
+        <div v-if="!service?.readOnly" class="flex items-center gap-2">
           <button
             v-if="service?.status === 'running'"
             class="flex items-center gap-2 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg transition-colors"
@@ -158,6 +164,7 @@ import { highlightCode } from '~/composables/useHighlighter'
 
 const route = useRoute()
 const name = computed(() => route.params.name as string)
+const serviceType = computed(() => (route.query.type as string) || 'user')
 
 const service = ref<Service | null>(null)
 const plistContent = ref<string | null>(null)
@@ -173,16 +180,48 @@ const tabs = [
   { id: 'inspect', label: 'Inspect' }
 ]
 
+const backLink = computed(() => {
+  switch (serviceType.value) {
+    case 'system':
+      return '/system'
+    case 'apple-system':
+      return '/apple-system'
+    default:
+      return '/'
+  }
+})
+
+const backLinkLabel = computed(() => {
+  switch (serviceType.value) {
+    case 'system':
+      return 'System Services'
+    case 'apple-system':
+      return 'Apple System Services'
+    default:
+      return 'Services'
+  }
+})
+
 async function loadService() {
   loading.value = true
   error.value = null
 
   try {
-    if (window.go?.main?.App?.GetService) {
-      service.value = await window.go.main.App.GetService(name.value)
-    }
-    if (window.go?.main?.App?.GetPlist) {
-      plistContent.value = await window.go.main.App.GetPlist(name.value)
+    const type = serviceType.value
+    if (type === 'user') {
+      if (window.go?.main?.App?.GetService) {
+        service.value = await window.go.main.App.GetService(name.value)
+      }
+      if (window.go?.main?.App?.GetPlist) {
+        plistContent.value = await window.go.main.App.GetPlist(name.value)
+      }
+    } else {
+      if (window.go?.main?.App?.GetSystemService) {
+        service.value = await window.go.main.App.GetSystemService(name.value, type)
+      }
+      if (window.go?.main?.App?.GetSystemPlist) {
+        plistContent.value = await window.go.main.App.GetSystemPlist(name.value, type)
+      }
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load service'
