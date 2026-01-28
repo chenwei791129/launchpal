@@ -1,0 +1,54 @@
+name: Build LaunchPal
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install pnpm
+      uses: pnpm/action-setup@v3
+      with:
+        version: 9
+
+    - name: Install Wails CLI
+      run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+    - name: Install dependencies
+      run: make setup
+
+    - name: Run tests
+      run: make test
+
+    - name: Build application
+      run: make build
+
+    - name: Package application
+      run: |
+        cd build/bin
+        zip -r launchpal.app.zip launchpal.app
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: launchpal-${{ github.sha }}
+        path: build/bin/launchpal.app.zip
+        retention-days: 30
