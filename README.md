@@ -4,12 +4,37 @@ A modern GUI for managing macOS LaunchAgents.
 
 ## Features
 
-- Manage LaunchAgents with an intuitive interface
-- View user-level and system-level services
-- View service status
-- Start/Stop user services
-- View service logs
-- Create user services
+- 🎯 Manage LaunchAgents with an intuitive interface
+- 👁️ View user-level and system-level services
+- 📊 View service status in real-time
+- ▶️ Start/Stop user services with one click
+- 📋 View service logs (stdout/stderr)
+- ➕ Create and configure new services
+- 🔍 Browse system services (read-only)
+- 📄 Inspect plist files with syntax highlighting
+- 💾 Automatic backup before modifications
+
+## Screenshots
+
+### Main Interface
+<p align="center">
+  <img src="docs/screenshots/main.png" alt="LaunchPal Main Interface" width="800">
+</p>
+
+### System Services
+<p align="center">
+  <img src="docs/screenshots/system_service.png" alt="System Services View" width="800">
+</p>
+
+### Service Logs
+<p align="center">
+  <img src="docs/screenshots/logs.png" alt="Service Logs" width="800">
+</p>
+
+### Plist Inspector
+<p align="center">
+  <img src="docs/screenshots/inspect.png" alt="Plist Inspector" width="800">
+</p>
 
 ## Installation
 
