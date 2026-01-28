@@ -3,6 +3,7 @@ package launchctl
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -110,15 +111,17 @@ func (m *AppleSystemManager) Get(name string) (*Service, error) {
 func (m *AppleSystemManager) GetPlist(name string) (string, error) {
 	plistPath := filepath.Join(m.launchDaemonsPath, name+".plist")
 
-	data, err := os.ReadFile(plistPath)
+	// Use plutil to convert binary plist to XML format
+	cmd := exec.Command("plutil", "-convert", "xml1", "-o", "-", plistPath)
+	output, err := cmd.Output()
 	if err != nil {
-		if os.IsPermission(err) {
+		if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") {
 			return "", fmt.Errorf("permission denied reading %s", name)
 		}
 		return "", fmt.Errorf("failed to read plist file: %w", err)
 	}
 
-	return string(data), nil
+	return string(output), nil
 }
 
 // GetLogs returns stdout or stderr log content
