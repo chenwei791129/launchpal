@@ -85,6 +85,7 @@ func (m *AppleSystemManager) Get(name string) (*Service, error) {
 		WorkingDir:  pd.WorkingDirectory,
 		Type:        "apple-system",
 		ReadOnly:    true,
+		PlistFormat: detectPlistFormat(data),
 	}
 
 	// Handle KeepAlive

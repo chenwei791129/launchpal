@@ -17,9 +17,10 @@ type Service struct {
 	Environment map[string]string `json:"environment,omitempty"`
 	StdoutPath  string            `json:"stdoutPath,omitempty"`
 	StderrPath  string            `json:"stderrPath,omitempty"`
-	WorkingDir  string            `json:"workingDirectory,omitempty"`
-	Type        string            `json:"type"`     // "user", "system", "apple-system"
-	ReadOnly    bool              `json:"readOnly"` // true for system services
+	WorkingDir   string            `json:"workingDirectory,omitempty"`
+	Type         string            `json:"type"`         // "user", "system", "apple-system"
+	ReadOnly     bool              `json:"readOnly"`     // true for system services
+	PlistFormat  string            `json:"plistFormat"`  // "xml", "binary", "unknown"
 }
 
 // ScheduleConfig represents StartCalendarInterval
@@ -47,3 +48,30 @@ type ServiceConfig struct {
 
 // ErrReadOnlyManager is returned when attempting write operations on read-only managers
 var ErrReadOnlyManager = errors.New("this manager is read-only")
+
+// detectPlistFormat detects whether a plist file is XML or binary format
+func detectPlistFormat(data []byte) string {
+	if len(data) == 0 {
+		return "unknown"
+	}
+	// Binary plist starts with "bplist"
+	if len(data) >= 6 && string(data[0:6]) == "bplist" {
+		return "binary"
+	}
+	// XML plist typically starts with "<?xml" or whitespace followed by "<?xml"
+	for i := 0; i < len(data) && i < 100; i++ {
+		if data[i] == '<' {
+			if len(data) > i+5 && string(data[i:i+5]) == "<?xml" {
+				return "xml"
+			}
+			break
+		}
+	}
+	// If we see printable ASCII, likely XML
+	for i := 0; i < len(data) && i < 100; i++ {
+		if data[i] < 32 && data[i] != '\n' && data[i] != '\r' && data[i] != '\t' {
+			return "binary"
+		}
+	}
+	return "xml"
+}

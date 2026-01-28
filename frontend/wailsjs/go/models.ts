@@ -79,6 +79,8 @@ export namespace launchctl {
 	    stdoutPath?: string;
 	    stderrPath?: string;
 	    workingDirectory?: string;
+	    type: string;
+	    readOnly: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new Service(source);
@@ -100,6 +102,8 @@ export namespace launchctl {
 	        this.stdoutPath = source["stdoutPath"];
 	        this.stderrPath = source["stderrPath"];
 	        this.workingDirectory = source["workingDirectory"];
+	        this.type = source["type"];
+	        this.readOnly = source["readOnly"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

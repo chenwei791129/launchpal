@@ -3,6 +3,8 @@
 import {launchctl} from '../models';
 import {backup} from '../models';
 
+export function CheckPermissions():Promise<Record<string, boolean>>;
+
 export function CreateService(arg1:launchctl.ServiceConfig):Promise<void>;
 
 export function DeleteService(arg1:string):Promise<void>;
@@ -15,11 +17,21 @@ export function GetPlist(arg1:string):Promise<string>;
 
 export function GetService(arg1:string):Promise<launchctl.Service>;
 
+export function GetSystemLogs(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function GetSystemPlist(arg1:string,arg2:string):Promise<string>;
+
+export function GetSystemService(arg1:string,arg2:string):Promise<launchctl.Service>;
+
 export function ListAllBackups():Promise<Array<backup.Backup>>;
+
+export function ListAppleSystemServices():Promise<Array<launchctl.Service>>;
 
 export function ListBackups(arg1:string):Promise<Array<backup.Backup>>;
 
 export function ListServices():Promise<Array<launchctl.Service>>;
+
+export function ListSystemServices():Promise<Array<launchctl.Service>>;
 
 export function RestartService(arg1:string):Promise<void>;
 

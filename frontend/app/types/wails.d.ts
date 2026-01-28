@@ -15,6 +15,7 @@ export interface Service {
   workingDirectory?: string
   type: 'user' | 'system' | 'apple-system'
   readOnly: boolean
+  plistFormat: 'xml' | 'binary' | 'unknown'
 }
 
 export interface ScheduleConfig {

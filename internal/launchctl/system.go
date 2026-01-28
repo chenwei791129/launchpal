@@ -85,6 +85,7 @@ func (m *SystemManager) Get(name string) (*Service, error) {
 		WorkingDir:  pd.WorkingDirectory,
 		Type:        "system",
 		ReadOnly:    true,
+		PlistFormat: detectPlistFormat(data),
 	}
 
 	// Handle KeepAlive

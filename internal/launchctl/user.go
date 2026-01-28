@@ -127,6 +127,7 @@ func (m *UserManager) Get(name string) (*Service, error) {
 		WorkingDir:  pd.WorkingDirectory,
 		Type:        "user",
 		ReadOnly:    false,
+		PlistFormat: detectPlistFormat(data),
 	}
 
 	// Handle KeepAlive which can be bool or dict

@@ -40,6 +40,21 @@
         <p class="text-gray-100 mt-1">{{ service.pid || '-' }}</p>
       </div>
       <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wider">Plist Format</label>
+        <p class="text-gray-100 mt-1">
+          <span
+            :class="{
+              'px-2 py-0.5 rounded text-xs font-medium': true,
+              'bg-blue-500/20 text-blue-400': service.plistFormat === 'xml',
+              'bg-purple-500/20 text-purple-400': service.plistFormat === 'binary',
+              'bg-gray-500/20 text-gray-400': service.plistFormat === 'unknown'
+            }"
+          >
+            {{ service.plistFormat?.toUpperCase() || 'UNKNOWN' }}
+          </span>
+        </p>
+      </div>
+      <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Run At Load</label>
         <p class="text-gray-100 mt-1">{{ service.runAtLoad ? 'Yes' : 'No' }}</p>
       </div>
