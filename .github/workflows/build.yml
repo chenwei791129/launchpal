@@ -35,8 +35,11 @@ jobs:
     - name: Install dependencies
       run: make setup
 
-    - name: Run tests
-      run: make test
+    - name: Build frontend
+      run: cd frontend && pnpm run generate
+
+    - name: Run Go tests
+      run: go test ./internal/...
 
     - name: Build application
       run: make build
