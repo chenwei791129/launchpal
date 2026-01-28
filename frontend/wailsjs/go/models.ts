@@ -81,6 +81,7 @@ export namespace launchctl {
 	    workingDirectory?: string;
 	    type: string;
 	    readOnly: boolean;
+	    plistFormat: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Service(source);
@@ -104,6 +105,7 @@ export namespace launchctl {
 	        this.workingDirectory = source["workingDirectory"];
 	        this.type = source["type"];
 	        this.readOnly = source["readOnly"];
+	        this.plistFormat = source["plistFormat"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

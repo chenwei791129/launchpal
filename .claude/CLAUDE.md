@@ -18,12 +18,14 @@ macOS LaunchAgent 圖形化管理工具。
 │   ├── launchctl/         # launchctl 命令封裝
 │   │   ├── types.go       # Service, ServiceConfig 等型別
 │   │   ├── manager.go     # Manager interface
-│   │   └── user.go        # UserManager 實作（~/Library/LaunchAgents）
+│   │   ├── user.go        # UserManager 實作（~/Library/LaunchAgents）
+│   │   ├── system.go      # SystemManager 實作（/Library/LaunchDaemons，唯讀）
+│   │   └── apple_system.go # AppleSystemManager 實作（/System/Library/LaunchDaemons，唯讀）
 │   └── backup/            # 備份管理
 │       └── backup.go      # BackupManager 實作
 ├── frontend/              # Nuxt 4 前端專案
 │   ├── app/
-│   │   ├── pages/         # 頁面（index, settings, services/[name]）
+│   │   ├── pages/         # 頁面（index, system, apple-system, settings, services/[name]）
 │   │   ├── components/    # Vue 元件
 │   │   ├── composables/   # 組合式函數
 │   │   └── types/         # TypeScript 型別
@@ -53,6 +55,25 @@ make clean       # 清除建置產物
 - 自動備份時機：Update、Delete 前
 - 保留數量：最近 10 個
 
+## 服務類型
+
+LaunchPal 支援三種類型的服務：
+
+1. **User Services** (`~/Library/LaunchAgents`)
+   - 完整的讀寫權限
+   - 可以啟動、停止、建立、更新、刪除服務
+
+2. **System Services** (`/Library/LaunchDaemons`)
+   - 唯讀模式
+   - 可以查看服務資訊、狀態、plist 內容和 logs
+   - 第三方系統級服務
+
+3. **Apple System Services** (`/System/Library/LaunchDaemons`)
+   - 唯讀模式
+   - 可以查看服務資訊、狀態、plist 內容和 logs
+   - macOS 系統內建服務
+   - 許多服務使用 binary plist 格式，會自動轉換為 XML 顯示
+
 ## 狀態檢測邏輯
 
 1. 先用 `launchctl list <label>` 取得服務資訊
@@ -60,11 +81,18 @@ make clean       # 清除建置產物
 3. 若無 PID，用 `pgrep -f <program>` 作為 fallback
 4. 跳過常見 shell（bash, sh, zsh）的 pgrep 檢測以避免誤判
 
+## Plist 格式處理
+
+- 自動偵測 plist 格式（XML 或 binary）
+- Binary plist 會使用 `plutil` 自動轉換為 XML 格式顯示
+- 在 Summary 頁面顯示原始格式類型
+
 ## 已知限制
 
-- 僅管理用戶級別服務（~/Library/LaunchAgents）
+- 僅能修改用戶級別服務（~/Library/LaunchAgents）
+- 系統服務（/Library/LaunchDaemons、/System/Library/LaunchDaemons）為唯讀模式
 - 無法停止以 root 運行的服務（需 sudo 權限）
-- 同名服務若同時存在於 LaunchAgents 和 LaunchDaemons 可能造成狀態顯示不一致
+- 部分系統服務可能需要 Full Disk Access 權限才能查看
 
 ## Worktree 設定
 
