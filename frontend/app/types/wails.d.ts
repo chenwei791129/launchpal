@@ -25,6 +25,7 @@ export interface ScheduleConfig {
   weekday?: number
   month?: number
   interval?: number
+  hasMultiple?: boolean
 }
 
 export interface ServiceConfig {

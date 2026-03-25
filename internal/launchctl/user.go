@@ -191,15 +191,16 @@ func (m *UserManager) parseSchedule(calendarInterval interface{}, startInterval 
 			Month:   extractInt(v["Month"]),
 		}
 	case []interface{}:
-		// Multiple intervals - just use the first one for simplicity
+		// Multiple intervals - use the first one and flag it
 		if len(v) > 0 {
 			if first, ok := v[0].(map[string]interface{}); ok {
 				return &ScheduleConfig{
-					Minute:  extractInt(first["Minute"]),
-					Hour:    extractInt(first["Hour"]),
-					Day:     extractInt(first["Day"]),
-					Weekday: extractInt(first["Weekday"]),
-					Month:   extractInt(first["Month"]),
+					Minute:      extractInt(first["Minute"]),
+					Hour:        extractInt(first["Hour"]),
+					Day:         extractInt(first["Day"]),
+					Weekday:     extractInt(first["Weekday"]),
+					Month:       extractInt(first["Month"]),
+					HasMultiple: len(v) > 1,
 				}
 			}
 		}

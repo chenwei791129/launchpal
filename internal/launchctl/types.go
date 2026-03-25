@@ -25,12 +25,13 @@ type Service struct {
 
 // ScheduleConfig represents StartCalendarInterval or StartInterval
 type ScheduleConfig struct {
-	Minute   *int `json:"minute,omitempty"`
-	Hour     *int `json:"hour,omitempty"`
-	Day      *int `json:"day,omitempty"`
-	Weekday  *int `json:"weekday,omitempty"`
-	Month    *int `json:"month,omitempty"`
-	Interval *int `json:"interval,omitempty"`
+	Minute      *int `json:"minute,omitempty"`
+	Hour        *int `json:"hour,omitempty"`
+	Day         *int `json:"day,omitempty"`
+	Weekday     *int `json:"weekday,omitempty"`
+	Month       *int `json:"month,omitempty"`
+	Interval    *int `json:"interval,omitempty"`
+	HasMultiple bool `json:"hasMultiple,omitempty"`
 }
 
 // ServiceConfig is used for creating/updating services

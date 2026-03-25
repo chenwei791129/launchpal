@@ -65,6 +65,7 @@
       <div v-if="service.schedule">
         <label class="text-xs text-gray-400 uppercase tracking-wider">Schedule</label>
         <p class="text-gray-100 mt-1 font-mono text-sm">{{ scheduleDisplay }}</p>
+        <p v-if="service.schedule.hasMultiple" class="text-xs text-yellow-400 mt-1">Multiple schedules defined; only the first is shown.</p>
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Stdout Path</label>
