@@ -357,6 +357,10 @@ func (m *UserManager) Create(config *ServiceConfig) error {
 		}
 	}
 
+	if err := validateSchedule(config.Schedule); err != nil {
+		return err
+	}
+
 	return m.writePlist(plistPath, config)
 }
 
@@ -372,11 +376,26 @@ func (m *UserManager) Update(name string, config *ServiceConfig) error {
 	// Stop the service first
 	_ = m.Stop(name)
 
+	if err := validateSchedule(config.Schedule); err != nil {
+		return err
+	}
+
 	// Write updated plist
 	if err := m.writePlist(plistPath, config); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+// validateSchedule checks that a ScheduleConfig has valid values
+func validateSchedule(s *ScheduleConfig) error {
+	if s == nil {
+		return nil
+	}
+	if s.Interval != nil && *s.Interval < 10 {
+		return fmt.Errorf("StartInterval must be at least 10 seconds, got %d", *s.Interval)
+	}
 	return nil
 }
 
