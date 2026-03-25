@@ -10,6 +10,8 @@ A modern GUI for managing macOS LaunchAgents.
 - ▶️ Start/Stop user services with one click
 - 📋 View service logs (stdout/stderr)
 - ➕ Create and configure new services
+- ⏰ Schedule services with Calendar Interval or Fixed Interval
+- ✏️ Edit existing service configurations
 - 🔍 Browse system services (read-only)
 - 📄 Inspect plist files with syntax highlighting
 - 💾 Automatic backup before modifications

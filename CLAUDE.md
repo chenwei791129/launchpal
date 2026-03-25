@@ -25,3 +25,11 @@ discuss? → propose → apply ⇄ ingest → archive
 Changes can be parked（暫存）— temporarily moved out of `openspec/changes/`. Parked changes won't appear in `spectra list` but can be found with `spectra list --parked`. To restore: `spectra unpark <name>`. The `/spectra:apply` and `/spectra:ingest` skills handle parked changes automatically.
 
 <!-- SPECTRA:END -->
+
+## Post-Implementation Checklist
+
+Every time a feature is added, modified, or removed, check whether the following files need updating:
+
+- `README.md` — Features list, screenshots, known limitations
+- `.claude/CLAUDE.md` — Directory structure, service capabilities, known limitations
+- `CLAUDE.md` — This file (if workflow or tooling changes)
