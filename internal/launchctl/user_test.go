@@ -33,6 +33,93 @@ func TestUserManager_GetLaunchAgentsPath(t *testing.T) {
 	}
 }
 
+func TestWritePlist_EmptyCalendarInterval(t *testing.T) {
+	tmpDir := t.TempDir()
+	plistPath := filepath.Join(tmpDir, "test.plist")
+	m := &UserManager{}
+
+	// Empty ScheduleConfig (all fields nil) = "every minute"
+	config := &ServiceConfig{
+		Label:    "com.test.everyminute",
+		Program:  "/usr/bin/true",
+		Schedule: &ScheduleConfig{},
+	}
+
+	if err := m.writePlist(plistPath, config); err != nil {
+		t.Fatalf("writePlist() error = %v", err)
+	}
+
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "<key>StartCalendarInterval</key>") {
+		t.Error("plist should contain StartCalendarInterval even when all fields are empty")
+	}
+	if strings.Contains(content, "<key>StartInterval</key>") {
+		t.Error("plist should NOT contain StartInterval")
+	}
+}
+
+func TestParseSchedule_MultipleIntervals(t *testing.T) {
+	m := &UserManager{}
+
+	intervals := []interface{}{
+		map[string]interface{}{"Hour": uint64(3), "Minute": uint64(0)},
+		map[string]interface{}{"Hour": uint64(15), "Minute": uint64(30)},
+	}
+
+	schedule := m.parseSchedule(intervals, 0)
+	if schedule == nil {
+		t.Fatal("parseSchedule() returned nil")
+	}
+	if schedule.Hour == nil || *schedule.Hour != 3 {
+		t.Errorf("expected Hour=3, got %v", schedule.Hour)
+	}
+	if !schedule.HasMultiple {
+		t.Error("expected HasMultiple=true for array with 2 entries")
+	}
+}
+
+func TestParseSchedule_SingleArrayInterval(t *testing.T) {
+	m := &UserManager{}
+
+	intervals := []interface{}{
+		map[string]interface{}{"Hour": uint64(8)},
+	}
+
+	schedule := m.parseSchedule(intervals, 0)
+	if schedule == nil {
+		t.Fatal("parseSchedule() returned nil")
+	}
+	if schedule.HasMultiple {
+		t.Error("expected HasMultiple=false for array with 1 entry")
+	}
+}
+
+func TestValidateSchedule(t *testing.T) {
+	if err := validateSchedule(nil); err != nil {
+		t.Errorf("nil schedule should be valid, got: %v", err)
+	}
+
+	interval := 60
+	if err := validateSchedule(&ScheduleConfig{Interval: &interval}); err != nil {
+		t.Errorf("interval=60 should be valid, got: %v", err)
+	}
+
+	small := 5
+	if err := validateSchedule(&ScheduleConfig{Interval: &small}); err == nil {
+		t.Error("interval=5 should be invalid")
+	}
+
+	hour := 3
+	if err := validateSchedule(&ScheduleConfig{Hour: &hour}); err != nil {
+		t.Errorf("calendar schedule should be valid, got: %v", err)
+	}
+}
+
 func TestWritePlist_StartInterval(t *testing.T) {
 	tmpDir := t.TempDir()
 	plistPath := filepath.Join(tmpDir, "test.plist")
