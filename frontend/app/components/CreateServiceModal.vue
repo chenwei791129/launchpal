@@ -77,6 +77,9 @@
           </label>
         </div>
 
+        <!-- Schedule -->
+        <ScheduleForm v-model="schedule" />
+
         <!-- Log Paths (Auto-generated) -->
         <div v-if="form.label">
           <label class="block text-sm text-gray-400 mb-1">Log Paths</label>
@@ -117,7 +120,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ServiceConfig } from '~/types/wails.d'
+import type { ServiceConfig, ScheduleConfig } from '~/types/wails.d'
 
 defineProps<{
   isOpen: boolean
@@ -138,6 +141,7 @@ const form = reactive({
 })
 
 const argumentsText = ref('')
+const schedule = ref<ScheduleConfig | undefined>(undefined)
 const loading = ref(false)
 const error = ref('')
 
@@ -156,6 +160,7 @@ async function handleSubmit() {
     const config: ServiceConfig = {
       ...form,
       arguments: argumentsText.value ? argumentsText.value.split(/\s+/).filter(Boolean) : [],
+      schedule: schedule.value,
       stdoutPath: logPaths.value.stdout,
       stderrPath: logPaths.value.stderr,
     }
@@ -171,6 +176,7 @@ async function handleSubmit() {
     form.keepAlive = false
     form.workingDirectory = ''
     argumentsText.value = ''
+    schedule.value = undefined
   } catch (err: any) {
     error.value = err.message || 'Failed to create service'
   } finally {
