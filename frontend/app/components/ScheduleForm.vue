@@ -171,8 +171,12 @@ const cronDescription = computed(() => {
   return parts.length > 0 ? parts.join(', ') : 'Every minute'
 })
 
+// Guard to prevent watch loop between modelValue and emit watchers
+let updatingFromProp = false
+
 // Initialize from modelValue
 watch(() => props.modelValue, (val) => {
+  updatingFromProp = true
   if (val) {
     enabled.value = true
     if (val.interval !== undefined) {
@@ -180,15 +184,21 @@ watch(() => props.modelValue, (val) => {
       intervalSeconds.value = val.interval
     } else {
       scheduleType.value = 'calendar'
-      cronExpression.value = configToCron(val)
+      const newCron = configToCron(val)
+      if (cronExpression.value !== newCron) {
+        cronExpression.value = newCron
+      }
     }
   } else {
     enabled.value = false
   }
+  nextTick(() => { updatingFromProp = false })
 }, { immediate: true })
 
 // Emit changes
 watch([enabled, scheduleType, intervalSeconds, cronExpression], () => {
+  if (updatingFromProp) return
+
   if (!enabled.value) {
     emit('update:modelValue', undefined)
     return
