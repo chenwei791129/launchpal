@@ -517,9 +517,9 @@ func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
 			if config.Schedule.Month != nil {
 				calInterval["Month"] = *config.Schedule.Month
 			}
-			if len(calInterval) > 0 {
-				pd["StartCalendarInterval"] = calInterval
-			}
+			// Always write StartCalendarInterval when schedule is set;
+			// empty map means "every minute" in launchd semantics
+			pd["StartCalendarInterval"] = calInterval
 		}
 	}
 
