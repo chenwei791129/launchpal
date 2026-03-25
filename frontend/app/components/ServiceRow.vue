@@ -10,7 +10,8 @@
         class="w-2.5 h-2.5 rounded-full"
         :class="{
           'bg-green-500': service.status === 'running',
-          'bg-gray-500': service.status === 'stopped' || service.status === 'loaded',
+          'bg-blue-500': service.status === 'loaded',
+          'bg-gray-500': service.status === 'stopped',
           'bg-yellow-500': service.status === 'unknown'
         }"
       ></span>
@@ -55,7 +56,7 @@
       <template v-if="!service.readOnly">
         <!-- Start/Stop button -->
         <button
-          v-if="service.status === 'running'"
+          v-if="service.status === 'running' || service.status === 'loaded'"
           class="p-1.5 rounded hover:bg-red-600/20 text-gray-400 hover:text-red-400 transition-colors"
           title="Stop service"
           @click.stop="handleStop"
