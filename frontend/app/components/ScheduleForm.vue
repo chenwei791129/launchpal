@@ -42,7 +42,7 @@
         />
         <div class="flex items-center gap-4 text-xs text-gray-500">
           <span class="font-mono">minute hour day month weekday</span>
-          <span>Use <code class="text-gray-400">*</code> for any</span>
+          <span>Use <code class="text-gray-400">*</code> for any, single values only (no ranges or <code class="text-gray-400">*/5</code>)</span>
         </div>
 
         <!-- Parsed preview -->
