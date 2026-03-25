@@ -24,6 +24,7 @@ export interface ScheduleConfig {
   day?: number
   weekday?: number
   month?: number
+  interval?: number
 }
 
 export interface ServiceConfig {

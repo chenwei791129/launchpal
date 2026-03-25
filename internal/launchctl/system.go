@@ -98,7 +98,7 @@ func (m *SystemManager) Get(name string) (*Service, error) {
 
 	// Handle Schedule (reuse parseSchedule from UserManager)
 	um := &UserManager{}
-	service.Schedule = um.parseSchedule(pd.StartCalendarInterval)
+	service.Schedule = um.parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
 	// Get service status using same method as UserManager
 	status, pid := (&UserManager{}).getServiceStatus(pd.Label)

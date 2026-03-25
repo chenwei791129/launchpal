@@ -48,6 +48,7 @@ type plistData struct {
 	RunAtLoad              bool              `plist:"RunAtLoad"`
 	KeepAlive              interface{}       `plist:"KeepAlive"`
 	StartCalendarInterval  interface{}       `plist:"StartCalendarInterval"`
+	StartInterval          int              `plist:"StartInterval"`
 	EnvironmentVariables   map[string]string `plist:"EnvironmentVariables"`
 	StandardOutPath        string            `plist:"StandardOutPath"`
 	StandardErrorPath      string            `plist:"StandardErrorPath"`
@@ -139,8 +140,8 @@ func (m *UserManager) Get(name string) (*Service, error) {
 		service.KeepAlive = true
 	}
 
-	// Handle StartCalendarInterval
-	service.Schedule = m.parseSchedule(pd.StartCalendarInterval)
+	// Handle schedule (StartCalendarInterval or StartInterval)
+	service.Schedule = m.parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
 	// Get service status
 	status, pid := m.getServiceStatus(pd.Label)
@@ -150,10 +151,14 @@ func (m *UserManager) Get(name string) (*Service, error) {
 	return service, nil
 }
 
-// parseSchedule converts plist calendar interval to ScheduleConfig
-func (m *UserManager) parseSchedule(interval interface{}) *ScheduleConfig {
-	if interval == nil {
+// parseSchedule converts plist calendar interval or start interval to ScheduleConfig
+func (m *UserManager) parseSchedule(calendarInterval interface{}, startInterval int) *ScheduleConfig {
+	if calendarInterval == nil && startInterval == 0 {
 		return nil
+	}
+
+	if startInterval > 0 {
+		return &ScheduleConfig{Interval: &startInterval}
 	}
 
 	extractInt := func(v interface{}) *int {
@@ -176,7 +181,7 @@ func (m *UserManager) parseSchedule(interval interface{}) *ScheduleConfig {
 		return nil
 	}
 
-	switch v := interval.(type) {
+	switch v := calendarInterval.(type) {
 	case map[string]interface{}:
 		return &ScheduleConfig{
 			Minute:  extractInt(v["Minute"]),
@@ -493,24 +498,28 @@ func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
 
 	// Handle schedule
 	if config.Schedule != nil {
-		interval := make(map[string]int)
-		if config.Schedule.Minute != nil {
-			interval["Minute"] = *config.Schedule.Minute
-		}
-		if config.Schedule.Hour != nil {
-			interval["Hour"] = *config.Schedule.Hour
-		}
-		if config.Schedule.Day != nil {
-			interval["Day"] = *config.Schedule.Day
-		}
-		if config.Schedule.Weekday != nil {
-			interval["Weekday"] = *config.Schedule.Weekday
-		}
-		if config.Schedule.Month != nil {
-			interval["Month"] = *config.Schedule.Month
-		}
-		if len(interval) > 0 {
-			pd["StartCalendarInterval"] = interval
+		if config.Schedule.Interval != nil {
+			pd["StartInterval"] = *config.Schedule.Interval
+		} else {
+			calInterval := make(map[string]int)
+			if config.Schedule.Minute != nil {
+				calInterval["Minute"] = *config.Schedule.Minute
+			}
+			if config.Schedule.Hour != nil {
+				calInterval["Hour"] = *config.Schedule.Hour
+			}
+			if config.Schedule.Day != nil {
+				calInterval["Day"] = *config.Schedule.Day
+			}
+			if config.Schedule.Weekday != nil {
+				calInterval["Weekday"] = *config.Schedule.Weekday
+			}
+			if config.Schedule.Month != nil {
+				calInterval["Month"] = *config.Schedule.Month
+			}
+			if len(calInterval) > 0 {
+				pd["StartCalendarInterval"] = calInterval
+			}
 		}
 	}
 

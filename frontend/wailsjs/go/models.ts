@@ -50,6 +50,7 @@ export namespace launchctl {
 	    day?: number;
 	    weekday?: number;
 	    month?: number;
+	    interval?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScheduleConfig(source);
@@ -62,6 +63,7 @@ export namespace launchctl {
 	        this.day = source["day"];
 	        this.weekday = source["weekday"];
 	        this.month = source["month"];
+	        this.interval = source["interval"];
 	    }
 	}
 	export class Service {
