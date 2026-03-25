@@ -27,6 +27,7 @@
             class="w-3 h-3 rounded-full"
             :class="{
               'bg-green-500': service?.status === 'running',
+              'bg-blue-500': service?.status === 'loaded',
               'bg-gray-500': service?.status === 'stopped',
               'bg-yellow-500': service?.status === 'unknown'
             }"
@@ -36,6 +37,7 @@
             class="px-2 py-0.5 rounded text-xs"
             :class="{
               'bg-green-600/20 text-green-400': service?.status === 'running',
+              'bg-blue-600/20 text-blue-400': service?.status === 'loaded',
               'bg-gray-600/20 text-gray-400': service?.status === 'stopped',
               'bg-yellow-600/20 text-yellow-400': service?.status === 'unknown'
             }"
@@ -47,7 +49,7 @@
         <!-- Action buttons (hidden for read-only services) -->
         <div v-if="!service?.readOnly" class="flex items-center gap-2">
           <button
-            v-if="service?.status === 'running'"
+            v-if="service?.status === 'running' || service?.status === 'loaded'"
             class="flex items-center gap-2 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg transition-colors"
             :disabled="actionLoading"
             @click="handleStop"
@@ -130,6 +132,71 @@
         <!-- Summary tab -->
         <ServiceSummary v-if="activeTab === 'summary'" :service="service" />
 
+        <!-- Edit tab (user services only) -->
+        <div v-else-if="activeTab === 'edit'" class="p-6 space-y-4 overflow-auto">
+          <div class="space-y-4">
+            <!-- Program -->
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">Program Path</label>
+              <input
+                v-model="editForm.program"
+                type="text"
+                class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+
+            <!-- Arguments -->
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">Arguments</label>
+              <input
+                v-model="editArgumentsText"
+                type="text"
+                placeholder="--daemon --port=8080"
+                class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
+              />
+              <p class="text-xs text-gray-500 mt-1">Space-separated arguments</p>
+            </div>
+
+            <!-- Working Directory -->
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">Working Directory</label>
+              <input
+                v-model="editForm.workingDirectory"
+                type="text"
+                class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
+              />
+            </div>
+
+            <!-- Checkboxes -->
+            <div class="flex gap-6">
+              <label class="flex items-center gap-2 text-sm text-gray-300">
+                <input v-model="editForm.runAtLoad" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+                Run at Load
+              </label>
+              <label class="flex items-center gap-2 text-sm text-gray-300">
+                <input v-model="editForm.keepAlive" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+                Keep Alive
+              </label>
+            </div>
+
+            <!-- Schedule -->
+            <ScheduleForm v-model="editSchedule" />
+
+            <!-- Save button -->
+            <div class="flex items-center gap-3 pt-2">
+              <button
+                @click="handleSave"
+                :disabled="saving"
+                class="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
+              >
+                {{ saving ? 'Saving...' : 'Save Changes' }}
+              </button>
+              <p v-if="saveError" class="text-red-400 text-sm">{{ saveError }}</p>
+              <p v-if="saveSuccess" class="text-green-400 text-sm">Saved successfully!</p>
+            </div>
+          </div>
+        </div>
+
         <!-- Logs tab -->
         <ServiceLogs v-else-if="activeTab === 'logs'" :service-name="name" class="h-full" />
 
@@ -159,7 +226,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Service } from '~/types/wails'
+import type { Service, ServiceConfig, ScheduleConfig } from '~/types/wails'
 import { highlightCode } from '~/composables/useHighlighter'
 
 const route = useRoute()
@@ -174,11 +241,17 @@ const error = ref<string | null>(null)
 const actionLoading = ref(false)
 const activeTab = ref('summary')
 
-const tabs = [
-  { id: 'summary', label: 'Summary' },
-  { id: 'logs', label: 'Logs' },
-  { id: 'inspect', label: 'Inspect' }
-]
+const tabs = computed(() => {
+  const base = [
+    { id: 'summary', label: 'Summary' },
+    { id: 'logs', label: 'Logs' },
+    { id: 'inspect', label: 'Inspect' },
+  ]
+  if (serviceType.value === 'user') {
+    base.splice(1, 0, { id: 'edit', label: 'Edit' })
+  }
+  return base
+})
 
 const backLink = computed(() => {
   switch (serviceType.value) {
@@ -228,6 +301,7 @@ async function loadService() {
     console.error('Failed to load service:', e)
   } finally {
     loading.value = false
+    populateEditForm()
   }
 }
 
@@ -270,6 +344,59 @@ async function handleRestart() {
     console.error('Failed to restart service:', e)
   } finally {
     actionLoading.value = false
+  }
+}
+
+// Edit form state
+const editForm = reactive({
+  program: '',
+  workingDirectory: '',
+  runAtLoad: false,
+  keepAlive: false,
+})
+const editArgumentsText = ref('')
+const editSchedule = ref<ScheduleConfig | undefined>(undefined)
+const saving = ref(false)
+const saveError = ref('')
+const saveSuccess = ref(false)
+
+function populateEditForm() {
+  if (!service.value) return
+  editForm.program = service.value.program || ''
+  editForm.workingDirectory = service.value.workingDirectory || ''
+  editForm.runAtLoad = service.value.runAtLoad
+  editForm.keepAlive = service.value.keepAlive
+  editArgumentsText.value = service.value.arguments?.join(' ') || ''
+  editSchedule.value = service.value.schedule ? { ...service.value.schedule } : undefined
+}
+
+async function handleSave() {
+  if (!service.value) return
+  saving.value = true
+  saveError.value = ''
+  saveSuccess.value = false
+
+  try {
+    const config: ServiceConfig = {
+      label: service.value.label,
+      program: editForm.program,
+      arguments: editArgumentsText.value ? editArgumentsText.value.split(/\s+/).filter(Boolean) : [],
+      runAtLoad: editForm.runAtLoad,
+      keepAlive: editForm.keepAlive,
+      workingDirectory: editForm.workingDirectory,
+      schedule: editSchedule.value,
+      stdoutPath: service.value.stdoutPath,
+      stderrPath: service.value.stderrPath,
+    }
+
+    await window.go.main.App.UpdateService(name.value, config)
+    saveSuccess.value = true
+    setTimeout(() => { saveSuccess.value = false }, 3000)
+    await loadService()
+  } catch (e: any) {
+    saveError.value = e.message || 'Failed to save changes'
+  } finally {
+    saving.value = false
   }
 }
 

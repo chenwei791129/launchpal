@@ -62,6 +62,10 @@
         <label class="text-xs text-gray-400 uppercase tracking-wider">Keep Alive</label>
         <p class="text-gray-100 mt-1">{{ service.keepAlive ? 'Yes' : 'No' }}</p>
       </div>
+      <div v-if="service.schedule">
+        <label class="text-xs text-gray-400 uppercase tracking-wider">Schedule</label>
+        <p class="text-gray-100 mt-1 font-mono text-sm">{{ scheduleDisplay }}</p>
+      </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Stdout Path</label>
         <div
@@ -115,6 +119,24 @@ const props = defineProps<{
 }>()
 
 const copiedField = ref<string | null>(null)
+
+const scheduleDisplay = computed(() => {
+  const s = props.service.schedule
+  if (!s) return ''
+  if (s.interval !== undefined) {
+    return `Every ${s.interval} seconds`
+  }
+  const parts: string[] = []
+  if (s.month !== undefined) parts.push(`Month: ${s.month}`)
+  if (s.day !== undefined) parts.push(`Day: ${s.day}`)
+  if (s.weekday !== undefined) {
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    parts.push(`Weekday: ${names[s.weekday] ?? s.weekday}`)
+  }
+  if (s.hour !== undefined) parts.push(`Hour: ${String(s.hour).padStart(2, '0')}`)
+  if (s.minute !== undefined) parts.push(`Minute: ${String(s.minute).padStart(2, '0')}`)
+  return parts.length > 0 ? parts.join(', ') : 'Every minute'
+})
 
 async function copyText(text: string, field: string) {
   try {
