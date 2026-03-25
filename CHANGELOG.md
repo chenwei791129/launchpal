@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1.0](https://github.com/chenwei791129/launchpal/compare/v1.0.0...v1.1.0) (2026-03-25)
+
+
+### Features
+
+* add schedule configuration UI for new services ([10a2f90](https://github.com/chenwei791129/launchpal/commit/10a2f90c66feec671505f4cda9d8b40af717230b))
+* add schedule display and editing in service detail page ([451bf64](https://github.com/chenwei791129/launchpal/commit/451bf641430a5deaed20600f203e3beb55a72e48))
+* add StartInterval support for scheduled services ([629e2b5](https://github.com/chenwei791129/launchpal/commit/629e2b5f3e82dde020002f28fd6c8a924920c790))
+* add StartInterval validation in Create and Update ([4bf7f9a](https://github.com/chenwei791129/launchpal/commit/4bf7f9a91f3ede92134bf36b5b2d5c16905dd297))
+* show hint when multiple StartCalendarInterval entries exist ([dbfecc0](https://github.com/chenwei791129/launchpal/commit/dbfecc0973f66e7a50e3a87b780d66e69236ab35))
+
+
+### Bug Fixes
+
+* clarify cron syntax limitations in schedule form hint ([d055462](https://github.com/chenwei791129/launchpal/commit/d0554624135cf735e9374958bfd7b74812d69d40))
+* prevent watch loop in ScheduleForm between modelValue and emit ([d85ec57](https://github.com/chenwei791129/launchpal/commit/d85ec578bdbed54ddb8b2cd25cd19c039ed717e9))
+* show blue indicator for loaded services and correct action button ([ffe5d28](https://github.com/chenwei791129/launchpal/commit/ffe5d28d7839d6026fe58a5321ae616734630d29))
+* write empty StartCalendarInterval for every-minute schedule ([5188c76](https://github.com/chenwei791129/launchpal/commit/5188c76e3ca1fd2f37b6dc5bc3424aac43fd41a6))
+
 ## 1.0.0 (2026-01-28)
 
 
