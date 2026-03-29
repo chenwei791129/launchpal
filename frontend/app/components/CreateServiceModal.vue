@@ -77,6 +77,43 @@
           </label>
         </div>
 
+        <!-- Environment Variables -->
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Environment Variables</label>
+          <div class="space-y-2">
+            <div v-for="(env, index) in envVars" :key="index" class="flex gap-2">
+              <input
+                v-model="env.key"
+                type="text"
+                placeholder="KEY"
+                class="flex-1 px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 font-mono text-sm"
+              />
+              <input
+                v-model="env.value"
+                type="text"
+                placeholder="Value"
+                class="flex-1 px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 text-sm"
+              />
+              <button
+                type="button"
+                @click="envVars.splice(index, 1)"
+                class="px-2 text-gray-500 hover:text-red-400 transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            @click="envVars.push({ key: '', value: '' })"
+            class="mt-2 text-sm text-primary-400 hover:text-primary-300 transition-colors"
+          >
+            + Add
+          </button>
+        </div>
+
         <!-- Schedule -->
         <ScheduleForm v-model="schedule" />
 
@@ -141,6 +178,7 @@ const form = reactive({
 })
 
 const argumentsText = ref('')
+const envVars = reactive<Array<{ key: string; value: string }>>([])
 const schedule = ref<ScheduleConfig | undefined>(undefined)
 const loading = ref(false)
 const error = ref('')
@@ -157,9 +195,17 @@ async function handleSubmit() {
   error.value = ''
 
   try {
+    const environment: Record<string, string> = {}
+    for (const env of envVars) {
+      if (env.key.trim()) {
+        environment[env.key.trim()] = env.value
+      }
+    }
+
     const config: ServiceConfig = {
       ...form,
       arguments: argumentsText.value ? argumentsText.value.split(/\s+/).filter(Boolean) : [],
+      environment: Object.keys(environment).length > 0 ? environment : undefined,
       schedule: schedule.value,
       stdoutPath: logPaths.value.stdout,
       stderrPath: logPaths.value.stderr,
@@ -176,6 +222,7 @@ async function handleSubmit() {
     form.keepAlive = false
     form.workingDirectory = ''
     argumentsText.value = ''
+    envVars.splice(0)
     schedule.value = undefined
   } catch (err: any) {
     error.value = err.message || 'Failed to create service'
