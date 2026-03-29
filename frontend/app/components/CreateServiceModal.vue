@@ -158,6 +158,7 @@
 
 <script setup lang="ts">
 import type { ServiceConfig, ScheduleConfig } from '~/types/wails.d'
+import { parseShellArgs } from '~/utils/shell-args'
 
 defineProps<{
   isOpen: boolean
@@ -204,7 +205,7 @@ async function handleSubmit() {
 
     const config: ServiceConfig = {
       ...form,
-      arguments: argumentsText.value ? argumentsText.value.split(/\s+/).filter(Boolean) : [],
+      arguments: parseShellArgs(argumentsText.value),
       environment: Object.keys(environment).length > 0 ? environment : undefined,
       schedule: schedule.value,
       stdoutPath: logPaths.value.stdout,

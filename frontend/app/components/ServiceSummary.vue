@@ -33,7 +33,7 @@
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Arguments</label>
-        <p class="text-gray-100 mt-1 font-mono text-sm break-words overflow-wrap-anywhere">{{ service.arguments?.join(' ') || '-' }}</p>
+        <p class="text-gray-100 mt-1 font-mono text-sm break-words overflow-wrap-anywhere">{{ serializeShellArgs(service.arguments ?? []) || '-' }}</p>
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">PID</label>
@@ -114,6 +114,7 @@
 
 <script setup lang="ts">
 import type { Service } from '~/types/wails'
+import { serializeShellArgs } from '~/utils/shell-args'
 
 const props = defineProps<{
   service: Service

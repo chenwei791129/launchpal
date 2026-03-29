@@ -265,6 +265,7 @@
 <script setup lang="ts">
 import type { Service, ServiceConfig, ScheduleConfig } from '~/types/wails'
 import { highlightCode } from '~/composables/useHighlighter'
+import { parseShellArgs, serializeShellArgs } from '~/utils/shell-args'
 
 const route = useRoute()
 const name = computed(() => route.params.name as string)
@@ -404,7 +405,7 @@ function populateEditForm() {
   editForm.workingDirectory = service.value.workingDirectory || ''
   editForm.runAtLoad = service.value.runAtLoad
   editForm.keepAlive = service.value.keepAlive
-  editArgumentsText.value = service.value.arguments?.join(' ') || ''
+  editArgumentsText.value = serializeShellArgs(service.value.arguments ?? [])
   editEnvVars.splice(0)
   if (service.value.environment) {
     for (const [key, value] of Object.entries(service.value.environment)) {
@@ -431,7 +432,7 @@ async function handleSave() {
     const config: ServiceConfig = {
       label: service.value.label,
       program: editForm.program,
-      arguments: editArgumentsText.value ? editArgumentsText.value.split(/\s+/).filter(Boolean) : [],
+      arguments: parseShellArgs(editArgumentsText.value),
       runAtLoad: editForm.runAtLoad,
       keepAlive: editForm.keepAlive,
       environment: Object.keys(environment).length > 0 ? environment : undefined,
