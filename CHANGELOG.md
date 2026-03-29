@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.3.0](https://github.com/chenwei791129/launchpal/compare/v1.2.0...v1.3.0) (2026-03-29)
+
+
+### Features
+
+* add shell-args utility for quoted argument parsing ([9c4b1e5](https://github.com/chenwei791129/launchpal/commit/9c4b1e532c9f2a7633674c2a3c09023347ff0667))
+
+
+### Bug Fixes
+
+* use shell-like parsing for service arguments ([444b79a](https://github.com/chenwei791129/launchpal/commit/444b79aec01ab3d60b1ad6950cf7a38b4dfecaae))
+
 ## [1.2.0](https://github.com/chenwei791129/launchpal/compare/v1.1.0...v1.2.0) (2026-03-29)
 
 
