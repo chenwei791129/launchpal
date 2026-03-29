@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/chenwei791129/launchpal/compare/v1.1.0...v1.2.0) (2026-03-29)
+
+
+### Features
+
+* add environment variables configuration in create service modal ([8d24061](https://github.com/chenwei791129/launchpal/commit/8d24061a26e6ab63b98585498f6d9128d424fb58))
+* add environment variables configuration in edit service page ([d61d891](https://github.com/chenwei791129/launchpal/commit/d61d891e81be5490f15f83422aaf2934057bd417))
+
+
+### Bug Fixes
+
+* add h-full to edit tab to enable scrollbar ([748f325](https://github.com/chenwei791129/launchpal/commit/748f32519172309833c0d44b1c63f9c7b5e34bcb))
+
 ## [1.1.0](https://github.com/chenwei791129/launchpal/compare/v1.0.0...v1.1.0) (2026-03-25)
 
 
