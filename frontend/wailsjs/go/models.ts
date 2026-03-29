@@ -51,6 +51,7 @@ export namespace launchctl {
 	    weekday?: number;
 	    month?: number;
 	    interval?: number;
+	    hasMultiple?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ScheduleConfig(source);
@@ -64,6 +65,7 @@ export namespace launchctl {
 	        this.weekday = source["weekday"];
 	        this.month = source["month"];
 	        this.interval = source["interval"];
+	        this.hasMultiple = source["hasMultiple"];
 	    }
 	}
 	export class Service {
