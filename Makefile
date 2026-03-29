@@ -1,4 +1,17 @@
-.PHONY: setup test build build-debug dev clean
+.PHONY: setup test build build-debug dev clean help
+
+# Show available commands
+help:
+	@echo "Usage: make [target]"
+	@echo ""
+	@echo "Targets:"
+	@echo "  setup        Install dependencies"
+	@echo "  test         Run tests"
+	@echo "  build        Build production app"
+	@echo "  build-debug  Build with devtools enabled"
+	@echo "  dev          Build and run app"
+	@echo "  clean        Clean build artifacts"
+	@echo "  help         Show this help message"
 
 # Install dependencies
 setup:
