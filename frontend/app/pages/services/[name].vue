@@ -133,7 +133,7 @@
         <ServiceSummary v-if="activeTab === 'summary'" :service="service" />
 
         <!-- Edit tab (user services only) -->
-        <div v-else-if="activeTab === 'edit'" class="p-6 space-y-4 overflow-auto">
+        <div v-else-if="activeTab === 'edit'" class="p-6 space-y-4 h-full overflow-auto">
           <div class="space-y-4">
             <!-- Program -->
             <div>
