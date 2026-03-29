@@ -179,6 +179,43 @@
               </label>
             </div>
 
+            <!-- Environment Variables -->
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">Environment Variables</label>
+              <div class="space-y-2">
+                <div v-for="(env, index) in editEnvVars" :key="index" class="flex gap-2">
+                  <input
+                    v-model="env.key"
+                    type="text"
+                    placeholder="KEY"
+                    class="flex-1 px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 font-mono text-sm"
+                  />
+                  <input
+                    v-model="env.value"
+                    type="text"
+                    placeholder="Value"
+                    class="flex-1 px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 text-sm"
+                  />
+                  <button
+                    type="button"
+                    @click="editEnvVars.splice(index, 1)"
+                    class="px-2 text-gray-500 hover:text-red-400 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                @click="editEnvVars.push({ key: '', value: '' })"
+                class="mt-2 text-sm text-primary-400 hover:text-primary-300 transition-colors"
+              >
+                + Add
+              </button>
+            </div>
+
             <!-- Schedule -->
             <ScheduleForm v-model="editSchedule" />
 
@@ -355,6 +392,7 @@ const editForm = reactive({
   keepAlive: false,
 })
 const editArgumentsText = ref('')
+const editEnvVars = reactive<Array<{ key: string; value: string }>>([])
 const editSchedule = ref<ScheduleConfig | undefined>(undefined)
 const saving = ref(false)
 const saveError = ref('')
@@ -367,6 +405,12 @@ function populateEditForm() {
   editForm.runAtLoad = service.value.runAtLoad
   editForm.keepAlive = service.value.keepAlive
   editArgumentsText.value = service.value.arguments?.join(' ') || ''
+  editEnvVars.splice(0)
+  if (service.value.environment) {
+    for (const [key, value] of Object.entries(service.value.environment)) {
+      editEnvVars.push({ key, value })
+    }
+  }
   editSchedule.value = service.value.schedule ? { ...service.value.schedule } : undefined
 }
 
@@ -377,12 +421,20 @@ async function handleSave() {
   saveSuccess.value = false
 
   try {
+    const environment: Record<string, string> = {}
+    for (const env of editEnvVars) {
+      if (env.key.trim()) {
+        environment[env.key.trim()] = env.value
+      }
+    }
+
     const config: ServiceConfig = {
       label: service.value.label,
       program: editForm.program,
       arguments: editArgumentsText.value ? editArgumentsText.value.split(/\s+/).filter(Boolean) : [],
       runAtLoad: editForm.runAtLoad,
       keepAlive: editForm.keepAlive,
+      environment: Object.keys(environment).length > 0 ? environment : undefined,
       workingDirectory: editForm.workingDirectory,
       schedule: editSchedule.value,
       stdoutPath: service.value.stdoutPath,
