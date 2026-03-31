@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/chenwei791129/launchpal/compare/v1.4.0...v1.4.1) (2026-03-31)
+
+
+### Bug Fixes
+
+* upgrade Go version to 1.24 for tool directive support ([aaa1450](https://github.com/chenwei791129/launchpal/commit/aaa1450bc3e0283d71a4e079eac400efc74349e5))
+
 ## [1.4.0](https://github.com/chenwei791129/launchpal/compare/v1.3.0...v1.4.0) (2026-03-31)
 
 
