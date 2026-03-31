@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/chenwei791129/launchpal/compare/v1.3.0...v1.4.0) (2026-03-31)
+
+
+### Features
+
+* package application as DMG with drag-to-Applications install ([0820b46](https://github.com/chenwei791129/launchpal/commit/0820b46d09cf50b017e16d5241101f44e215983f))
+
 ## [1.3.0](https://github.com/chenwei791129/launchpal/compare/v1.2.0...v1.3.0) (2026-03-29)
 
 
