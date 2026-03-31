@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/chenwei791129/launchpal/compare/v1.5.0...v1.6.0) (2026-03-31)
+
+
+### Features
+
+* add update-homebrew job to release workflow ([68a418a](https://github.com/chenwei791129/launchpal/commit/68a418adead082768cebf727f7b4936fca7ebd4d))
+
 ## [1.5.0](https://github.com/chenwei791129/launchpal/compare/v1.4.1...v1.5.0) (2026-03-31)
 
 
