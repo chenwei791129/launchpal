@@ -4,6 +4,11 @@ on:
   pull_request:
     branches: [ "main" ]
   workflow_call:
+    inputs:
+      version:
+        description: 'Version to inject via ldflags (e.g., v1.6.0)'
+        required: false
+        type: string
 
 jobs:
   build:
@@ -41,7 +46,14 @@ jobs:
       run: go test ./internal/...
 
     - name: Build application
-      run: make build
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        if [ -n "$VERSION" ]; then
+          go tool wails build -ldflags "-X main.version=$VERSION"
+        else
+          go tool wails build
+        fi
 
     - name: Install create-dmg
       run: brew install create-dmg
