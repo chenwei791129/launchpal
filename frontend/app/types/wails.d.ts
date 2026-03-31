@@ -61,6 +61,7 @@ declare global {
           GetSystemService(name: string, serviceType: string): Promise<Service>
           GetSystemPlist(name: string, serviceType: string): Promise<string>
           GetSystemLogs(name: string, serviceType: string, logType: string): Promise<string>
+          GetVersion(): Promise<string>
           CheckPermissions(): Promise<Record<string, boolean>>
         }
       }

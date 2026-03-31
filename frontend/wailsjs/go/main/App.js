@@ -42,6 +42,10 @@ export function GetSystemService(arg1, arg2) {
   return window['go']['main']['App']['GetSystemService'](arg1, arg2);
 }
 
+export function GetVersion() {
+  return window['go']['main']['App']['GetVersion']();
+}
+
 export function ListAllBackups() {
   return window['go']['main']['App']['ListAllBackups']();
 }

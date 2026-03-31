@@ -8,7 +8,7 @@
       </span>
     </div>
     <div>
-      v0.1.0
+      {{ appVersion }}
     </div>
   </footer>
 </template>
@@ -18,4 +18,16 @@ defineProps<{
   serviceCount: number
   runningCount: number
 }>()
+
+const appVersion = ref('dev')
+
+onMounted(async () => {
+  try {
+    if (window.go?.main?.App?.GetVersion) {
+      appVersion.value = await window.go.main.App.GetVersion()
+    }
+  } catch (e) {
+    console.error('Failed to fetch version:', e)
+  }
+})
 </script>

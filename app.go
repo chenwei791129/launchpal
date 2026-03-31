@@ -12,20 +12,32 @@ import (
 // App struct
 type App struct {
 	ctx            context.Context
+	version        string
 	manager        *launchctl.UserManager
 	systemManager  *launchctl.SystemManager
 	appleSystemMgr *launchctl.AppleSystemManager
 	backup         *backup.BackupManager
 }
 
-// NewApp creates a new App application struct
+// NewApp creates a new App application struct with default version
 func NewApp() *App {
+	return NewAppWithVersion("dev")
+}
+
+// NewAppWithVersion creates a new App with the specified version
+func NewAppWithVersion(version string) *App {
 	return &App{
+		version:        version,
 		manager:        launchctl.NewUserManager(),
 		systemManager:  launchctl.NewSystemManager(),
 		appleSystemMgr: launchctl.NewAppleSystemManager(),
 		backup:         backup.NewBackupManager(),
 	}
+}
+
+// GetVersion returns the application version
+func (a *App) GetVersion() string {
+	return a.version
 }
 
 // startup is called when the app starts

@@ -214,7 +214,7 @@ interface Backup {
   originalPath?: string
 }
 
-const appVersion = 'v0.1.0'
+const appVersion = ref('dev')
 const backupPath = '~/.launchpal/backups/'
 
 const backups = ref<Backup[]>([])
@@ -280,7 +280,11 @@ async function executeRestore() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadBackups()
+  // Fetch app version from Wails backend
+  if (window.go?.main?.App?.GetVersion) {
+    appVersion.value = await window.go.main.App.GetVersion()
+  }
 })
 </script>

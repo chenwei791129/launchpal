@@ -11,11 +11,14 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options/mac"
 )
 
+// version is set at build time via -ldflags "-X main.version=<value>"
+var version = "dev"
+
 //go:embed all:frontend/.output/public
 var assets embed.FS
 
 func main() {
-	app := NewApp()
+	app := NewAppWithVersion(version)
 
 	// Create application menu
 	appMenu := menu.NewMenu()

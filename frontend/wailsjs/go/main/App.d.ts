@@ -23,6 +23,8 @@ export function GetSystemPlist(arg1:string,arg2:string):Promise<string>;
 
 export function GetSystemService(arg1:string,arg2:string):Promise<launchctl.Service>;
 
+export function GetVersion():Promise<string>;
+
 export function ListAllBackups():Promise<Array<backup.Backup>>;
 
 export function ListAppleSystemServices():Promise<Array<launchctl.Service>>;
