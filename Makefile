@@ -42,6 +42,7 @@ dmg: build
 	rm -f LaunchPal.dmg
 	create-dmg \
 		--volname "LaunchPal" \
+		--background "build/darwin/dmg-background.png" \
 		--window-size 600 400 \
 		--icon-size 128 \
 		--icon "launchpal.app" 150 185 \
