@@ -40,6 +40,21 @@ A modern GUI for managing macOS LaunchAgents.
 
 ## Installation
 
+### Homebrew (Recommended)
+
+```bash
+brew install --cask chenwei791129/apps/launchpal
+```
+
+Or add the tap first:
+
+```bash
+brew tap chenwei791129/apps
+brew install --cask launchpal
+```
+
+> **Note:** LaunchPal is not code-signed. The quarantine attribute is automatically removed during Homebrew installation so macOS Gatekeeper will not block the app.
+
 ### Download
 
 Download the latest release from the [Releases](https://github.com/chenwei791129/launchpal/releases) page.
