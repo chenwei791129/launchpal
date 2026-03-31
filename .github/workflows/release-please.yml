@@ -47,3 +47,48 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload ${{ needs.release-please.outputs.tag_name }} LaunchPal.dmg --clobber
+
+  # Update Homebrew cask formula in chenwei791129/homebrew-apps
+  update-homebrew:
+    needs: [release-please, upload-release-asset]
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download DMG from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download ${{ needs.release-please.outputs.tag_name }} \
+            --repo chenwei791129/launchpal \
+            --pattern "LaunchPal.dmg"
+
+      - name: Compute SHA256
+        id: sha256
+        run: |
+          SHA=$(sha256sum LaunchPal.dmg | awk '{print $1}')
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION="${{ needs.release-please.outputs.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update cask formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          git clone https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/chenwei791129/homebrew-apps.git
+          cd homebrew-apps
+
+          sed -i "s/version \".*\"/version \"${{ steps.version.outputs.version }}\"/" Casks/launchpal.rb
+          sed -i "s/sha256 \".*\"/sha256 \"${{ steps.sha256.outputs.sha256 }}\"/" Casks/launchpal.rb
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/launchpal.rb
+          git diff --cached --quiet || {
+            git commit -m "chore: update launchpal to ${{ steps.version.outputs.version }}"
+            git push
+          }
