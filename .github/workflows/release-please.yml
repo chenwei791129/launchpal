@@ -46,4 +46,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ needs.release-please.outputs.tag_name }} launchpal.app.gz --clobber
+          gh release upload ${{ needs.release-please.outputs.tag_name }} LaunchPal.dmg --clobber

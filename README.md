@@ -48,13 +48,11 @@ Download the latest release from the [Releases](https://github.com/chenwei791129
 
 LaunchPal is currently **not signed with an Apple Developer certificate**. macOS will block unsigned applications from running by default.
 
-After downloading and extracting the application, you need to remove the quarantine attribute before running it:
+After downloading the `.dmg` file, open it and drag **LaunchPal.app** to the **Applications** folder. Then remove the quarantine attribute before running it:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/launchpal.app
 ```
-
-**Note:** Replace `/Applications/launchpal.app` with the actual path where you placed the application.
 
 Alternatively, you can try right-clicking the app and selecting "Open" from the context menu, which may prompt you to allow the unsigned app to run.
 

@@ -43,6 +43,7 @@ make test        # 執行測試
 make build       # 建置 production app
 make build-debug # 建置含 devtools
 make dev         # 建置並開啟 app
+make dmg         # 建置並打包為 DMG
 make clean       # 清除建置產物
 ```
 

@@ -43,14 +43,24 @@ jobs:
     - name: Build application
       run: make build
 
+    - name: Install create-dmg
+      run: brew install create-dmg
+
     - name: Package application
       run: |
-        cd build/bin
-        tar -czf launchpal.app.gz launchpal.app
+        create-dmg \
+          --volname "LaunchPal" \
+          --window-size 600 400 \
+          --icon-size 128 \
+          --icon "launchpal.app" 150 185 \
+          --app-drop-link 450 185 \
+          "LaunchPal.dmg" \
+          "build/bin/" \
+        || test $? -eq 2
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: launchpal-app
-        path: build/bin/launchpal.app.gz
+        path: LaunchPal.dmg
         retention-days: 30
