@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/chenwei791129/launchpal/compare/v1.4.1...v1.5.0) (2026-03-31)
+
+
+### Features
+
+* add custom DMG background with Gatekeeper hint ([f8d9008](https://github.com/chenwei791129/launchpal/commit/f8d9008a1c29e07cf262d01957ef7b7b8f83d67e))
+
 ## [1.4.1](https://github.com/chenwei791129/launchpal/compare/v1.4.0...v1.4.1) (2026-03-31)
 
 
