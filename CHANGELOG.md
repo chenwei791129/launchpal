@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/chenwei791129/launchpal/compare/v1.6.0...v1.7.0) (2026-03-31)
+
+
+### Features
+
+* add build-time version injection via ldflags ([c23208d](https://github.com/chenwei791129/launchpal/commit/c23208de96e7b58fd8fef1b0f1f0e4371a62788c))
+
 ## [1.6.0](https://github.com/chenwei791129/launchpal/compare/v1.5.0...v1.6.0) (2026-03-31)
 
 
