@@ -89,6 +89,15 @@ LaunchPal 支援三種類型的服務：
 - Binary plist 會使用 `plutil` 自動轉換為 XML 格式顯示
 - 在 Summary 頁面顯示原始格式類型
 
+## Homebrew 發布
+
+- Homebrew Tap：`chenwei791129/homebrew-apps`（獨立 repo，可供多個 app 共用）
+- 安裝指令：`brew install --cask chenwei791129/apps/launchpal`
+- Cask formula 位於 `homebrew-apps` repo 的 `Casks/launchpal.rb`
+- 因未簽名，使用 `postflight` 自動移除 quarantine attribute
+- Release 時 `release-please.yml` 的 `update-homebrew` job 自動更新 formula（版本號 + SHA256）
+- 跨 repo 寫入使用 `HOMEBREW_TAP_TOKEN`（Fine-grained PAT，scope 限 homebrew-apps）
+
 ## 已知限制
 
 - 僅能修改用戶級別服務（~/Library/LaunchAgents）
