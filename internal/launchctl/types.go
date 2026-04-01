@@ -1,10 +1,12 @@
 package launchctl
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"unicode/utf8"
 )
 
 // Service represents a LaunchAgent service
@@ -130,22 +132,20 @@ func readLogTail(path string) (string, error) {
 		return "", fmt.Errorf("failed to read log file: %w", err)
 	}
 
-	// Skip to the first newline to avoid a partial first line
-	if idx := indexOf(data, '\n'); idx >= 0 {
+	// Skip to the first newline to avoid a partial first line.
+	// Since '\n' (0x0A) cannot appear inside a multi-byte UTF-8 sequence,
+	// the byte after '\n' is always a valid UTF-8 character boundary.
+	if idx := bytes.IndexByte(data, '\n'); idx >= 0 {
 		data = data[idx+1:]
+	} else {
+		// No newline found (single line > maxLogSize): skip any leading
+		// incomplete UTF-8 bytes to avoid garbled characters.
+		for len(data) > 0 && !utf8.RuneStart(data[0]) {
+			data = data[1:]
+		}
 	}
 
 	return string(data), nil
-}
-
-// indexOf returns the index of the first occurrence of b in data, or -1
-func indexOf(data []byte, b byte) int {
-	for i, v := range data {
-		if v == b {
-			return i
-		}
-	}
-	return -1
 }
 
 // detectPlistFormat detects whether a plist file is XML or binary format
