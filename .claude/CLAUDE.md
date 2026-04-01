@@ -64,6 +64,7 @@ LaunchPal 支援三種類型的服務：
    - 完整的讀寫權限
    - 可以啟動、停止、建立、更新、刪除服務
    - 支援排程設定（StartCalendarInterval / StartInterval）
+   - 支援環境變數設定（EnvironmentVariables）
 
 2. **System Services** (`/Library/LaunchDaemons`)
    - 唯讀模式
