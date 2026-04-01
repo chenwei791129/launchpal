@@ -89,6 +89,15 @@ LaunchPal 支援三種類型的服務：
 - Binary plist 會使用 `plutil` 自動轉換為 XML 格式顯示
 - 在 Summary 頁面顯示原始格式類型
 
+## Commit Message 規範
+
+本專案使用 [release-please](https://github.com/googleapis/release-please) 自動管理版本號與發布（見 `.github/workflows/release-please.yml`）。`feat` 類型的 commit 會觸發 minor 版本升級，`fix` 會觸發 patch 升級。
+
+- 若變更**未涉及主程式邏輯**（如文件、CI、設定檔、測試、重構），應使用 `chore`、`docs`、`ci`、`test`、`refactor` 等類型，避免不必要的版本更新
+- 僅在**實際新增或變更使用者可感知功能**時才使用 `feat`
+- 僅在**修復實際 bug** 時才使用 `fix`
+- 當用戶要求 commit 當前改動時，應**依功能別分開 commit**，不要將不同功能的變更混在同一個 commit
+
 ## Homebrew 發布
 
 - Homebrew Tap：`chenwei791129/homebrew-apps`（獨立 repo，可供多個 app 共用）
