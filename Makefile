@@ -1,4 +1,4 @@
-.PHONY: setup test build build-debug dev dmg clean help
+.PHONY: setup test lint build build-debug dev dmg clean help
 
 # Show available commands
 help:
@@ -7,6 +7,7 @@ help:
 	@echo "Targets:"
 	@echo "  setup        Install dependencies"
 	@echo "  test         Run tests"
+	@echo "  lint         Run linter"
 	@echo "  build        Build production app"
 	@echo "  build-debug  Build with devtools enabled"
 	@echo "  dev          Build and run app"
@@ -23,6 +24,10 @@ setup:
 # Run tests
 test:
 	go test ./...
+
+# Run linter
+lint:
+	go tool golangci-lint run ./...
 
 # Build production app
 build:
