@@ -61,6 +61,10 @@ declare global {
           GetSystemService(name: string, serviceType: string): Promise<Service>
           GetSystemPlist(name: string, serviceType: string): Promise<string>
           GetSystemLogs(name: string, serviceType: string, logType: string): Promise<string>
+          ListAllBackups(): Promise<{ id: string; service: string; timestamp: string; path: string; originalPath?: string }[]>
+          ListBackups(serviceName: string): Promise<{ id: string; service: string; timestamp: string; path: string; originalPath?: string }[]>
+          GetBackupContent(serviceName: string, backupID: string): Promise<string>
+          RestoreBackup(serviceName: string, backupID: string): Promise<void>
           GetVersion(): Promise<string>
           CheckPermissions(): Promise<Record<string, boolean>>
         }

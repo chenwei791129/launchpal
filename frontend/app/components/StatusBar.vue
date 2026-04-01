@@ -14,20 +14,12 @@
 </template>
 
 <script setup lang="ts">
+import { useAppVersion } from '~/composables/useAppVersion'
+
 defineProps<{
   serviceCount: number
   runningCount: number
 }>()
 
-const appVersion = ref('dev')
-
-onMounted(async () => {
-  try {
-    if (window.go?.main?.App?.GetVersion) {
-      appVersion.value = await window.go.main.App.GetVersion()
-    }
-  } catch (e) {
-    console.error('Failed to fetch version:', e)
-  }
-})
+const appVersion = useAppVersion()
 </script>

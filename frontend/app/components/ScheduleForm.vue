@@ -112,23 +112,24 @@ function parseCron(expr: string): ParsedCron | null {
     return null
   }
 
-  const limits: [string, number, number][] = [
+  const limits = [
     ['Minute', 0, 59],
     ['Hour', 0, 23],
     ['Day', 1, 31],
     ['Month', 1, 12],
     ['Weekday', 0, 6],
-  ]
+  ] as const
 
   const values: (number | undefined)[] = []
   for (let i = 0; i < 5; i++) {
     const field = parts[i]
+    const limit = limits[i]!
     if (field === '*') {
       values.push(undefined)
     } else {
       const num = Number(field)
-      if (!Number.isInteger(num) || num < limits[i][1] || num > limits[i][2]) {
-        parseError.value = `${limits[i][0]}: expected * or ${limits[i][1]}-${limits[i][2]}, got "${field}"`
+      if (!Number.isInteger(num) || num < limit[1] || num > limit[2]) {
+        parseError.value = `${limit[0]}: expected * or ${limit[1]}-${limit[2]}, got "${field}"`
         return null
       }
       values.push(num)

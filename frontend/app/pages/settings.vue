@@ -206,6 +206,8 @@
 </template>
 
 <script setup lang="ts">
+import { useAppVersion } from '~/composables/useAppVersion'
+
 interface Backup {
   id: string
   service: string
@@ -214,7 +216,7 @@ interface Backup {
   originalPath?: string
 }
 
-const appVersion = ref('dev')
+const appVersion = useAppVersion()
 const backupPath = '~/.launchpal/backups/'
 
 const backups = ref<Backup[]>([])
@@ -280,11 +282,7 @@ async function executeRestore() {
   }
 }
 
-onMounted(async () => {
+onMounted(() => {
   loadBackups()
-  // Fetch app version from Wails backend
-  if (window.go?.main?.App?.GetVersion) {
-    appVersion.value = await window.go.main.App.GetVersion()
-  }
 })
 </script>

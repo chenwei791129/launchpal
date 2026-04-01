@@ -320,19 +320,19 @@ async function loadService() {
   try {
     const type = serviceType.value
     if (type === 'user') {
-      if (window.go?.main?.App?.GetService) {
-        service.value = await window.go.main.App.GetService(name.value)
-      }
-      if (window.go?.main?.App?.GetPlist) {
-        plistContent.value = await window.go.main.App.GetPlist(name.value)
-      }
+      const [svc, plist] = await Promise.all([
+        window.go?.main?.App?.GetService?.(name.value),
+        window.go?.main?.App?.GetPlist?.(name.value),
+      ])
+      service.value = svc ?? null
+      plistContent.value = plist ?? null
     } else {
-      if (window.go?.main?.App?.GetSystemService) {
-        service.value = await window.go.main.App.GetSystemService(name.value, type)
-      }
-      if (window.go?.main?.App?.GetSystemPlist) {
-        plistContent.value = await window.go.main.App.GetSystemPlist(name.value, type)
-      }
+      const [svc, plist] = await Promise.all([
+        window.go?.main?.App?.GetSystemService?.(name.value, type),
+        window.go?.main?.App?.GetSystemPlist?.(name.value, type),
+      ])
+      service.value = svc ?? null
+      plistContent.value = plist ?? null
     }
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to load service'
@@ -446,8 +446,8 @@ async function handleSave() {
     saveSuccess.value = true
     setTimeout(() => { saveSuccess.value = false }, 3000)
     await loadService()
-  } catch (e: any) {
-    saveError.value = e.message || 'Failed to save changes'
+  } catch (e: unknown) {
+    saveError.value = e instanceof Error ? e.message : 'Failed to save changes'
   } finally {
     saving.value = false
   }
