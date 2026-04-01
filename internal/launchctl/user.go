@@ -30,14 +30,7 @@ func NewUserManager() *UserManager {
 
 // getLaunchAgentsPath returns the path to the LaunchAgents directory
 func (m *UserManager) getLaunchAgentsPath() string {
-	if m.launchAgentsPath != "" {
-		return m.launchAgentsPath
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = os.Getenv("HOME")
-	}
-	return filepath.Join(home, "Library", "LaunchAgents")
+	return m.launchAgentsPath
 }
 
 // plistData represents the structure of a LaunchAgent plist file
@@ -120,7 +113,7 @@ func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceSta
 		StdoutPath:  pd.StandardOutPath,
 		StderrPath:  pd.StandardErrorPath,
 		WorkingDir:  pd.WorkingDirectory,
-		Type:        "user",
+		Type:        ServiceTypeUser,
 		ReadOnly:    false,
 		PlistFormat: detectPlistFormat(data),
 	}
@@ -134,7 +127,7 @@ func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceSta
 			service.Status = s.status
 			service.PID = s.pid
 		} else {
-			service.Status = "stopped"
+			service.Status = StatusStopped
 		}
 	} else {
 		service.Status, service.PID = getServiceStatus(pd.Label)
@@ -224,9 +217,9 @@ func getBatchServiceStatus() map[string]serviceStatus {
 		label := fields[2]
 		pid, _ := strconv.Atoi(fields[0])
 		if pid > 0 {
-			result[label] = serviceStatus{status: "running", pid: pid}
+			result[label] = serviceStatus{status: StatusRunning, pid: pid}
 		} else {
-			result[label] = serviceStatus{status: "loaded", pid: 0}
+			result[label] = serviceStatus{status: StatusLoaded, pid: 0}
 		}
 	}
 	return result
@@ -235,14 +228,14 @@ func getBatchServiceStatus() map[string]serviceStatus {
 // getServiceStatus checks if a service is running via launchctl list
 func getServiceStatus(label string) (string, int) {
 	if label == "" {
-		return "unknown", 0
+		return StatusUnknown, 0
 	}
 
 	cmd := exec.Command("launchctl", "list", label)
 	output, err := cmd.Output()
 	if err != nil {
 		// Service is not loaded
-		return "stopped", 0
+		return StatusStopped, 0
 	}
 
 	// Parse output to find PID and Program
@@ -258,7 +251,7 @@ func getServiceStatus(label string) (string, int) {
 				pidStr := strings.TrimSpace(parts[1])
 				pidStr = strings.Trim(pidStr, ";\"")
 				if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
-					return "running", pid
+					return StatusRunning, pid
 				}
 			}
 		}
@@ -283,13 +276,13 @@ func getServiceStatus(label string) (string, int) {
 		if pgrepOutput, err := pgrepCmd.Output(); err == nil {
 			pidStr := strings.TrimSpace(strings.Split(string(pgrepOutput), "\n")[0])
 			if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
-				return "running", pid
+				return StatusRunning, pid
 			}
 		}
 	}
 
 	// Service is loaded but not running
-	return "loaded", 0
+	return StatusLoaded, 0
 }
 
 // Start loads and starts a service
@@ -465,9 +458,9 @@ func (m *UserManager) GetLogs(name string, logType string) (string, error) {
 
 	var logPath string
 	switch logType {
-	case "stdout":
+	case LogTypeStdout:
 		logPath = service.StdoutPath
-	case "stderr":
+	case LogTypeStderr:
 		logPath = service.StderrPath
 	default:
 		return "", fmt.Errorf("invalid log type: %s (use 'stdout' or 'stderr')", logType)

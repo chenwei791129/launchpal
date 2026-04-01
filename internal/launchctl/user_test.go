@@ -22,7 +22,7 @@ func TestUserManager_List(t *testing.T) {
 }
 
 func TestUserManager_GetLaunchAgentsPath(t *testing.T) {
-	m := &UserManager{}
+	m := NewUserManager()
 	path := m.getLaunchAgentsPath()
 
 	home, _ := os.UserHomeDir()

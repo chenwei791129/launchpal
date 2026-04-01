@@ -53,6 +53,27 @@ type ServiceConfig struct {
 	WorkingDir  string            `json:"workingDirectory,omitempty"`
 }
 
+// Service type constants
+const (
+	ServiceTypeUser        = "user"
+	ServiceTypeSystem      = "system"
+	ServiceTypeAppleSystem = "apple-system"
+)
+
+// Service status constants
+const (
+	StatusRunning = "running"
+	StatusStopped = "stopped"
+	StatusLoaded  = "loaded"
+	StatusUnknown = "unknown"
+)
+
+// Log type constants
+const (
+	LogTypeStdout = "stdout"
+	LogTypeStderr = "stderr"
+)
+
 // ErrReadOnlyManager is returned when attempting write operations on read-only managers
 var ErrReadOnlyManager = errors.New("this manager is read-only")
 

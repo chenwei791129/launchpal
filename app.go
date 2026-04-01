@@ -131,14 +131,12 @@ func (a *App) RestoreBackup(serviceName, backupID string) error {
 	}
 
 	// Service doesn't exist, use original path from backup metadata
-	backups, err := a.backup.List(serviceName)
+	b, err := a.backup.Get(serviceName, backupID)
 	if err != nil {
 		return err
 	}
-	for _, b := range backups {
-		if b.ID == backupID && b.OriginalPath != "" {
-			return a.backup.Restore(serviceName, backupID, b.OriginalPath)
-		}
+	if b.OriginalPath != "" {
+		return a.backup.Restore(serviceName, backupID, b.OriginalPath)
 	}
 
 	return fmt.Errorf("cannot restore: service not found and no original path in backup")
@@ -157,9 +155,9 @@ func (a *App) ListAppleSystemServices() ([]launchctl.Service, error) {
 // GetSystemService returns a system service by name and type
 func (a *App) GetSystemService(name string, serviceType string) (*launchctl.Service, error) {
 	switch serviceType {
-	case "system":
+	case launchctl.ServiceTypeSystem:
 		return a.systemManager.Get(name)
-	case "apple-system":
+	case launchctl.ServiceTypeAppleSystem:
 		return a.appleSystemMgr.Get(name)
 	default:
 		return nil, fmt.Errorf("invalid service type: %s", serviceType)
@@ -169,9 +167,9 @@ func (a *App) GetSystemService(name string, serviceType string) (*launchctl.Serv
 // GetSystemPlist returns raw plist content for system services
 func (a *App) GetSystemPlist(name string, serviceType string) (string, error) {
 	switch serviceType {
-	case "system":
+	case launchctl.ServiceTypeSystem:
 		return a.systemManager.GetPlist(name)
-	case "apple-system":
+	case launchctl.ServiceTypeAppleSystem:
 		return a.appleSystemMgr.GetPlist(name)
 	default:
 		return "", fmt.Errorf("invalid service type: %s", serviceType)
@@ -181,9 +179,9 @@ func (a *App) GetSystemPlist(name string, serviceType string) (string, error) {
 // GetSystemLogs returns log content for system services
 func (a *App) GetSystemLogs(name string, serviceType string, logType string) (string, error) {
 	switch serviceType {
-	case "system":
+	case launchctl.ServiceTypeSystem:
 		return a.systemManager.GetLogs(name, logType)
-	case "apple-system":
+	case launchctl.ServiceTypeAppleSystem:
 		return a.appleSystemMgr.GetLogs(name, logType)
 	default:
 		return "", fmt.Errorf("invalid service type: %s", serviceType)

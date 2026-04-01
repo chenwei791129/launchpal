@@ -94,7 +94,7 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 			service.Status = s.status
 			service.PID = s.pid
 		} else {
-			service.Status = "stopped"
+			service.Status = StatusStopped
 		}
 	} else {
 		service.Status, service.PID = getServiceStatus(pd.Label)
@@ -128,9 +128,9 @@ func (m *readOnlyManager) getLogs(name string, logType string) (string, error) {
 
 	var logPath string
 	switch logType {
-	case "stdout":
+	case LogTypeStdout:
 		logPath = service.StdoutPath
-	case "stderr":
+	case LogTypeStderr:
 		logPath = service.StderrPath
 	default:
 		return "", fmt.Errorf("invalid log type: %s (use 'stdout' or 'stderr')", logType)

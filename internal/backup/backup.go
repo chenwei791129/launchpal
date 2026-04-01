@@ -183,12 +183,23 @@ func (m *BackupManager) Get(serviceName, backupID string) (*Backup, error) {
 		timestamp = info.ModTime()
 	}
 
-	return &Backup{
+	b := &Backup{
 		ID:        backupID,
 		Service:   serviceName,
 		Timestamp: timestamp,
 		Path:      backupPath,
-	}, nil
+	}
+
+	// Read metadata for original path
+	metaPath := filepath.Join(m.getBackupDir(serviceName), backupID+".meta.json")
+	if metaData, err := os.ReadFile(metaPath); err == nil {
+		var meta backupMeta
+		if json.Unmarshal(metaData, &meta) == nil {
+			b.OriginalPath = meta.OriginalPath
+		}
+	}
+
+	return b, nil
 }
 
 // GetContent returns the content of a backup file
