@@ -55,15 +55,6 @@ type plistData struct {
 	WorkingDirectory       string            `plist:"WorkingDirectory"`
 }
 
-// calendarInterval represents StartCalendarInterval in a plist
-type calendarInterval struct {
-	Minute  int `plist:"Minute"`
-	Hour    int `plist:"Hour"`
-	Day     int `plist:"Day"`
-	Weekday int `plist:"Weekday"`
-	Month   int `plist:"Month"`
-}
-
 // List returns all services in ~/Library/LaunchAgents
 func (m *UserManager) List() ([]Service, error) {
 	path := m.getLaunchAgentsPath()
@@ -300,7 +291,7 @@ func (m *UserManager) Stop(name string) error {
 
 	// Try launchctl unload first
 	cmd := exec.Command("launchctl", "unload", plistPath)
-	cmd.CombinedOutput() // Ignore error, may fail for root-owned processes
+	_, _ = cmd.CombinedOutput() // Ignore error, may fail for root-owned processes
 
 	// Check if process is still running and kill it
 	if service.Program != "" {
@@ -310,7 +301,7 @@ func (m *UserManager) Stop(name string) error {
 			if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
 				// Try to kill the process
 				killCmd := exec.Command("kill", pidStr)
-				killCmd.Run()
+				_ = killCmd.Run()
 			}
 		}
 	}

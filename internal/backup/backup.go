@@ -68,11 +68,11 @@ func (m *BackupManager) Create(serviceName, plistPath string) (*Backup, error) {
 	// Save metadata with original path
 	meta := backupMeta{OriginalPath: plistPath}
 	if metaData, err := json.Marshal(meta); err == nil {
-		os.WriteFile(metaPath, metaData, 0644)
+		_ = os.WriteFile(metaPath, metaData, 0644)
 	}
 
 	// Prune old backups to keep only the 10 most recent
-	m.pruneBackups(serviceName)
+	_ = m.pruneBackups(serviceName)
 
 	return &Backup{
 		ID:           id,
@@ -235,10 +235,10 @@ func (m *BackupManager) pruneBackups(serviceName string) error {
 
 	// Remove older backups
 	for _, backup := range backups[maxBackups:] {
-		os.Remove(backup.Path)
+		_ = os.Remove(backup.Path)
 		// Also remove metadata file
 		metaPath := strings.TrimSuffix(backup.Path, ".plist") + ".meta.json"
-		os.Remove(metaPath)
+		_ = os.Remove(metaPath)
 	}
 
 	return nil
@@ -250,7 +250,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	// Get source file info for permissions
 	srcInfo, err := srcFile.Stat()
@@ -262,7 +262,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	_, err = io.Copy(dstFile, srcFile)
 	return err
