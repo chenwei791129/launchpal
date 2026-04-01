@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.1](https://github.com/chenwei791129/launchpal/compare/v1.7.0...v1.7.1) (2026-04-01)
+
+
+### Performance Improvements
+
+* **launchctl:** batch status query and tail log reading ([6a7e2c0](https://github.com/chenwei791129/launchpal/commit/6a7e2c0eb0074dc6afba9e26b18e7ba539b0e359))
+
 ## [1.7.0](https://github.com/chenwei791129/launchpal/compare/v1.6.0...v1.7.0) (2026-03-31)
 
 
