@@ -69,23 +69,21 @@ func (m *UserManager) List() ([]Service, error) {
 		return nil, fmt.Errorf("failed to read LaunchAgents directory: %w", err)
 	}
 
-	var services []Service
+	// Batch-fetch all service statuses with a single launchctl list call
+	statusMap := getBatchServiceStatus()
+
+	services := []Service{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".plist") {
 			continue
 		}
 
 		name := strings.TrimSuffix(entry.Name(), ".plist")
-		service, err := m.Get(name)
+		service, err := m.getWithStatus(name, statusMap)
 		if err != nil {
-			// Log but continue with other services
 			continue
 		}
 		services = append(services, *service)
-	}
-
-	if services == nil {
-		services = []Service{}
 	}
 
 	return services, nil
@@ -93,6 +91,11 @@ func (m *UserManager) List() ([]Service, error) {
 
 // Get returns a single service by name
 func (m *UserManager) Get(name string) (*Service, error) {
+	return m.getWithStatus(name, nil)
+}
+
+// getWithStatus returns a service, using pre-fetched statusMap if provided
+func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceStatus) (*Service, error) {
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
 
 	data, err := os.ReadFile(plistPath)
@@ -123,14 +126,19 @@ func (m *UserManager) Get(name string) (*Service, error) {
 	}
 
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
-
-	// Handle schedule (StartCalendarInterval or StartInterval)
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
-	// Get service status
-	status, pid := getServiceStatus(pd.Label)
-	service.Status = status
-	service.PID = pid
+	// Use pre-fetched status if available, otherwise query individually
+	if statusMap != nil {
+		if s, ok := statusMap[pd.Label]; ok {
+			service.Status = s.status
+			service.PID = s.pid
+		} else {
+			service.Status = "stopped"
+		}
+	} else {
+		service.Status, service.PID = getServiceStatus(pd.Label)
+	}
 
 	return service, nil
 }
@@ -190,6 +198,38 @@ func parseSchedule(calendarInterval interface{}, startInterval int) *ScheduleCon
 		}
 	}
 	return nil
+}
+
+// serviceStatus holds pre-fetched status info from batch launchctl list
+type serviceStatus struct {
+	status string
+	pid    int
+}
+
+// getBatchServiceStatus runs `launchctl list` once and returns a map of label -> status/pid
+func getBatchServiceStatus() map[string]serviceStatus {
+	cmd := exec.Command("launchctl", "list")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	result := make(map[string]serviceStatus)
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines[1:] { // skip header
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		label := fields[2]
+		pid, _ := strconv.Atoi(fields[0])
+		if pid > 0 {
+			result[label] = serviceStatus{status: "running", pid: pid}
+		} else {
+			result[label] = serviceStatus{status: "loaded", pid: 0}
+		}
+	}
+	return result
 }
 
 // getServiceStatus checks if a service is running via launchctl list
@@ -438,20 +478,9 @@ func (m *UserManager) GetLogs(name string, logType string) (string, error) {
 	}
 
 	// Expand ~ in path
-	if strings.HasPrefix(logPath, "~") {
-		home, _ := os.UserHomeDir()
-		logPath = filepath.Join(home, logPath[1:])
-	}
+	logPath = expandTilde(logPath)
 
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("log file not found: %s", logPath)
-		}
-		return "", fmt.Errorf("failed to read log file: %w", err)
-	}
-
-	return string(data), nil
+	return readLogTail(logPath)
 }
 
 // expandTilde expands ~ to the user's home directory

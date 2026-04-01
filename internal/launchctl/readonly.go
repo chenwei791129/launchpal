@@ -26,6 +26,9 @@ func (m *readOnlyManager) list() ([]Service, error) {
 		return nil, fmt.Errorf("failed to read LaunchDaemons directory: %w", err)
 	}
 
+	// Batch-fetch all service statuses with a single launchctl list call
+	statusMap := getBatchServiceStatus()
+
 	services := []Service{}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".plist") {
@@ -33,7 +36,7 @@ func (m *readOnlyManager) list() ([]Service, error) {
 		}
 
 		name := strings.TrimSuffix(entry.Name(), ".plist")
-		service, err := m.get(name)
+		service, err := m.getWithStatus(name, statusMap)
 		if err != nil {
 			continue
 		}
@@ -43,8 +46,13 @@ func (m *readOnlyManager) list() ([]Service, error) {
 	return services, nil
 }
 
-// get returns a single service by name
+// get returns a single service by name (queries status individually)
 func (m *readOnlyManager) get(name string) (*Service, error) {
+	return m.getWithStatus(name, nil)
+}
+
+// getWithStatus returns a service, using pre-fetched statusMap if provided
+func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]serviceStatus) (*Service, error) {
 	plistPath := filepath.Join(m.basePath, name+".plist")
 
 	data, err := os.ReadFile(plistPath)
@@ -80,9 +88,17 @@ func (m *readOnlyManager) get(name string) (*Service, error) {
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
-	status, pid := getServiceStatus(pd.Label)
-	service.Status = status
-	service.PID = pid
+	// Use pre-fetched status if available, otherwise query individually
+	if statusMap != nil {
+		if s, ok := statusMap[pd.Label]; ok {
+			service.Status = s.status
+			service.PID = s.pid
+		} else {
+			service.Status = "stopped"
+		}
+	} else {
+		service.Status, service.PID = getServiceStatus(pd.Label)
+	}
 
 	return service, nil
 }
@@ -124,16 +140,5 @@ func (m *readOnlyManager) getLogs(name string, logType string) (string, error) {
 		return "", fmt.Errorf("no %s log path configured for service %s", logType, name)
 	}
 
-	data, err := os.ReadFile(logPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", fmt.Errorf("log file not found: %s", logPath)
-		}
-		if os.IsPermission(err) {
-			return "", fmt.Errorf("permission denied reading log file: %s", logPath)
-		}
-		return "", fmt.Errorf("failed to read log file: %w", err)
-	}
-
-	return string(data), nil
+	return readLogTail(logPath)
 }

@@ -1,6 +1,11 @@
 package launchctl
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"io"
+	"os"
+)
 
 // Service represents a LaunchAgent service
 type Service struct {
@@ -60,6 +65,66 @@ func parseKeepAlive(v any) bool {
 		return true
 	}
 	return false
+}
+
+// maxLogSize is the maximum number of bytes to read from the tail of a log file (1MB)
+const maxLogSize = 1024 * 1024
+
+// readLogTail reads up to the last maxLogSize bytes of a file.
+// If the file is smaller than maxLogSize, it reads the entire file.
+func readLogTail(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("log file not found: %s", path)
+		}
+		if os.IsPermission(err) {
+			return "", fmt.Errorf("permission denied reading log file: %s", path)
+		}
+		return "", fmt.Errorf("failed to read log file: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+
+	info, err := f.Stat()
+	if err != nil {
+		return "", fmt.Errorf("failed to stat log file: %w", err)
+	}
+
+	size := info.Size()
+	if size <= maxLogSize {
+		data, err := io.ReadAll(f)
+		if err != nil {
+			return "", fmt.Errorf("failed to read log file: %w", err)
+		}
+		return string(data), nil
+	}
+
+	// Seek to the last maxLogSize bytes
+	if _, err := f.Seek(-maxLogSize, io.SeekEnd); err != nil {
+		return "", fmt.Errorf("failed to seek log file: %w", err)
+	}
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return "", fmt.Errorf("failed to read log file: %w", err)
+	}
+
+	// Skip to the first newline to avoid a partial first line
+	if idx := indexOf(data, '\n'); idx >= 0 {
+		data = data[idx+1:]
+	}
+
+	return string(data), nil
+}
+
+// indexOf returns the index of the first occurrence of b in data, or -1
+func indexOf(data []byte, b byte) int {
+	for i, v := range data {
+		if v == b {
+			return i
+		}
+	}
+	return -1
 }
 
 // detectPlistFormat detects whether a plist file is XML or binary format
