@@ -22,11 +22,19 @@ func (m *AppleSystemManager) GetLogs(name string, logType string) (string, error
 	return m.getLogs(name, logType)
 }
 
-// Write operations return ErrReadOnlyManager
-func (m *AppleSystemManager) Start(name string) error                      { return ErrReadOnlyManager }
-func (m *AppleSystemManager) Stop(name string) error                       { return ErrReadOnlyManager }
-func (m *AppleSystemManager) Restart(name string) error                    { return ErrReadOnlyManager }
-func (m *AppleSystemManager) Create(config *ServiceConfig) error           { return ErrReadOnlyManager }
+// Start returns ErrReadOnlyManager as Apple system services are read-only.
+func (m *AppleSystemManager) Start(name string) error { return ErrReadOnlyManager }
+
+// Stop returns ErrReadOnlyManager as Apple system services are read-only.
+func (m *AppleSystemManager) Stop(name string) error { return ErrReadOnlyManager }
+
+// Restart returns ErrReadOnlyManager as Apple system services are read-only.
+func (m *AppleSystemManager) Restart(name string) error { return ErrReadOnlyManager }
+
+// Create returns ErrReadOnlyManager as Apple system services are read-only.
+func (m *AppleSystemManager) Create(config *ServiceConfig) error { return ErrReadOnlyManager }
+
+// Update returns ErrReadOnlyManager as Apple system services are read-only.
 func (m *AppleSystemManager) Update(name string, config *ServiceConfig) error { return ErrReadOnlyManager }
 func (m *AppleSystemManager) Delete(name string) error                     { return ErrReadOnlyManager }
 

@@ -1,3 +1,5 @@
+// Package launchctl provides interfaces and implementations for managing
+// macOS LaunchAgents and LaunchDaemons via the launchctl command.
 package launchctl
 
 import (

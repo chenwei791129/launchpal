@@ -22,11 +22,19 @@ func (m *SystemManager) GetLogs(name string, logType string) (string, error) {
 	return m.getLogs(name, logType)
 }
 
-// Write operations return ErrReadOnlyManager
-func (m *SystemManager) Start(name string) error                      { return ErrReadOnlyManager }
-func (m *SystemManager) Stop(name string) error                       { return ErrReadOnlyManager }
-func (m *SystemManager) Restart(name string) error                    { return ErrReadOnlyManager }
-func (m *SystemManager) Create(config *ServiceConfig) error           { return ErrReadOnlyManager }
+// Start returns ErrReadOnlyManager as system services are read-only.
+func (m *SystemManager) Start(name string) error { return ErrReadOnlyManager }
+
+// Stop returns ErrReadOnlyManager as system services are read-only.
+func (m *SystemManager) Stop(name string) error { return ErrReadOnlyManager }
+
+// Restart returns ErrReadOnlyManager as system services are read-only.
+func (m *SystemManager) Restart(name string) error { return ErrReadOnlyManager }
+
+// Create returns ErrReadOnlyManager as system services are read-only.
+func (m *SystemManager) Create(config *ServiceConfig) error { return ErrReadOnlyManager }
+
+// Update returns ErrReadOnlyManager as system services are read-only.
 func (m *SystemManager) Update(name string, config *ServiceConfig) error { return ErrReadOnlyManager }
 func (m *SystemManager) Delete(name string) error                     { return ErrReadOnlyManager }
 
