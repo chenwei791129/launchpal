@@ -79,7 +79,7 @@ func TestSystemManager_Get(t *testing.T) {
 		t.Fatalf("failed to write plist file: %v", err)
 	}
 
-	m := &SystemManager{launchDaemonsPath: tmpDir}
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "system"}}
 
 	// Test Get
 	svc, err := m.Get("com.test.daemon")
@@ -149,7 +149,7 @@ func TestSystemManager_List_TempDir(t *testing.T) {
 			t.Fatalf("failed to write non-plist file: %v", err)
 		}
 
-		m := &SystemManager{launchDaemonsPath: tmpDir}
+		m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "system"}}
 		services, err := m.List()
 		if err != nil {
 			t.Fatalf("List() error = %v", err)
@@ -172,7 +172,7 @@ func TestSystemManager_List_TempDir(t *testing.T) {
 	t.Run("empty directory", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		m := &SystemManager{launchDaemonsPath: tmpDir}
+		m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "system"}}
 		services, err := m.List()
 		if err != nil {
 			t.Fatalf("List() error = %v", err)
@@ -213,7 +213,7 @@ func TestSystemManager_GetLogs(t *testing.T) {
 		t.Fatalf("failed to write plist: %v", err)
 	}
 
-	m := &SystemManager{launchDaemonsPath: tmpDir}
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "system"}}
 
 	t.Run("stdout returns log content", func(t *testing.T) {
 		got, err := m.GetLogs("com.test.logging", "stdout")

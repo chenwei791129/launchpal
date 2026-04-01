@@ -51,6 +51,17 @@ type ServiceConfig struct {
 // ErrReadOnlyManager is returned when attempting write operations on read-only managers
 var ErrReadOnlyManager = errors.New("this manager is read-only")
 
+// parseKeepAlive converts a plist KeepAlive value (bool or dict) to a bool
+func parseKeepAlive(v any) bool {
+	switch v := v.(type) {
+	case bool:
+		return v
+	case map[string]any:
+		return true
+	}
+	return false
+}
+
 // detectPlistFormat detects whether a plist file is XML or binary format
 func detectPlistFormat(data []byte) string {
 	if len(data) == 0 {

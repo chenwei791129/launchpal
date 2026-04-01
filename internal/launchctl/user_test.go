@@ -64,14 +64,12 @@ func TestWritePlist_EmptyCalendarInterval(t *testing.T) {
 }
 
 func TestParseSchedule_MultipleIntervals(t *testing.T) {
-	m := &UserManager{}
-
 	intervals := []interface{}{
 		map[string]interface{}{"Hour": uint64(3), "Minute": uint64(0)},
 		map[string]interface{}{"Hour": uint64(15), "Minute": uint64(30)},
 	}
 
-	schedule := m.parseSchedule(intervals, 0)
+	schedule := parseSchedule(intervals, 0)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil")
 	}
@@ -84,13 +82,11 @@ func TestParseSchedule_MultipleIntervals(t *testing.T) {
 }
 
 func TestParseSchedule_SingleArrayInterval(t *testing.T) {
-	m := &UserManager{}
-
 	intervals := []interface{}{
 		map[string]interface{}{"Hour": uint64(8)},
 	}
 
-	schedule := m.parseSchedule(intervals, 0)
+	schedule := parseSchedule(intervals, 0)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil")
 	}
@@ -169,8 +165,6 @@ func TestWritePlist_CalendarInterval_NotStartInterval(t *testing.T) {
 }
 
 func TestParseSchedule_StartInterval(t *testing.T) {
-	m := &UserManager{}
-
 	// Simulate reading a plist with StartInterval
 	plistXML := `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -190,7 +184,7 @@ func TestParseSchedule_StartInterval(t *testing.T) {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
 
-	schedule := m.parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
+	schedule := parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil, expected schedule with Interval")
 	}
@@ -543,15 +537,13 @@ func TestUserManager_CRUD(t *testing.T) {
 
 
 func TestParseSchedule_SingleDict(t *testing.T) {
-	m := &UserManager{}
-
 	// Single dict (not wrapped in an array)
 	dict := map[string]interface{}{
 		"Hour":   uint64(9),
 		"Minute": uint64(0),
 	}
 
-	schedule := m.parseSchedule(dict, 0)
+	schedule := parseSchedule(dict, 0)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil for single dict")
 	}
@@ -567,10 +559,8 @@ func TestParseSchedule_SingleDict(t *testing.T) {
 }
 
 func TestParseSchedule_NilAndZero(t *testing.T) {
-	m := &UserManager{}
-
 	// Both nil and 0 → nil result
-	schedule := m.parseSchedule(nil, 0)
+	schedule := parseSchedule(nil, 0)
 	if schedule != nil {
 		t.Errorf("parseSchedule(nil, 0) = %v, want nil", schedule)
 	}

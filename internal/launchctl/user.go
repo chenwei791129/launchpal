@@ -122,20 +122,13 @@ func (m *UserManager) Get(name string) (*Service, error) {
 		PlistFormat: detectPlistFormat(data),
 	}
 
-	// Handle KeepAlive which can be bool or dict
-	switch v := pd.KeepAlive.(type) {
-	case bool:
-		service.KeepAlive = v
-	case map[string]interface{}:
-		// If it's a dict, consider it as "conditionally keepalive"
-		service.KeepAlive = true
-	}
+	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
 
 	// Handle schedule (StartCalendarInterval or StartInterval)
-	service.Schedule = m.parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
+	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
 	// Get service status
-	status, pid := m.getServiceStatus(pd.Label)
+	status, pid := getServiceStatus(pd.Label)
 	service.Status = status
 	service.PID = pid
 
@@ -143,7 +136,7 @@ func (m *UserManager) Get(name string) (*Service, error) {
 }
 
 // parseSchedule converts plist calendar interval or start interval to ScheduleConfig
-func (m *UserManager) parseSchedule(calendarInterval interface{}, startInterval int) *ScheduleConfig {
+func parseSchedule(calendarInterval interface{}, startInterval int) *ScheduleConfig {
 	if calendarInterval == nil && startInterval == 0 {
 		return nil
 	}
@@ -200,7 +193,7 @@ func (m *UserManager) parseSchedule(calendarInterval interface{}, startInterval 
 }
 
 // getServiceStatus checks if a service is running via launchctl list
-func (m *UserManager) getServiceStatus(label string) (string, int) {
+func getServiceStatus(label string) (string, int) {
 	if label == "" {
 		return "unknown", 0
 	}

@@ -77,7 +77,7 @@ func TestAppleSystemManager_Get(t *testing.T) {
 		t.Fatalf("Failed to write test plist: %v", err)
 	}
 
-	m := &AppleSystemManager{launchDaemonsPath: tmpDir}
+	m := &AppleSystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "apple-system"}}
 	svc, err := m.Get("com.apple.test")
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
@@ -133,7 +133,7 @@ func TestAppleSystemManager_List_TempDir(t *testing.T) {
 			t.Fatalf("failed to write plist: %v", err)
 		}
 
-		m := &AppleSystemManager{launchDaemonsPath: tmpDir}
+		m := &AppleSystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "apple-system"}}
 		services, err := m.List()
 		if err != nil {
 			t.Fatalf("List() error = %v", err)
@@ -153,7 +153,7 @@ func TestAppleSystemManager_List_TempDir(t *testing.T) {
 	t.Run("empty directory", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		m := &AppleSystemManager{launchDaemonsPath: tmpDir}
+		m := &AppleSystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "apple-system"}}
 		services, err := m.List()
 		if err != nil {
 			t.Fatalf("List() error = %v", err)
@@ -208,7 +208,7 @@ func TestAppleSystemManager_GetLogs(t *testing.T) {
 		t.Fatalf("failed to write plist: %v", err)
 	}
 
-	m := &AppleSystemManager{launchDaemonsPath: tmpDir}
+	m := &AppleSystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "apple-system"}}
 
 	t.Run("stdout returns content", func(t *testing.T) {
 		content, err := m.GetLogs("com.apple.withlog", "stdout")
