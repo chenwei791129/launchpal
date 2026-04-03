@@ -15,6 +15,7 @@ A modern GUI for managing macOS LaunchAgents.
 - ✏️ Edit existing service configurations
 - 🔍 Browse system services (read-only)
 - 📄 Inspect plist files with syntax highlighting
+- 📂 Reveal plist files in Finder with one click
 - 💾 Automatic backup before modifications
 
 ## Screenshots
