@@ -58,6 +58,14 @@
           </svg>
           <span>This will run the service <strong>every minute</strong>.</span>
         </div>
+
+        <!-- Next runs preview -->
+        <div v-if="nextRunsPreview.length > 0" class="px-3 py-2 bg-surface-500 rounded text-xs space-y-1">
+          <div class="text-gray-400">Next runs ({{ timezone }}):</div>
+          <div v-for="(run, i) in nextRunsPreview" :key="i" class="text-gray-300 font-mono">
+            {{ run }}
+          </div>
+        </div>
       </div>
 
       <!-- Fixed Interval Field -->
@@ -85,6 +93,7 @@
 
 <script setup lang="ts">
 import type { ScheduleConfig } from '~/types/wails.d'
+import { getNextOccurrences, formatDateTime, WEEKDAY_NAMES } from '~/composables/useNextOccurrences'
 
 const props = defineProps<{
   modelValue?: ScheduleConfig
@@ -95,8 +104,6 @@ const emit = defineEmits<{
   'update:modelValue': [value: ScheduleConfig | undefined]
   'update:wakeSystem': [value: boolean]
 }>()
-
-const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const enabled = ref(false)
 const scheduleType = ref<'calendar' | 'interval'>('calendar')
@@ -163,6 +170,16 @@ function configToCron(config: ScheduleConfig): string {
   return `${f(config.minute)} ${f(config.hour)} ${f(config.day)} ${f(config.month)} ${f(config.weekday)}`
 }
 
+function parsedCronToConfig(parsed: ParsedCron): ScheduleConfig {
+  const config: ScheduleConfig = {}
+  if (parsed.minute !== undefined) config.minute = parsed.minute
+  if (parsed.hour !== undefined) config.hour = parsed.hour
+  if (parsed.day !== undefined) config.day = parsed.day
+  if (parsed.month !== undefined) config.month = parsed.month
+  if (parsed.weekday !== undefined) config.weekday = parsed.weekday
+  return config
+}
+
 const parsedCron = computed(() => parseCron(cronExpression.value))
 
 const isEveryMinute = computed(() => {
@@ -180,9 +197,18 @@ const cronDescription = computed(() => {
   if (p.hour !== undefined) parts.push(`at hour ${String(p.hour).padStart(2, '0')}`)
   if (p.day !== undefined) parts.push(`on day ${p.day}`)
   if (p.month !== undefined) parts.push(`in month ${p.month}`)
-  if (p.weekday !== undefined) parts.push(`on ${weekdayNames[p.weekday]}`)
+  if (p.weekday !== undefined) parts.push(`on ${WEEKDAY_NAMES[p.weekday]}`)
 
   return parts.length > 0 ? parts.join(', ') : 'Every minute'
+})
+
+const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+const nextRunsPreview = computed(() => {
+  if (scheduleType.value !== 'calendar') return []
+  const parsed = parsedCron.value
+  if (!parsed || parseError.value) return []
+  return getNextOccurrences(parsedCronToConfig(parsed), 3).map(formatDateTime)
 })
 
 // Guard to prevent watch loop between modelValue and emit watchers
@@ -228,13 +254,7 @@ watch([enabled, scheduleType, intervalSeconds, cronExpression], () => {
   } else {
     const parsed = parsedCron.value
     if (!parsed || parseError.value) return
-    const config: ScheduleConfig = {}
-    if (parsed.minute !== undefined) config.minute = parsed.minute
-    if (parsed.hour !== undefined) config.hour = parsed.hour
-    if (parsed.day !== undefined) config.day = parsed.day
-    if (parsed.month !== undefined) config.month = parsed.month
-    if (parsed.weekday !== undefined) config.weekday = parsed.weekday
-    emit('update:modelValue', config)
+    emit('update:modelValue', parsedCronToConfig(parsed))
   }
 })
 </script>

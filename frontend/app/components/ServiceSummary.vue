@@ -82,6 +82,12 @@
         <label class="text-xs text-gray-400 uppercase tracking-wider">Schedule</label>
         <p class="text-gray-100 mt-1 font-mono text-sm">{{ scheduleDisplay }}</p>
         <p v-if="service.schedule.hasMultiple" class="text-xs text-yellow-400 mt-1">Multiple schedules defined; only the first is shown.</p>
+        <div v-if="nextRuns.length > 0" class="mt-2 text-xs space-y-0.5">
+          <div class="text-gray-400">Next runs ({{ timezone }}):</div>
+          <div v-for="(run, i) in nextRuns" :key="i" class="text-gray-300 font-mono">
+            {{ run }}
+          </div>
+        </div>
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Stdout Path</label>
@@ -132,6 +138,7 @@
 import type { Service } from '~/types/wails'
 import { serializeShellArgs } from '~/utils/shell-args'
 import { RevealInFinder } from '../../wailsjs/go/main/App'
+import { getNextOccurrences, formatDateTime, WEEKDAY_NAMES } from '~/composables/useNextOccurrences'
 
 const props = defineProps<{
   service: Service
@@ -139,6 +146,14 @@ const props = defineProps<{
 
 const copiedField = ref<string | null>(null)
 const revealError = ref(false)
+
+const nextRuns = computed(() => {
+  const s = props.service.schedule
+  if (!s || s.interval !== undefined) return []
+  return getNextOccurrences(s, 3).map(formatDateTime)
+})
+
+const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 const scheduleDisplay = computed(() => {
   const s = props.service.schedule
@@ -150,8 +165,7 @@ const scheduleDisplay = computed(() => {
   if (s.month !== undefined) parts.push(`Month: ${s.month}`)
   if (s.day !== undefined) parts.push(`Day: ${s.day}`)
   if (s.weekday !== undefined) {
-    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    parts.push(`Weekday: ${names[s.weekday] ?? s.weekday}`)
+    parts.push(`Weekday: ${WEEKDAY_NAMES[s.weekday] ?? s.weekday}`)
   }
   if (s.hour !== undefined) parts.push(`Hour: ${String(s.hour).padStart(2, '0')}`)
   if (s.minute !== undefined) parts.push(`Minute: ${String(s.minute).padStart(2, '0')}`)
