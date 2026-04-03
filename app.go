@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 
 	"launchpal/internal/backup"
 	"launchpal/internal/launchctl"
@@ -186,6 +187,14 @@ func (a *App) GetSystemLogs(name string, serviceType string, logType string) (st
 	default:
 		return "", fmt.Errorf("invalid service type: %s", serviceType)
 	}
+}
+
+// RevealInFinder opens Finder and highlights the file at the given path.
+func (a *App) RevealInFinder(path string) error {
+	if path == "" {
+		return fmt.Errorf("path must not be empty")
+	}
+	return exec.Command("open", "-R", path).Run()
 }
 
 // CheckPermissions returns permission status for each service domain
