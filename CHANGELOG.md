@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.8.0](https://github.com/chenwei791129/launchpal/compare/v1.7.0...v1.8.0) (2026-04-03)
+
+
+### Features
+
+* add Reveal in Finder button to service summary ([086d987](https://github.com/chenwei791129/launchpal/commit/086d987be52ac446e0d5c390c19664cce373c7dd))
+* add RevealInFinder backend method ([a90443c](https://github.com/chenwei791129/launchpal/commit/a90443c94d49d4a8fbdf5a106ce8fb2298afc5ba))
+* add WakeSystem support for scheduled services ([c6d341a](https://github.com/chenwei791129/launchpal/commit/c6d341a1bd09cc1f7aa5edbd098e94ad3b940197))
+* preview next run times for CalendarInterval schedules ([6b8c137](https://github.com/chenwei791129/launchpal/commit/6b8c137b33dae07a41e789354464bb6709766bc9))
+
+
+### Performance Improvements
+
+* **launchctl:** batch status query and tail log reading ([6a7e2c0](https://github.com/chenwei791129/launchpal/commit/6a7e2c0eb0074dc6afba9e26b18e7ba539b0e359))
+
 ## [1.7.0](https://github.com/chenwei791129/launchpal/compare/v1.6.0...v1.7.0) (2026-03-31)
 
 
