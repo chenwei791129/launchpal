@@ -115,7 +115,7 @@
         </div>
 
         <!-- Schedule -->
-        <ScheduleForm v-model="schedule" />
+        <ScheduleForm v-model="schedule" v-model:wakeSystem="wakeSystem" />
 
         <!-- Log Paths (Auto-generated) -->
         <div v-if="form.label">
@@ -181,6 +181,7 @@ const form = reactive({
 const argumentsText = ref('')
 const envVars = reactive<Array<{ key: string; value: string }>>([])
 const schedule = ref<ScheduleConfig | undefined>(undefined)
+const wakeSystem = ref(false)
 const loading = ref(false)
 const error = ref('')
 
@@ -208,6 +209,7 @@ async function handleSubmit() {
       arguments: parseShellArgs(argumentsText.value),
       environment: Object.keys(environment).length > 0 ? environment : undefined,
       schedule: schedule.value,
+      wakeSystem: wakeSystem.value,
       stdoutPath: logPaths.value.stdout,
       stderrPath: logPaths.value.stderr,
     }
@@ -225,6 +227,7 @@ async function handleSubmit() {
     argumentsText.value = ''
     envVars.splice(0)
     schedule.value = undefined
+    wakeSystem.value = false
   } catch (err: any) {
     error.value = err.message || 'Failed to create service'
   } finally {

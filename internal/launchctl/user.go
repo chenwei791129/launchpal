@@ -35,17 +35,18 @@ func (m *UserManager) getLaunchAgentsPath() string {
 
 // plistData represents the structure of a LaunchAgent plist file
 type plistData struct {
-	Label                  string            `plist:"Label"`
-	Program                string            `plist:"Program"`
-	ProgramArguments       []string          `plist:"ProgramArguments"`
-	RunAtLoad              bool              `plist:"RunAtLoad"`
-	KeepAlive              interface{}       `plist:"KeepAlive"`
-	StartCalendarInterval  interface{}       `plist:"StartCalendarInterval"`
-	StartInterval          int              `plist:"StartInterval"`
-	EnvironmentVariables   map[string]string `plist:"EnvironmentVariables"`
-	StandardOutPath        string            `plist:"StandardOutPath"`
-	StandardErrorPath      string            `plist:"StandardErrorPath"`
-	WorkingDirectory       string            `plist:"WorkingDirectory"`
+	Label                 string            `plist:"Label"`
+	Program               string            `plist:"Program"`
+	ProgramArguments      []string          `plist:"ProgramArguments"`
+	RunAtLoad             bool              `plist:"RunAtLoad"`
+	KeepAlive             interface{}       `plist:"KeepAlive"`
+	StartCalendarInterval interface{}       `plist:"StartCalendarInterval"`
+	StartInterval         int               `plist:"StartInterval"`
+	EnvironmentVariables  map[string]string `plist:"EnvironmentVariables"`
+	StandardOutPath       string            `plist:"StandardOutPath"`
+	StandardErrorPath     string            `plist:"StandardErrorPath"`
+	WorkingDirectory      string            `plist:"WorkingDirectory"`
+	WakeSystem            bool              `plist:"WakeSystem"`
 }
 
 // List returns all services in ~/Library/LaunchAgents
@@ -119,6 +120,7 @@ func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceSta
 	}
 
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
+	service.WakeSystem = pd.WakeSystem
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
 	// Use pre-fetched status if available, otherwise query individually
@@ -517,6 +519,9 @@ func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
 	}
 	if config.StderrPath != "" {
 		pd["StandardErrorPath"] = expandTilde(config.StderrPath)
+	}
+	if config.WakeSystem {
+		pd["WakeSystem"] = true
 	}
 	if len(config.Environment) > 0 {
 		pd["EnvironmentVariables"] = config.Environment

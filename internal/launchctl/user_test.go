@@ -619,6 +619,169 @@ func TestValidateSchedule_Comprehensive(t *testing.T) {
 	}
 }
 
+func TestWritePlist_WakeSystem(t *testing.T) {
+	tmpDir := t.TempDir()
+	plistPath := filepath.Join(tmpDir, "test.plist")
+	m := &UserManager{}
+
+	config := &ServiceConfig{
+		Label:      "com.test.wake",
+		Program:    "/usr/bin/true",
+		WakeSystem: true,
+		Schedule:   &ScheduleConfig{Hour: intPtr(3)},
+	}
+
+	if err := m.writePlist(plistPath, config); err != nil {
+		t.Fatalf("writePlist() error = %v", err)
+	}
+
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "<key>WakeSystem</key>") {
+		t.Error("plist should contain WakeSystem key when WakeSystem is true")
+	}
+}
+
+func TestWritePlist_WakeSystemFalse(t *testing.T) {
+	tmpDir := t.TempDir()
+	plistPath := filepath.Join(tmpDir, "test.plist")
+	m := &UserManager{}
+
+	config := &ServiceConfig{
+		Label:      "com.test.nowake",
+		Program:    "/usr/bin/true",
+		WakeSystem: false,
+	}
+
+	if err := m.writePlist(plistPath, config); err != nil {
+		t.Fatalf("writePlist() error = %v", err)
+	}
+
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	content := string(data)
+	if strings.Contains(content, "<key>WakeSystem</key>") {
+		t.Error("plist should NOT contain WakeSystem key when WakeSystem is false")
+	}
+}
+
+func TestUserManager_Get_WakeSystemTrue(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	plistContent := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.test.wake</string>
+	<key>Program</key>
+	<string>/usr/bin/true</string>
+	<key>WakeSystem</key>
+	<true/>
+</dict>
+</plist>`
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.wake.plist"), []byte(plistContent), 0644); err != nil {
+		t.Fatalf("failed to write plist: %v", err)
+	}
+
+	m := &UserManager{launchAgentsPath: tmpDir}
+	service, err := m.Get("com.test.wake")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+
+	if !service.WakeSystem {
+		t.Error("WakeSystem should be true when plist contains WakeSystem key with true value")
+	}
+}
+
+func TestUserManager_Get_WakeSystemAbsent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	plistContent := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.test.nowake</string>
+	<key>Program</key>
+	<string>/usr/bin/true</string>
+</dict>
+</plist>`
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.nowake.plist"), []byte(plistContent), 0644); err != nil {
+		t.Fatalf("failed to write plist: %v", err)
+	}
+
+	m := &UserManager{launchAgentsPath: tmpDir}
+	service, err := m.Get("com.test.nowake")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+
+	if service.WakeSystem {
+		t.Error("WakeSystem should be false when plist does not contain WakeSystem key")
+	}
+}
+
+func TestUserManager_RoundTrip_WakeSystemDisable(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	// Create a service with WakeSystem enabled
+	config := &ServiceConfig{
+		Label:      "com.test.roundtrip",
+		Program:    "/usr/bin/true",
+		WakeSystem: true,
+		Schedule:   &ScheduleConfig{Hour: intPtr(3)},
+	}
+	plistPath := filepath.Join(tmpDir, "com.test.roundtrip.plist")
+	if err := m.writePlist(plistPath, config); err != nil {
+		t.Fatalf("writePlist() error = %v", err)
+	}
+
+	// Read it back and verify WakeSystem is true
+	service, err := m.Get("com.test.roundtrip")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !service.WakeSystem {
+		t.Fatal("WakeSystem should be true after initial write")
+	}
+
+	// Update with WakeSystem disabled
+	config.WakeSystem = false
+	if err := m.writePlist(plistPath, config); err != nil {
+		t.Fatalf("writePlist() error = %v", err)
+	}
+
+	// Verify WakeSystem key is absent from the plist
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.Contains(string(data), "<key>WakeSystem</key>") {
+		t.Error("plist should NOT contain WakeSystem key after disabling")
+	}
+
+	// Read back and verify Service.WakeSystem is false
+	service, err = m.Get("com.test.roundtrip")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if service.WakeSystem {
+		t.Error("WakeSystem should be false after update")
+	}
+}
+
 // intPtr is a helper to create *int from a literal
 func intPtr(v int) *int {
 	return &v

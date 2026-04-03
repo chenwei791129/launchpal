@@ -72,6 +72,13 @@
         />
         <p class="text-xs text-gray-500 mt-1">Minimum 10 seconds. Common values: 60 (1min), 3600 (1hr), 86400 (1day)</p>
       </div>
+
+      <!-- Wake System -->
+      <label class="flex items-center gap-2 text-sm text-gray-300">
+        <input v-model="wakeSystemLocal" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+        Wake System
+      </label>
+      <p class="text-xs text-gray-500 -mt-2 pl-1">Wake the Mac from sleep when the scheduled time arrives</p>
     </div>
   </div>
 </template>
@@ -81,10 +88,12 @@ import type { ScheduleConfig } from '~/types/wails.d'
 
 const props = defineProps<{
   modelValue?: ScheduleConfig
+  wakeSystem?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: ScheduleConfig | undefined]
+  'update:wakeSystem': [value: boolean]
 }>()
 
 const weekdayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -93,6 +102,10 @@ const enabled = ref(false)
 const scheduleType = ref<'calendar' | 'interval'>('calendar')
 const intervalSeconds = ref<number | undefined>(undefined)
 const cronExpression = ref('* * * * *')
+const wakeSystemLocal = computed({
+  get: () => props.wakeSystem ?? false,
+  set: (val) => emit('update:wakeSystem', val),
+})
 
 const parseError = ref('')
 
@@ -202,6 +215,7 @@ watch([enabled, scheduleType, intervalSeconds, cronExpression], () => {
 
   if (!enabled.value) {
     emit('update:modelValue', undefined)
+    emit('update:wakeSystem', false)
     return
   }
 

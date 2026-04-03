@@ -74,6 +74,10 @@
         <label class="text-xs text-gray-400 uppercase tracking-wider">Keep Alive</label>
         <p class="text-gray-100 mt-1">{{ service.keepAlive ? 'Yes' : 'No' }}</p>
       </div>
+      <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wider">Wake System</label>
+        <p class="text-gray-100 mt-1">{{ service.wakeSystem ? 'Yes' : 'No' }}</p>
+      </div>
       <div v-if="service.schedule">
         <label class="text-xs text-gray-400 uppercase tracking-wider">Schedule</label>
         <p class="text-gray-100 mt-1 font-mono text-sm">{{ scheduleDisplay }}</p>

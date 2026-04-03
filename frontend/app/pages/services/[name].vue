@@ -217,7 +217,7 @@
             </div>
 
             <!-- Schedule -->
-            <ScheduleForm v-model="editSchedule" />
+            <ScheduleForm v-model="editSchedule" v-model:wakeSystem="editWakeSystem" />
 
             <!-- Save button -->
             <div class="flex items-center gap-3 pt-2">
@@ -395,6 +395,7 @@ const editForm = reactive({
 const editArgumentsText = ref('')
 const editEnvVars = reactive<Array<{ key: string; value: string }>>([])
 const editSchedule = ref<ScheduleConfig | undefined>(undefined)
+const editWakeSystem = ref(false)
 const saving = ref(false)
 const saveError = ref('')
 const saveSuccess = ref(false)
@@ -413,6 +414,7 @@ function populateEditForm() {
     }
   }
   editSchedule.value = service.value.schedule ? { ...service.value.schedule } : undefined
+  editWakeSystem.value = service.value.wakeSystem ?? false
 }
 
 async function handleSave() {
@@ -438,6 +440,7 @@ async function handleSave() {
       environment: Object.keys(environment).length > 0 ? environment : undefined,
       workingDirectory: editForm.workingDirectory,
       schedule: editSchedule.value,
+      wakeSystem: editWakeSystem.value,
       stdoutPath: service.value.stdoutPath,
       stderrPath: service.value.stderrPath,
     }

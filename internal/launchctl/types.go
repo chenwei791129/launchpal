@@ -26,10 +26,11 @@ type Service struct {
 	Environment map[string]string `json:"environment,omitempty"`
 	StdoutPath  string            `json:"stdoutPath,omitempty"`
 	StderrPath  string            `json:"stderrPath,omitempty"`
-	WorkingDir   string            `json:"workingDirectory,omitempty"`
-	Type         string            `json:"type"`         // "user", "system", "apple-system"
-	ReadOnly     bool              `json:"readOnly"`     // true for system services
-	PlistFormat  string            `json:"plistFormat"`  // "xml", "binary", "unknown"
+	WakeSystem  bool              `json:"wakeSystem"`
+	WorkingDir  string            `json:"workingDirectory,omitempty"`
+	Type        string            `json:"type"`        // "user", "system", "apple-system"
+	ReadOnly    bool              `json:"readOnly"`    // true for system services
+	PlistFormat string            `json:"plistFormat"` // "xml", "binary", "unknown"
 }
 
 // ScheduleConfig represents StartCalendarInterval or StartInterval
@@ -52,6 +53,7 @@ type ServiceConfig struct {
 	KeepAlive   bool              `json:"keepAlive"`
 	Schedule    *ScheduleConfig   `json:"schedule,omitempty"`
 	Environment map[string]string `json:"environment,omitempty"`
+	WakeSystem  bool              `json:"wakeSystem"`
 	StdoutPath  string            `json:"stdoutPath,omitempty"`
 	StderrPath  string            `json:"stderrPath,omitempty"`
 	WorkingDir  string            `json:"workingDirectory,omitempty"`

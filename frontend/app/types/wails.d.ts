@@ -8,6 +8,7 @@ export interface Service {
   arguments?: string[]
   runAtLoad: boolean
   keepAlive: boolean
+  wakeSystem: boolean
   schedule?: ScheduleConfig
   environment?: Record<string, string>
   stdoutPath?: string
@@ -34,6 +35,7 @@ export interface ServiceConfig {
   arguments?: string[]
   runAtLoad: boolean
   keepAlive: boolean
+  wakeSystem: boolean
   schedule?: ScheduleConfig
   environment?: Record<string, string>
   stdoutPath?: string

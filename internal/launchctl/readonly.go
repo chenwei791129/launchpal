@@ -86,6 +86,7 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 	}
 
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
+	service.WakeSystem = pd.WakeSystem
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
 	// Use pre-fetched status if available, otherwise query individually

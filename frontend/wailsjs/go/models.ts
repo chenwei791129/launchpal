@@ -82,6 +82,7 @@ export namespace launchctl {
 	    environment?: Record<string, string>;
 	    stdoutPath?: string;
 	    stderrPath?: string;
+	    wakeSystem: boolean;
 	    workingDirectory?: string;
 	    type: string;
 	    readOnly: boolean;
@@ -106,6 +107,7 @@ export namespace launchctl {
 	        this.environment = source["environment"];
 	        this.stdoutPath = source["stdoutPath"];
 	        this.stderrPath = source["stderrPath"];
+	        this.wakeSystem = source["wakeSystem"];
 	        this.workingDirectory = source["workingDirectory"];
 	        this.type = source["type"];
 	        this.readOnly = source["readOnly"];
@@ -138,6 +140,7 @@ export namespace launchctl {
 	    keepAlive: boolean;
 	    schedule?: ScheduleConfig;
 	    environment?: Record<string, string>;
+	    wakeSystem: boolean;
 	    stdoutPath?: string;
 	    stderrPath?: string;
 	    workingDirectory?: string;
@@ -155,6 +158,7 @@ export namespace launchctl {
 	        this.keepAlive = source["keepAlive"];
 	        this.schedule = this.convertValues(source["schedule"], ScheduleConfig);
 	        this.environment = source["environment"];
+	        this.wakeSystem = source["wakeSystem"];
 	        this.stdoutPath = source["stdoutPath"];
 	        this.stderrPath = source["stderrPath"];
 	        this.workingDirectory = source["workingDirectory"];
