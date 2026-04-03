@@ -74,6 +74,10 @@ export function RestoreBackup(arg1, arg2) {
   return window['go']['main']['App']['RestoreBackup'](arg1, arg2);
 }
 
+export function RevealInFinder(arg1) {
+  return window['go']['main']['App']['RevealInFinder'](arg1);
+}
+
 export function StartService(arg1) {
   return window['go']['main']['App']['StartService'](arg1);
 }

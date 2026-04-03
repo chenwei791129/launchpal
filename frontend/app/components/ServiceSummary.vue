@@ -5,7 +5,6 @@
       <label class="text-xs text-gray-400 uppercase tracking-wider">Plist File</label>
       <div
         class="mt-1 flex items-start gap-2 px-3 py-2 bg-surface-400 rounded cursor-pointer hover:bg-surface-300 transition-colors group min-w-0"
-        title="Click to copy"
         @click="copyPath"
       >
         <code class="flex-1 text-gray-100 font-mono text-sm break-words overflow-wrap-anywhere min-w-0">{{ service.path }}</code>
@@ -15,11 +14,24 @@
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
+          title="Copy path"
         >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
         </svg>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          class="w-4 h-4 text-gray-500 group-hover:text-gray-300 flex-shrink-0 mt-0.5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          title="Reveal in Finder"
+          @click.stop="revealInFinder"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+        </svg>
       </div>
       <p v-if="copiedField === 'path'" class="text-xs text-primary-400 mt-1">Copied!</p>
+      <p v-if="revealError" class="text-xs text-red-400 mt-1">Failed to reveal in Finder</p>
     </div>
 
     <div class="grid grid-cols-2 gap-4">
@@ -115,12 +127,14 @@
 <script setup lang="ts">
 import type { Service } from '~/types/wails'
 import { serializeShellArgs } from '~/utils/shell-args'
+import { RevealInFinder } from '../../wailsjs/go/main/App'
 
 const props = defineProps<{
   service: Service
 }>()
 
 const copiedField = ref<string | null>(null)
+const revealError = ref(false)
 
 const scheduleDisplay = computed(() => {
   const s = props.service.schedule
@@ -154,5 +168,17 @@ async function copyText(text: string, field: string) {
 
 function copyPath() {
   copyText(props.service.path, 'path')
+}
+
+async function revealInFinder() {
+  try {
+    await RevealInFinder(props.service.path)
+  } catch (e) {
+    console.error('Failed to reveal in Finder:', e)
+    revealError.value = true
+    setTimeout(() => {
+      revealError.value = false
+    }, 2000)
+  }
 }
 </script>

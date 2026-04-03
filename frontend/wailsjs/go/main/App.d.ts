@@ -39,6 +39,8 @@ export function RestartService(arg1:string):Promise<void>;
 
 export function RestoreBackup(arg1:string,arg2:string):Promise<void>;
 
+export function RevealInFinder(arg1:string):Promise<void>;
+
 export function StartService(arg1:string):Promise<void>;
 
 export function StopService(arg1:string):Promise<void>;
