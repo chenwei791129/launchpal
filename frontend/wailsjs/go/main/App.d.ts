@@ -25,6 +25,8 @@ export function GetSystemService(arg1:string,arg2:string):Promise<launchctl.Serv
 
 export function GetVersion():Promise<string>;
 
+export function KickstartService(arg1:string):Promise<void>;
+
 export function ListAllBackups():Promise<Array<backup.Backup>>;
 
 export function ListAppleSystemServices():Promise<Array<launchctl.Service>>;

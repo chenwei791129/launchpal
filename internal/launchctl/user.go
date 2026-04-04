@@ -570,5 +570,48 @@ func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
 	return nil
 }
 
+// Kickstart immediately runs a user service using launchctl kickstart -k.
+// If the service is not loaded, it bootstraps it first.
+func (m *UserManager) Kickstart(name string) error {
+	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
+
+	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
+		return fmt.Errorf("service %s not found", name)
+	}
+
+	// Read plist to get the label
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		return fmt.Errorf("failed to read plist file: %w", err)
+	}
+
+	var pd plistData
+	if _, err := plist.Unmarshal(data, &pd); err != nil {
+		return fmt.Errorf("failed to parse plist: %w", err)
+	}
+
+	uid := os.Getuid()
+	domain := fmt.Sprintf("gui/%d", uid)
+	target := fmt.Sprintf("gui/%d/%s", uid, pd.Label)
+
+	// Check if the service is loaded by querying launchctl list
+	checkCmd := exec.Command("launchctl", "list", pd.Label)
+	if err := checkCmd.Run(); err != nil {
+		// Service is not loaded — bootstrap it first
+		bootstrapCmd := exec.Command("launchctl", "bootstrap", domain, plistPath)
+		if output, err := bootstrapCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("failed to bootstrap service: %s", string(output))
+		}
+	}
+
+	// Kickstart with -k to terminate existing process and restart
+	kickCmd := exec.Command("launchctl", "kickstart", "-k", target)
+	if output, err := kickCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to kickstart service: %s", string(output))
+	}
+
+	return nil
+}
+
 // Ensure UserManager implements Manager interface
 var _ Manager = (*UserManager)(nil)

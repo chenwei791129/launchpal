@@ -82,6 +82,16 @@
             </svg>
             Restart
           </button>
+          <button
+            class="flex items-center gap-2 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 text-sm rounded-lg transition-colors"
+            :disabled="actionLoading"
+            @click="handleRunNow"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Run Now
+          </button>
         </div>
       </div>
     </header>
@@ -259,6 +269,36 @@
         </div>
       </template>
     </div>
+
+    <!-- Run Now confirmation dialog -->
+    <Teleport to="body">
+      <div
+        v-if="showRunNowDialog"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="showRunNowDialog = false"
+      >
+        <div class="bg-surface-400 rounded-xl shadow-xl p-6 w-96">
+          <h3 class="text-lg font-semibold text-white mb-2">Run Now</h3>
+          <p class="text-gray-400 mb-6">
+            This service is currently running. Kickstart will terminate the existing process and start a new one. Continue?
+          </p>
+          <div class="flex justify-end gap-3">
+            <button
+              class="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+              @click="showRunNowDialog = false"
+            >
+              Cancel
+            </button>
+            <button
+              class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
+              @click="confirmRunNow"
+            >
+              Run Now
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -380,6 +420,35 @@ async function handleRestart() {
     }
   } catch (e) {
     console.error('Failed to restart service:', e)
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+const showRunNowDialog = ref(false)
+
+function handleRunNow() {
+  if (service.value?.status === 'running') {
+    showRunNowDialog.value = true
+    return
+  }
+  executeKickstart()
+}
+
+async function confirmRunNow() {
+  showRunNowDialog.value = false
+  await executeKickstart()
+}
+
+async function executeKickstart() {
+  actionLoading.value = true
+  try {
+    if (window.go?.main?.App?.KickstartService) {
+      await window.go.main.App.KickstartService(name.value)
+      await loadService()
+    }
+  } catch (e) {
+    console.error('Failed to kickstart service:', e)
   } finally {
     actionLoading.value = false
   }

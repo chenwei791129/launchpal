@@ -782,6 +782,19 @@ func TestUserManager_RoundTrip_WakeSystemDisable(t *testing.T) {
 	}
 }
 
+func TestUserManager_Kickstart_PlistNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	err := m.Kickstart("com.test.nonexistent")
+	if err == nil {
+		t.Fatal("Kickstart() should return error when plist does not exist")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Kickstart() error = %q, want it to contain 'not found'", err.Error())
+	}
+}
+
 // intPtr is a helper to create *int from a literal
 func intPtr(v int) *int {
 	return &v

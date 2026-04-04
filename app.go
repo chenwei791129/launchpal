@@ -143,6 +143,11 @@ func (a *App) RestoreBackup(serviceName, backupID string) error {
 	return fmt.Errorf("cannot restore: service not found and no original path in backup")
 }
 
+// KickstartService immediately runs a user service via launchctl kickstart
+func (a *App) KickstartService(name string) error {
+	return a.manager.Kickstart(name)
+}
+
 // ListSystemServices returns all LaunchDaemon services from /Library
 func (a *App) ListSystemServices() ([]launchctl.Service, error) {
 	return a.systemManager.List()

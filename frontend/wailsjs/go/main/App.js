@@ -46,6 +46,10 @@ export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
 }
 
+export function KickstartService(arg1) {
+  return window['go']['main']['App']['KickstartService'](arg1);
+}
+
 export function ListAllBackups() {
   return window['go']['main']['App']['ListAllBackups']();
 }
