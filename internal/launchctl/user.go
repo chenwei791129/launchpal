@@ -12,6 +12,10 @@ import (
 	"howett.net/plist"
 )
 
+func guiDomain() string {
+	return fmt.Sprintf("gui/%d", os.Getuid())
+}
+
 // UserManager manages user LaunchAgents in ~/Library/LaunchAgents
 type UserManager struct {
 	launchAgentsPath string
@@ -295,7 +299,7 @@ func (m *UserManager) Start(name string) error {
 		return fmt.Errorf("service %s not found", name)
 	}
 
-	cmd := exec.Command("launchctl", "load", plistPath)
+	cmd := exec.Command("launchctl", "bootstrap", guiDomain(), plistPath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to start service: %s", string(output))
 	}
@@ -305,21 +309,14 @@ func (m *UserManager) Start(name string) error {
 
 // Stop stops and unloads a service
 func (m *UserManager) Stop(name string) error {
-	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
-
-	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
-		return fmt.Errorf("service %s not found", name)
-	}
-
-	// Get service info to find label and program
 	service, err := m.Get(name)
 	if err != nil {
 		return err
 	}
 
-	// Try launchctl unload first
-	cmd := exec.Command("launchctl", "unload", plistPath)
-	_, _ = cmd.CombinedOutput() // Ignore error, may fail for root-owned processes
+	// Try launchctl bootout first
+	cmd := exec.Command("launchctl", "bootout", guiDomain()+"/"+service.Label)
+	_, _ = cmd.CombinedOutput() // Ignore error, service may not be loaded
 
 	// Check if process is still running and kill it
 	if service.Program != "" {
@@ -590,9 +587,8 @@ func (m *UserManager) Kickstart(name string) error {
 		return fmt.Errorf("failed to parse plist: %w", err)
 	}
 
-	uid := os.Getuid()
-	domain := fmt.Sprintf("gui/%d", uid)
-	target := fmt.Sprintf("gui/%d/%s", uid, pd.Label)
+	domain := guiDomain()
+	target := domain + "/" + pd.Label
 
 	// Check if the service is loaded by querying launchctl list
 	checkCmd := exec.Command("launchctl", "list", pd.Label)

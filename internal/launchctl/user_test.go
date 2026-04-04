@@ -1,6 +1,7 @@
 package launchctl
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -792,6 +793,15 @@ func TestUserManager_Kickstart_PlistNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("Kickstart() error = %q, want it to contain 'not found'", err.Error())
+	}
+}
+
+func TestGuiDomain(t *testing.T) {
+	result := guiDomain()
+	uid := os.Getuid()
+	expected := fmt.Sprintf("gui/%d", uid)
+	if result != expected {
+		t.Errorf("guiDomain() = %q, want %q", result, expected)
 	}
 }
 
