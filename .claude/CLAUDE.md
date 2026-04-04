@@ -63,6 +63,7 @@ LaunchPal 支援三種類型的服務：
 1. **User Services** (`~/Library/LaunchAgents`)
    - 完整的讀寫權限
    - 可以啟動、停止、建立、更新、刪除服務
+   - 支援立即執行（Kickstart：`launchctl kickstart -k`）
    - 支援排程設定（StartCalendarInterval / StartInterval）
    - 支援環境變數設定（EnvironmentVariables）
 
