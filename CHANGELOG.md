@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.0](https://github.com/chenwei791129/launchpal/compare/v1.8.0...v1.9.0) (2026-04-04)
+
+
+### Features
+
+* add Run Now (kickstart) button for user services ([94a8659](https://github.com/chenwei791129/launchpal/commit/94a8659772921f3fa4e09f8b433c63748a2b6d1e))
+* migrate Start/Stop from legacy load/unload to bootstrap/bootout ([f05b713](https://github.com/chenwei791129/launchpal/commit/f05b71384cdeff38819e8f57b12bb616d5327a11))
+
 ## [1.8.0](https://github.com/chenwei791129/launchpal/compare/v1.7.0...v1.8.0) (2026-04-03)
 
 
