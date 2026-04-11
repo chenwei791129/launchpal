@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.0](https://github.com/chenwei791129/launchpal/compare/v1.9.0...v1.10.0) (2026-04-11)
+
+
+### Features
+
+* add cron range and enumeration syntax with expansion preview ([b1eea86](https://github.com/chenwei791129/launchpal/commit/b1eea864353341bf21b1680e60e44dde06de3cd9))
+* mask environment variable values by default ([09e33ee](https://github.com/chenwei791129/launchpal/commit/09e33ee0b52db07c66d4fa2253f1d5afd97a81e2))
+* support multiple calendar interval schedules with CalendarEntry ([9c6bb60](https://github.com/chenwei791129/launchpal/commit/9c6bb606a12d22015d0348a1e6f322e4a62b379a))
+* support multiple schedule entries in next occurrence calculation ([90ea5b4](https://github.com/chenwei791129/launchpal/commit/90ea5b464387d5070221ee5657d1c2e4902ac8bb))
+* update ServiceSummary for multiple schedule entries ([c892512](https://github.com/chenwei791129/launchpal/commit/c892512707ba17776b4e693b894b2b755e946756))
+* update TypeScript types for CalendarEntry and ScheduleConfig ([c534aa5](https://github.com/chenwei791129/launchpal/commit/c534aa599b7f1e494352478b12b807dfdc1011f8))
+
 ## [1.9.0](https://github.com/chenwei791129/launchpal/compare/v1.8.0...v1.9.0) (2026-04-04)
 
 
