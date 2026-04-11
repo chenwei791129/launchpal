@@ -1,11 +1,11 @@
-import type { ScheduleConfig } from '~/types/wails.d'
+import type { CalendarEntry, ScheduleConfig } from '~/types/wails.d'
 
 const MAX_SCAN_DAYS = 400
 
 /**
  * Calculate the next N occurrences for a CalendarInterval schedule.
  *
- * Fields in config (month, day, weekday, hour, minute) follow launchd semantics:
+ * Fields in each schedule entry follow launchd semantics:
  * - undefined = wildcard (matches any value)
  * - month: 1-12
  * - day: 1-31
@@ -23,6 +23,9 @@ export function getNextOccurrences(
   // StartInterval configs have no calendar fields — nothing to scan
   if (config.interval !== undefined) return []
 
+  const schedules = config.schedules ?? []
+  if (schedules.length === 0) return []
+
   const results: Date[] = []
   const maxMinutes = MAX_SCAN_DAYS * 24 * 60
 
@@ -32,7 +35,7 @@ export function getNextOccurrences(
   cursor.setMinutes(cursor.getMinutes() + 1)
 
   for (let i = 0; i < maxMinutes && results.length < count; i++) {
-    if (matches(cursor, config)) {
+    if (schedules.some(entry => matchesEntry(cursor, entry))) {
       results.push(new Date(cursor))
     }
     cursor.setMinutes(cursor.getMinutes() + 1)
@@ -56,11 +59,11 @@ export function formatDateTime(date: Date): string {
   return `${month}/${day} (${weekday}) ${hours}:${minutes}`
 }
 
-function matches(date: Date, config: ScheduleConfig): boolean {
-  if (config.minute !== undefined && date.getMinutes() !== config.minute) return false
-  if (config.hour !== undefined && date.getHours() !== config.hour) return false
-  if (config.day !== undefined && date.getDate() !== config.day) return false
-  if (config.weekday !== undefined && date.getDay() !== config.weekday) return false
-  if (config.month !== undefined && date.getMonth() + 1 !== config.month) return false
+function matchesEntry(date: Date, entry: CalendarEntry): boolean {
+  if (entry.minute !== undefined && date.getMinutes() !== entry.minute) return false
+  if (entry.hour !== undefined && date.getHours() !== entry.hour) return false
+  if (entry.day !== undefined && date.getDate() !== entry.day) return false
+  if (entry.weekday !== undefined && date.getDay() !== entry.weekday) return false
+  if (entry.month !== undefined && date.getMonth() + 1 !== entry.month) return false
   return true
 }

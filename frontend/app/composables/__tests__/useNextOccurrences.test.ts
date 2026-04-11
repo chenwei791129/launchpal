@@ -7,7 +7,7 @@ describe('getNextOccurrences', () => {
 
   it('returns dates at specific hour and minute on consecutive days', () => {
     const results = getNextOccurrences(
-      { hour: 14, minute: 30 },
+      { schedules: [{ hour: 14, minute: 30 }] },
       3,
       now,
     )
@@ -27,7 +27,7 @@ describe('getNextOccurrences', () => {
   it('returns dates on specific weekday', () => {
     // weekday=1 means Monday in launchd (0=Sun, 1=Mon, ...)
     const results = getNextOccurrences(
-      { weekday: 1, hour: 9, minute: 0 },
+      { schedules: [{ weekday: 1, hour: 9, minute: 0 }] },
       3,
       now,
     )
@@ -40,7 +40,7 @@ describe('getNextOccurrences', () => {
   })
 
   it('returns every minute when all fields are unset', () => {
-    const results = getNextOccurrences({}, 3, now)
+    const results = getNextOccurrences({ schedules: [{}] }, 3, now)
     expect(results).toHaveLength(3)
     // First should be now+1 minute = 10:31
     expect(results[0]!.getHours()).toBe(10)
@@ -53,7 +53,7 @@ describe('getNextOccurrences', () => {
     // From Apr 3, 2026: 400 days reaches ~May 8, 2027
     // Only Dec 25, 2026 is within range
     const results = getNextOccurrences(
-      { month: 12, day: 25, hour: 0, minute: 0 },
+      { schedules: [{ month: 12, day: 25, hour: 0, minute: 0 }] },
       3,
       now,
     )
@@ -66,14 +66,14 @@ describe('getNextOccurrences', () => {
   })
 
   it('respects count parameter', () => {
-    const results = getNextOccurrences({ hour: 12, minute: 0 }, 5, now)
+    const results = getNextOccurrences({ schedules: [{ hour: 12, minute: 0 }] }, 5, now)
     expect(results).toHaveLength(5)
   })
 
   it('returns empty array when no match within 400 days', () => {
     // month=2 (Feb), day=30 — doesn't exist
     const results = getNextOccurrences(
-      { month: 2, day: 30, hour: 0, minute: 0 },
+      { schedules: [{ month: 2, day: 30, hour: 0, minute: 0 }] },
       1,
       now,
     )
@@ -83,7 +83,7 @@ describe('getNextOccurrences', () => {
   it('starts scanning from now+1 minute, not current minute', () => {
     const exactNow = new Date(2026, 3, 3, 14, 30, 0)
     const results = getNextOccurrences(
-      { hour: 14, minute: 30 },
+      { schedules: [{ hour: 14, minute: 30 }] },
       1,
       exactNow,
     )
@@ -99,12 +99,33 @@ describe('getNextOccurrences', () => {
   it('handles weekday=0 as Sunday', () => {
     // Apr 5, 2026 is a Sunday
     const results = getNextOccurrences(
-      { weekday: 0, hour: 8, minute: 0 },
+      { schedules: [{ weekday: 0, hour: 8, minute: 0 }] },
       1,
       now,
     )
     expect(results[0]!.getDay()).toBe(0) // Sunday
     expect(results[0]!.getDate()).toBe(5) // Apr 5
+  })
+
+  it('returns empty array for empty schedules', () => {
+    const results = getNextOccurrences({ schedules: [] }, 3, now)
+    expect(results).toHaveLength(0)
+  })
+
+  it('handles multiple schedule entries', () => {
+    // Two entries: 9:00 and 17:00 — should interleave
+    const results = getNextOccurrences(
+      { schedules: [{ hour: 9, minute: 0 }, { hour: 17, minute: 0 }] },
+      4,
+      now,
+    )
+    expect(results).toHaveLength(4)
+    // First: today 17:00 (since now is 10:30, 9:00 already passed)
+    expect(results[0]!.getHours()).toBe(17)
+    expect(results[0]!.getDate()).toBe(3)
+    // Second: tomorrow 9:00
+    expect(results[1]!.getHours()).toBe(9)
+    expect(results[1]!.getDate()).toBe(4)
   })
 })
 
