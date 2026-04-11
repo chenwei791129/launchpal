@@ -65,6 +65,7 @@ LaunchPal 支援三種類型的服務：
    - 可以啟動、停止、建立、更新、刪除服務
    - 支援立即執行（Kickstart：`launchctl kickstart -k`）
    - 支援排程設定（StartCalendarInterval / StartInterval）
+   - Cron 語法支援範圍 `a-b`、列舉 `a,b,c`，自動笛卡爾積展開為多筆 StartCalendarInterval（上限 50 筆）
    - 支援環境變數設定（EnvironmentVariables）
 
 2. **System Services** (`/Library/LaunchDaemons`)
