@@ -11,6 +11,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 📋 View service logs (stdout/stderr)
 - ➕ Create and configure new services
 - ⏰ Schedule services with Calendar Interval or Fixed Interval
+- 📅 Cron-style range (`9-17`) and enumeration (`1,3,5`) syntax with automatic expansion
 - 🌐 Configure environment variables for services
 - ✏️ Edit existing service configurations
 - 🔍 Browse system services (read-only)
