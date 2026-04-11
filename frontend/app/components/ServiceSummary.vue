@@ -81,7 +81,6 @@
       <div v-if="service.schedule">
         <label class="text-xs text-gray-400 uppercase tracking-wider">Schedule</label>
         <p class="text-gray-100 mt-1 font-mono text-sm">{{ scheduleDisplay }}</p>
-        <p v-if="service.schedule.hasMultiple" class="text-xs text-yellow-400 mt-1">Multiple schedules defined; only the first is shown.</p>
         <div v-if="nextRuns.length > 0" class="mt-2 text-xs space-y-0.5">
           <div class="text-gray-400">Next runs ({{ timezone }}):</div>
           <div v-for="(run, i) in nextRuns" :key="i" class="text-gray-300 font-mono">
@@ -155,21 +154,28 @@ const nextRuns = computed(() => {
 
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
+function describeEntry(e: { minute?: number, hour?: number, day?: number, weekday?: number, month?: number }): string {
+  const parts: string[] = []
+  if (e.month !== undefined) parts.push(`Month: ${e.month}`)
+  if (e.day !== undefined) parts.push(`Day: ${e.day}`)
+  if (e.weekday !== undefined) {
+    parts.push(`Weekday: ${WEEKDAY_NAMES[e.weekday] ?? e.weekday}`)
+  }
+  if (e.hour !== undefined) parts.push(`Hour: ${String(e.hour).padStart(2, '0')}`)
+  if (e.minute !== undefined) parts.push(`Minute: ${String(e.minute).padStart(2, '0')}`)
+  return parts.length > 0 ? parts.join(', ') : 'Every minute'
+}
+
 const scheduleDisplay = computed(() => {
   const s = props.service.schedule
   if (!s) return ''
   if (s.interval !== undefined) {
     return `Every ${s.interval} seconds`
   }
-  const parts: string[] = []
-  if (s.month !== undefined) parts.push(`Month: ${s.month}`)
-  if (s.day !== undefined) parts.push(`Day: ${s.day}`)
-  if (s.weekday !== undefined) {
-    parts.push(`Weekday: ${WEEKDAY_NAMES[s.weekday] ?? s.weekday}`)
-  }
-  if (s.hour !== undefined) parts.push(`Hour: ${String(s.hour).padStart(2, '0')}`)
-  if (s.minute !== undefined) parts.push(`Minute: ${String(s.minute).padStart(2, '0')}`)
-  return parts.length > 0 ? parts.join(', ') : 'Every minute'
+  const schedules = s.schedules ?? []
+  if (schedules.length === 0) return 'Every minute'
+  if (schedules.length === 1) return describeEntry(schedules[0]!)
+  return `${schedules.length} schedules`
 })
 
 async function copyText(text: string, field: string) {
