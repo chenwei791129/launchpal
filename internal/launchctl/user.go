@@ -172,28 +172,30 @@ func parseSchedule(calendarInterval interface{}, startInterval int) *ScheduleCon
 		return nil
 	}
 
+	dictToEntry := func(d map[string]interface{}) CalendarEntry {
+		return CalendarEntry{
+			Minute:  extractInt(d["Minute"]),
+			Hour:    extractInt(d["Hour"]),
+			Day:     extractInt(d["Day"]),
+			Weekday: extractInt(d["Weekday"]),
+			Month:   extractInt(d["Month"]),
+		}
+	}
+
 	switch v := calendarInterval.(type) {
 	case map[string]interface{}:
 		return &ScheduleConfig{
-			Minute:  extractInt(v["Minute"]),
-			Hour:    extractInt(v["Hour"]),
-			Day:     extractInt(v["Day"]),
-			Weekday: extractInt(v["Weekday"]),
-			Month:   extractInt(v["Month"]),
+			Schedules: []CalendarEntry{dictToEntry(v)},
 		}
 	case []interface{}:
-		// Multiple intervals - use the first one and flag it
-		if len(v) > 0 {
-			if first, ok := v[0].(map[string]interface{}); ok {
-				return &ScheduleConfig{
-					Minute:      extractInt(first["Minute"]),
-					Hour:        extractInt(first["Hour"]),
-					Day:         extractInt(first["Day"]),
-					Weekday:     extractInt(first["Weekday"]),
-					Month:       extractInt(first["Month"]),
-					HasMultiple: len(v) > 1,
-				}
+		entries := make([]CalendarEntry, 0, len(v))
+		for _, item := range v {
+			if d, ok := item.(map[string]interface{}); ok {
+				entries = append(entries, dictToEntry(d))
 			}
+		}
+		if len(entries) > 0 {
+			return &ScheduleConfig{Schedules: entries}
 		}
 	}
 	return nil
@@ -413,6 +415,33 @@ func validateSchedule(s *ScheduleConfig) error {
 	if s.Interval != nil && *s.Interval < 10 {
 		return fmt.Errorf("StartInterval must be at least 10 seconds, got %d", *s.Interval)
 	}
+	for i, e := range s.Schedules {
+		if err := validateCalendarEntry(i, e); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateCalendarEntry checks that a CalendarEntry has valid field ranges
+func validateCalendarEntry(index int, e CalendarEntry) error {
+	checks := []struct {
+		field string
+		val   *int
+		min   int
+		max   int
+	}{
+		{"Minute", e.Minute, 0, 59},
+		{"Hour", e.Hour, 0, 23},
+		{"Day", e.Day, 1, 31},
+		{"Weekday", e.Weekday, 0, 6},
+		{"Month", e.Month, 1, 12},
+	}
+	for _, c := range checks {
+		if c.val != nil && (*c.val < c.min || *c.val > c.max) {
+			return fmt.Errorf("schedule entry %d: %s must be %d-%d, got %d", index, c.field, c.min, c.max, *c.val)
+		}
+	}
 	return nil
 }
 
@@ -529,25 +558,38 @@ func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
 		if config.Schedule.Interval != nil {
 			pd["StartInterval"] = *config.Schedule.Interval
 		} else {
-			calInterval := make(map[string]int)
-			if config.Schedule.Minute != nil {
-				calInterval["Minute"] = *config.Schedule.Minute
+			entryToDict := func(e CalendarEntry) map[string]int {
+				d := make(map[string]int)
+				if e.Minute != nil {
+					d["Minute"] = *e.Minute
+				}
+				if e.Hour != nil {
+					d["Hour"] = *e.Hour
+				}
+				if e.Day != nil {
+					d["Day"] = *e.Day
+				}
+				if e.Weekday != nil {
+					d["Weekday"] = *e.Weekday
+				}
+				if e.Month != nil {
+					d["Month"] = *e.Month
+				}
+				return d
 			}
-			if config.Schedule.Hour != nil {
-				calInterval["Hour"] = *config.Schedule.Hour
+
+			if len(config.Schedule.Schedules) > 1 {
+				arr := make([]map[string]int, len(config.Schedule.Schedules))
+				for i, e := range config.Schedule.Schedules {
+					arr[i] = entryToDict(e)
+				}
+				pd["StartCalendarInterval"] = arr
+			} else if len(config.Schedule.Schedules) == 1 {
+				pd["StartCalendarInterval"] = entryToDict(config.Schedule.Schedules[0])
+			} else {
+				// Empty schedules = "every minute" in launchd semantics
+				pd["StartCalendarInterval"] = make(map[string]int)
 			}
-			if config.Schedule.Day != nil {
-				calInterval["Day"] = *config.Schedule.Day
-			}
-			if config.Schedule.Weekday != nil {
-				calInterval["Weekday"] = *config.Schedule.Weekday
-			}
-			if config.Schedule.Month != nil {
-				calInterval["Month"] = *config.Schedule.Month
-			}
-			// Always write StartCalendarInterval when schedule is set;
-			// empty map means "every minute" in launchd semantics
-			pd["StartCalendarInterval"] = calInterval
 		}
 	}
 

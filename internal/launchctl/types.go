@@ -33,15 +33,19 @@ type Service struct {
 	PlistFormat string            `json:"plistFormat"` // "xml", "binary", "unknown"
 }
 
+// CalendarEntry represents a single StartCalendarInterval entry
+type CalendarEntry struct {
+	Minute  *int `json:"minute,omitempty"`
+	Hour    *int `json:"hour,omitempty"`
+	Day     *int `json:"day,omitempty"`
+	Weekday *int `json:"weekday,omitempty"`
+	Month   *int `json:"month,omitempty"`
+}
+
 // ScheduleConfig represents StartCalendarInterval or StartInterval
 type ScheduleConfig struct {
-	Minute      *int `json:"minute,omitempty"`
-	Hour        *int `json:"hour,omitempty"`
-	Day         *int `json:"day,omitempty"`
-	Weekday     *int `json:"weekday,omitempty"`
-	Month       *int `json:"month,omitempty"`
-	Interval    *int `json:"interval,omitempty"`
-	HasMultiple bool `json:"hasMultiple,omitempty"`
+	Schedules []CalendarEntry `json:"schedules,omitempty"`
+	Interval  *int            `json:"interval,omitempty"`
 }
 
 // ServiceConfig is used for creating/updating services

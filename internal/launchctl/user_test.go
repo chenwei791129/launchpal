@@ -74,11 +74,14 @@ func TestParseSchedule_MultipleIntervals(t *testing.T) {
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil")
 	}
-	if schedule.Hour == nil || *schedule.Hour != 3 {
-		t.Errorf("expected Hour=3, got %v", schedule.Hour)
+	if len(schedule.Schedules) != 2 {
+		t.Fatalf("expected 2 schedules, got %d", len(schedule.Schedules))
 	}
-	if !schedule.HasMultiple {
-		t.Error("expected HasMultiple=true for array with 2 entries")
+	if schedule.Schedules[0].Hour == nil || *schedule.Schedules[0].Hour != 3 {
+		t.Errorf("expected Schedules[0].Hour=3, got %v", schedule.Schedules[0].Hour)
+	}
+	if schedule.Schedules[1].Hour == nil || *schedule.Schedules[1].Hour != 15 {
+		t.Errorf("expected Schedules[1].Hour=15, got %v", schedule.Schedules[1].Hour)
 	}
 }
 
@@ -91,8 +94,11 @@ func TestParseSchedule_SingleArrayInterval(t *testing.T) {
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil")
 	}
-	if schedule.HasMultiple {
-		t.Error("expected HasMultiple=false for array with 1 entry")
+	if len(schedule.Schedules) != 1 {
+		t.Fatalf("expected 1 schedule, got %d", len(schedule.Schedules))
+	}
+	if schedule.Schedules[0].Hour == nil || *schedule.Schedules[0].Hour != 8 {
+		t.Errorf("expected Schedules[0].Hour=8, got %v", schedule.Schedules[0].Hour)
 	}
 }
 
@@ -136,14 +142,11 @@ func TestWritePlist_CalendarInterval_NotStartInterval(t *testing.T) {
 	plistPath := filepath.Join(tmpDir, "test.plist")
 	m := &UserManager{}
 
-	hour := 3
-	minute := 0
 	config := &ServiceConfig{
 		Label:   "com.test.calendar",
 		Program: "/usr/bin/true",
 		Schedule: &ScheduleConfig{
-			Hour:   &hour,
-			Minute: &minute,
+			Schedules: []CalendarEntry{{Hour: intPtr(3), Minute: intPtr(0)}},
 		},
 	}
 
@@ -548,14 +551,14 @@ func TestParseSchedule_SingleDict(t *testing.T) {
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil for single dict")
 	}
-	if schedule.Hour == nil || *schedule.Hour != 9 {
-		t.Errorf("Hour = %v, want 9", schedule.Hour)
+	if len(schedule.Schedules) != 1 {
+		t.Fatalf("Schedules length = %d, want 1", len(schedule.Schedules))
 	}
-	if schedule.Minute == nil || *schedule.Minute != 0 {
-		t.Errorf("Minute = %v, want 0", schedule.Minute)
+	if schedule.Schedules[0].Hour == nil || *schedule.Schedules[0].Hour != 9 {
+		t.Errorf("Hour = %v, want 9", schedule.Schedules[0].Hour)
 	}
-	if schedule.HasMultiple {
-		t.Error("HasMultiple should be false for single dict")
+	if schedule.Schedules[0].Minute == nil || *schedule.Schedules[0].Minute != 0 {
+		t.Errorf("Minute = %v, want 0", schedule.Schedules[0].Minute)
 	}
 }
 
@@ -600,13 +603,48 @@ func TestValidateSchedule_Comprehensive(t *testing.T) {
 		},
 		{
 			name:      "calendar schedule with hour only",
-			schedule:  &ScheduleConfig{Hour: intPtr(3)},
+			schedule:  &ScheduleConfig{Schedules: []CalendarEntry{{Hour: intPtr(3)}}},
 			wantError: false,
 		},
 		{
 			name:      "empty schedule (every minute)",
 			schedule:  &ScheduleConfig{},
 			wantError: false,
+		},
+		{
+			name:      "valid calendar entry",
+			schedule:  &ScheduleConfig{Schedules: []CalendarEntry{{Hour: intPtr(9), Minute: intPtr(0)}}},
+			wantError: false,
+		},
+		{
+			name:      "hour out of range",
+			schedule:  &ScheduleConfig{Schedules: []CalendarEntry{{Hour: intPtr(99)}}},
+			wantError: true,
+		},
+		{
+			name:      "minute out of range",
+			schedule:  &ScheduleConfig{Schedules: []CalendarEntry{{Minute: intPtr(60)}}},
+			wantError: true,
+		},
+		{
+			name:      "day out of range",
+			schedule:  &ScheduleConfig{Schedules: []CalendarEntry{{Day: intPtr(0)}}},
+			wantError: true,
+		},
+		{
+			name:      "weekday out of range",
+			schedule:  &ScheduleConfig{Schedules: []CalendarEntry{{Weekday: intPtr(7)}}},
+			wantError: true,
+		},
+		{
+			name:      "month out of range",
+			schedule:  &ScheduleConfig{Schedules: []CalendarEntry{{Month: intPtr(13)}}},
+			wantError: true,
+		},
+		{
+			name:      "negative minute",
+			schedule:  &ScheduleConfig{Schedules: []CalendarEntry{{Minute: intPtr(-1)}}},
+			wantError: true,
 		},
 	}
 
@@ -629,7 +667,7 @@ func TestWritePlist_WakeSystem(t *testing.T) {
 		Label:      "com.test.wake",
 		Program:    "/usr/bin/true",
 		WakeSystem: true,
-		Schedule:   &ScheduleConfig{Hour: intPtr(3)},
+		Schedule:   &ScheduleConfig{Schedules: []CalendarEntry{{Hour: intPtr(3)}}},
 	}
 
 	if err := m.writePlist(plistPath, config); err != nil {
@@ -742,7 +780,7 @@ func TestUserManager_RoundTrip_WakeSystemDisable(t *testing.T) {
 		Label:      "com.test.roundtrip",
 		Program:    "/usr/bin/true",
 		WakeSystem: true,
-		Schedule:   &ScheduleConfig{Hour: intPtr(3)},
+		Schedule:   &ScheduleConfig{Schedules: []CalendarEntry{{Hour: intPtr(3)}}},
 	}
 	plistPath := filepath.Join(tmpDir, "com.test.roundtrip.plist")
 	if err := m.writePlist(plistPath, config); err != nil {
@@ -803,6 +841,218 @@ func TestGuiDomain(t *testing.T) {
 	if result != expected {
 		t.Errorf("guiDomain() = %q, want %q", result, expected)
 	}
+}
+
+func TestWritePlist_SingleCalendarEntry(t *testing.T) {
+	tmpDir := t.TempDir()
+	plistPath := filepath.Join(tmpDir, "test.plist")
+	m := &UserManager{}
+
+	config := &ServiceConfig{
+		Label:   "com.test.single",
+		Program: "/usr/bin/true",
+		Schedule: &ScheduleConfig{
+			Schedules: []CalendarEntry{{Hour: intPtr(9), Minute: intPtr(0)}},
+		},
+	}
+
+	if err := m.writePlist(plistPath, config); err != nil {
+		t.Fatalf("writePlist() error = %v", err)
+	}
+
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "<key>StartCalendarInterval</key>") {
+		t.Error("plist should contain StartCalendarInterval")
+	}
+	// Single entry should be written as dict, NOT as array
+	if strings.Contains(content, "<array>") {
+		t.Error("single entry should be written as dict, not array")
+	}
+}
+
+func TestWritePlist_MultipleCalendarEntries(t *testing.T) {
+	tmpDir := t.TempDir()
+	plistPath := filepath.Join(tmpDir, "test.plist")
+	m := &UserManager{}
+
+	config := &ServiceConfig{
+		Label:   "com.test.multi",
+		Program: "/usr/bin/true",
+		Schedule: &ScheduleConfig{
+			Schedules: []CalendarEntry{
+				{Hour: intPtr(9), Minute: intPtr(0)},
+				{Hour: intPtr(17), Minute: intPtr(30)},
+			},
+		},
+	}
+
+	if err := m.writePlist(plistPath, config); err != nil {
+		t.Fatalf("writePlist() error = %v", err)
+	}
+
+	data, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	content := string(data)
+	if !strings.Contains(content, "<key>StartCalendarInterval</key>") {
+		t.Error("plist should contain StartCalendarInterval")
+	}
+	// Multiple entries should be written as array
+	if !strings.Contains(content, "<array>") {
+		t.Error("multiple entries should be written as array")
+	}
+	if strings.Contains(content, "<key>StartInterval</key>") {
+		t.Error("should NOT contain StartInterval when Schedules are set")
+	}
+}
+
+func TestWritePlist_MultipleRoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	plistPath := filepath.Join(tmpDir, "test.plist")
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	config := &ServiceConfig{
+		Label:   "test",
+		Program: "/usr/bin/true",
+		Schedule: &ScheduleConfig{
+			Schedules: []CalendarEntry{
+				{Hour: intPtr(9), Minute: intPtr(0)},
+				{Hour: intPtr(17), Minute: intPtr(30)},
+			},
+		},
+	}
+
+	if err := m.writePlist(plistPath, config); err != nil {
+		t.Fatalf("writePlist() error = %v", err)
+	}
+
+	// Read back
+	service, err := m.Get("test")
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if service.Schedule == nil {
+		t.Fatal("Schedule is nil after round-trip")
+	}
+	if len(service.Schedule.Schedules) != 2 {
+		t.Fatalf("expected 2 schedules, got %d", len(service.Schedule.Schedules))
+	}
+	if *service.Schedule.Schedules[0].Hour != 9 {
+		t.Errorf("Schedules[0].Hour = %d, want 9", *service.Schedule.Schedules[0].Hour)
+	}
+	if *service.Schedule.Schedules[1].Hour != 17 {
+		t.Errorf("Schedules[1].Hour = %d, want 17", *service.Schedule.Schedules[1].Hour)
+	}
+}
+
+func TestParseSchedule_DictToSchedules(t *testing.T) {
+	// Single dict should produce Schedules with 1 entry
+	dict := map[string]interface{}{
+		"Hour":   uint64(9),
+		"Minute": uint64(0),
+	}
+	schedule := parseSchedule(dict, 0)
+	if schedule == nil {
+		t.Fatal("parseSchedule() returned nil")
+	}
+	if len(schedule.Schedules) != 1 {
+		t.Fatalf("expected 1 schedule, got %d", len(schedule.Schedules))
+	}
+	e := schedule.Schedules[0]
+	if e.Hour == nil || *e.Hour != 9 {
+		t.Errorf("Hour = %v, want 9", e.Hour)
+	}
+	if e.Minute == nil || *e.Minute != 0 {
+		t.Errorf("Minute = %v, want 0", e.Minute)
+	}
+	if e.Day != nil || e.Weekday != nil || e.Month != nil {
+		t.Error("expected nil for Day, Weekday, Month")
+	}
+}
+
+func TestParseSchedule_ArrayToSchedules(t *testing.T) {
+	// Array of 3 dicts should produce Schedules with 3 entries
+	intervals := []interface{}{
+		map[string]interface{}{"Hour": uint64(9), "Minute": uint64(0)},
+		map[string]interface{}{"Hour": uint64(12), "Minute": uint64(30)},
+		map[string]interface{}{"Hour": uint64(18), "Minute": uint64(0)},
+	}
+	schedule := parseSchedule(intervals, 0)
+	if schedule == nil {
+		t.Fatal("parseSchedule() returned nil")
+	}
+	if len(schedule.Schedules) != 3 {
+		t.Fatalf("expected 3 schedules, got %d", len(schedule.Schedules))
+	}
+	expectedHours := []int{9, 12, 18}
+	for i, h := range expectedHours {
+		if schedule.Schedules[i].Hour == nil || *schedule.Schedules[i].Hour != h {
+			t.Errorf("Schedules[%d].Hour = %v, want %d", i, schedule.Schedules[i].Hour, h)
+		}
+	}
+}
+
+func TestCalendarEntry_Fields(t *testing.T) {
+	// Verify CalendarEntry struct has all expected fields with *int type
+	entry := CalendarEntry{
+		Minute:  intPtr(30),
+		Hour:    intPtr(9),
+		Day:     intPtr(15),
+		Weekday: intPtr(1),
+		Month:   intPtr(6),
+	}
+
+	if entry.Minute == nil || *entry.Minute != 30 {
+		t.Errorf("Minute = %v, want 30", entry.Minute)
+	}
+	if entry.Hour == nil || *entry.Hour != 9 {
+		t.Errorf("Hour = %v, want 9", entry.Hour)
+	}
+	if entry.Day == nil || *entry.Day != 15 {
+		t.Errorf("Day = %v, want 15", entry.Day)
+	}
+	if entry.Weekday == nil || *entry.Weekday != 1 {
+		t.Errorf("Weekday = %v, want 1", entry.Weekday)
+	}
+	if entry.Month == nil || *entry.Month != 6 {
+		t.Errorf("Month = %v, want 6", entry.Month)
+	}
+}
+
+func TestScheduleConfig_Schedules(t *testing.T) {
+	// Verify ScheduleConfig uses Schedules []CalendarEntry instead of single fields
+	config := ScheduleConfig{
+		Schedules: []CalendarEntry{
+			{Minute: intPtr(0), Hour: intPtr(9)},
+			{Minute: intPtr(0), Hour: intPtr(17)},
+		},
+	}
+
+	if len(config.Schedules) != 2 {
+		t.Fatalf("Schedules length = %d, want 2", len(config.Schedules))
+	}
+	if *config.Schedules[0].Hour != 9 {
+		t.Errorf("Schedules[0].Hour = %d, want 9", *config.Schedules[0].Hour)
+	}
+	if *config.Schedules[1].Hour != 17 {
+		t.Errorf("Schedules[1].Hour = %d, want 17", *config.Schedules[1].Hour)
+	}
+}
+
+func TestScheduleConfig_NoHasMultiple(t *testing.T) {
+	// Verify HasMultiple field is removed — ScheduleConfig should not have it
+	// This test compiles only if HasMultiple is removed
+	config := ScheduleConfig{
+		Schedules: []CalendarEntry{{Minute: intPtr(0)}},
+	}
+	_ = config
 }
 
 // intPtr is a helper to create *int from a literal
