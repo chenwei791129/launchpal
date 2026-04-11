@@ -19,14 +19,17 @@ export interface Service {
   plistFormat: 'xml' | 'binary' | 'unknown'
 }
 
-export interface ScheduleConfig {
+export interface CalendarEntry {
   minute?: number
   hour?: number
   day?: number
   weekday?: number
   month?: number
+}
+
+export interface ScheduleConfig {
+  schedules?: CalendarEntry[]
   interval?: number
-  hasMultiple?: boolean
 }
 
 export interface ServiceConfig {
