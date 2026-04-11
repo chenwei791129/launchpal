@@ -42,12 +42,31 @@
         />
         <div class="flex items-center gap-4 text-xs text-gray-500">
           <span class="font-mono">minute hour day month weekday</span>
-          <span>Use <code class="text-gray-400">*</code> for any, single values only (no ranges or <code class="text-gray-400">*/5</code>)</span>
+          <span>Use <code class="text-gray-400">*</code> for any, <code class="text-gray-400">N</code> single, <code class="text-gray-400">a-b</code> range, <code class="text-gray-400">a,b,c</code> list</span>
         </div>
 
         <!-- Parsed preview -->
         <div v-if="cronExpression.trim()" class="px-3 py-2 bg-surface-500 rounded text-xs">
           <span v-if="parseError" class="text-red-400">{{ parseError }}</span>
+          <template v-else-if="parsedCron && parsedCron.length > 1">
+            <div
+              class="text-gray-300 cursor-pointer select-none flex items-center gap-1"
+              @click="expandedPreview = !expandedPreview"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="w-3 h-3 transition-transform"
+                :class="{ 'rotate-90': expandedPreview }"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+              </svg>
+              {{ cronDescription }}
+            </div>
+            <div v-if="expandedPreview" class="mt-1 pl-4 space-y-0.5 text-gray-400">
+              <div v-for="(desc, i) in expandedEntries" :key="i" class="font-mono">{{ desc }}</div>
+            </div>
+          </template>
           <span v-else class="text-gray-300">{{ cronDescription }}</span>
         </div>
 
@@ -57,6 +76,14 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
           </svg>
           <span>This will run the service <strong>every minute</strong>.</span>
+        </div>
+
+        <!-- Warning: lossy round-trip -->
+        <div v-if="cronRoundTripWarning" class="flex items-start gap-2 px-3 py-2 bg-yellow-900/30 border border-yellow-700/50 rounded text-yellow-400 text-xs">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <span>This schedule was created externally with entries that cannot be exactly represented in cron syntax. Saving may alter the schedule.</span>
         </div>
 
         <!-- Next runs preview -->
@@ -92,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ScheduleConfig } from '~/types/wails.d'
+import type { ScheduleConfig, CalendarEntry } from '~/types/wails.d'
 import { getNextOccurrences, formatDateTime, WEEKDAY_NAMES } from '~/composables/useNextOccurrences'
 
 const props = defineProps<{
@@ -115,16 +142,70 @@ const wakeSystemLocal = computed({
 })
 
 const parseError = ref('')
+const expandedPreview = ref(false)
+const cronRoundTripWarning = ref(false)
 
-interface ParsedCron {
-  minute?: number
-  hour?: number
-  day?: number
-  month?: number
-  weekday?: number
+const MAX_EXPANSION = 50
+
+function parseField(field: string, name: string, min: number, max: number): number[] | null {
+  if (field === '*') return []
+
+  if (field.includes('-')) {
+    const rangeParts = field.split('-')
+    if (rangeParts.length !== 2 || rangeParts[0] === '' || rangeParts[1] === '') {
+      parseError.value = `${name}: invalid range "${field}"`
+      return null
+    }
+    const a = Number(rangeParts[0])
+    const b = Number(rangeParts[1])
+    if (!Number.isInteger(a) || !Number.isInteger(b)) {
+      parseError.value = `${name}: invalid range "${field}"`
+      return null
+    }
+    if (a < min || a > max || b < min || b > max) {
+      parseError.value = `${name}: value out of range ${min}-${max} in "${field}"`
+      return null
+    }
+    if (a > b) {
+      parseError.value = `${name}: start must be ≤ end in "${field}"`
+      return null
+    }
+    const result: number[] = []
+    for (let i = a; i <= b; i++) result.push(i)
+    return result
+  }
+
+  if (field.includes(',')) {
+    const parts = field.split(',')
+    const seen = new Set<number>()
+    const result: number[] = []
+    for (const p of parts) {
+      if (p === '') {
+        parseError.value = `${name}: invalid list "${field}"`
+        return null
+      }
+      const num = Number(p)
+      if (!Number.isInteger(num) || num < min || num > max) {
+        parseError.value = `${name}: value out of range ${min}-${max} in "${field}"`
+        return null
+      }
+      if (!seen.has(num)) {
+        seen.add(num)
+        result.push(num)
+      }
+    }
+    return result
+  }
+
+  const num = Number(field)
+  if (!Number.isInteger(num) || num < min || num > max) {
+    parseError.value = `${name}: expected *, ${min}-${max}, range, or list, got "${field}"`
+    return null
+  }
+  return [num]
 }
 
-function parseCron(expr: string): ParsedCron | null {
+function parseCron(expr: string): CalendarEntry[] | null {
   parseError.value = ''
   const parts = expr.trim().split(/\s+/)
   if (parts.length !== 5) {
@@ -132,83 +213,140 @@ function parseCron(expr: string): ParsedCron | null {
     return null
   }
 
-  const limits = [
+  const limits: [string, number, number][] = [
     ['Minute', 0, 59],
     ['Hour', 0, 23],
     ['Day', 1, 31],
     ['Month', 1, 12],
     ['Weekday', 0, 6],
-  ] as const
+  ]
 
-  const values: (number | undefined)[] = []
+  const fieldValues: number[][] = []
   for (let i = 0; i < 5; i++) {
-    const field = parts[i]
-    const limit = limits[i]!
-    if (field === '*') {
-      values.push(undefined)
+    const result = parseField(parts[i]!, limits[i]![0], limits[i]![1], limits[i]![2])
+    if (result === null) return null
+    fieldValues.push(result)
+  }
+
+  const expansionCount = fieldValues.reduce((acc, f) => acc * (f.length || 1), 1)
+  if (expansionCount > MAX_EXPANSION) {
+    parseError.value = `Expansion produces ${expansionCount} entries, exceeding limit of ${MAX_EXPANSION}`
+    return null
+  }
+
+  const entries: CalendarEntry[] = []
+  const keys = ['minute', 'hour', 'day', 'month', 'weekday'] as const
+
+  function expand(depth: number, current: Partial<CalendarEntry>) {
+    if (depth === 5) {
+      entries.push({ ...current } as CalendarEntry)
+      return
+    }
+    const vals = fieldValues[depth]!
+    if (vals.length === 0) {
+      // Wildcard field — omit from entry
+      expand(depth + 1, current)
     } else {
-      const num = Number(field)
-      if (!Number.isInteger(num) || num < limit[1] || num > limit[2]) {
-        parseError.value = `${limit[0]}: expected * or ${limit[1]}-${limit[2]}, got "${field}"`
-        return null
+      for (const v of vals) {
+        expand(depth + 1, { ...current, [keys[depth] as string]: v })
       }
-      values.push(num)
     }
   }
+  expand(0, {})
 
-  return {
-    minute: values[0],
-    hour: values[1],
-    day: values[2],
-    month: values[3],
-    weekday: values[4],
+  return entries
+}
+
+function schedulesToCron(schedules: CalendarEntry[]): string {
+  if (schedules.length === 0) return '* * * * *'
+
+  if (schedules.length === 1) {
+    const s = schedules[0]!
+    const f = (v: number | undefined) => v !== undefined ? String(v) : '*'
+    return `${f(s.minute)} ${f(s.hour)} ${f(s.day)} ${f(s.month)} ${f(s.weekday)}`
   }
+
+  const fields = ['minute', 'hour', 'day', 'month', 'weekday'] as const
+  const parts: string[] = []
+  for (const field of fields) {
+    const values = [...new Set(schedules.map(s => s[field]).filter((v): v is number => v !== undefined))].sort((a, b) => a - b)
+    if (values.length === 0) {
+      parts.push('*')
+    } else if (values.length === 1) {
+      parts.push(String(values[0]))
+    } else {
+      const isRange = values.every((v, i) => i === 0 || v === values[i - 1]! + 1)
+      if (isRange) {
+        parts.push(`${values[0]}-${values[values.length - 1]}`)
+      } else {
+        parts.push(values.join(','))
+      }
+    }
+  }
+  return parts.join(' ')
 }
 
-function configToCron(config: ScheduleConfig): string {
-  const f = (v: number | undefined) => v !== undefined ? String(v) : '*'
-  return `${f(config.minute)} ${f(config.hour)} ${f(config.day)} ${f(config.month)} ${f(config.weekday)}`
-}
-
-function parsedCronToConfig(parsed: ParsedCron): ScheduleConfig {
-  const config: ScheduleConfig = {}
-  if (parsed.minute !== undefined) config.minute = parsed.minute
-  if (parsed.hour !== undefined) config.hour = parsed.hour
-  if (parsed.day !== undefined) config.day = parsed.day
-  if (parsed.month !== undefined) config.month = parsed.month
-  if (parsed.weekday !== undefined) config.weekday = parsed.weekday
-  return config
+function entriesToScheduleConfig(entries: CalendarEntry[]): ScheduleConfig {
+  return { schedules: entries.map(e => ({ ...e })) }
 }
 
 const parsedCron = computed(() => parseCron(cronExpression.value))
 
 const isEveryMinute = computed(() => {
-  if (!parsedCron.value || parseError.value) return false
-  const p = parsedCron.value
-  return p.minute === undefined && p.hour === undefined && p.day === undefined && p.month === undefined && p.weekday === undefined
+  const entries = parsedCron.value
+  if (!entries || parseError.value || entries.length !== 1) return false
+  const e = entries[0]!
+  return e.minute === undefined && e.hour === undefined && e.day === undefined && e.month === undefined && e.weekday === undefined
 })
 
 const cronDescription = computed(() => {
-  const p = parsedCron.value
-  if (!p || parseError.value) return ''
+  const entries = parsedCron.value
+  if (!entries || parseError.value) return ''
 
-  const parts: string[] = []
-  if (p.minute !== undefined) parts.push(`at minute ${String(p.minute).padStart(2, '0')}`)
-  if (p.hour !== undefined) parts.push(`at hour ${String(p.hour).padStart(2, '0')}`)
-  if (p.day !== undefined) parts.push(`on day ${p.day}`)
-  if (p.month !== undefined) parts.push(`in month ${p.month}`)
-  if (p.weekday !== undefined) parts.push(`on ${WEEKDAY_NAMES[p.weekday]}`)
+  if (entries.length <= 1) {
+    const p = entries[0]
+    if (!p) return 'Every minute'
+    const parts: string[] = []
+    if (p.minute !== undefined) parts.push(`at minute ${String(p.minute).padStart(2, '0')}`)
+    if (p.hour !== undefined) parts.push(`at hour ${String(p.hour).padStart(2, '0')}`)
+    if (p.day !== undefined) parts.push(`on day ${p.day}`)
+    if (p.month !== undefined) parts.push(`in month ${p.month}`)
+    if (p.weekday !== undefined) parts.push(`on ${WEEKDAY_NAMES[p.weekday]}`)
+    return parts.length > 0 ? parts.join(', ') : 'Every minute'
+  }
 
-  return parts.length > 0 ? parts.join(', ') : 'Every minute'
+  // Build semantic description from the cron expression fields
+  const cron = cronExpression.value.trim().split(/\s+/)
+  const fieldNames = ['minute', 'hour', 'day', 'month', 'weekday']
+  const desc: string[] = []
+  for (let i = 0; i < 5; i++) {
+    const f = cron[i]
+    if (f && f !== '*') desc.push(`${fieldNames[i]} ${f}`)
+  }
+  return `${entries.length} schedules: ${desc.join(', ')}`
+})
+
+const expandedEntries = computed(() => {
+  const entries = parsedCron.value
+  if (!entries || parseError.value) return []
+  return entries.map(e => {
+    const hh = e.hour !== undefined ? String(e.hour).padStart(2, '0') : '*'
+    const mm = e.minute !== undefined ? String(e.minute).padStart(2, '0') : '*'
+    const parts = [`${hh}:${mm}`]
+    if (e.day !== undefined) parts.push(`day ${e.day}`)
+    if (e.month !== undefined) parts.push(`month ${e.month}`)
+    if (e.weekday !== undefined) parts.push(WEEKDAY_NAMES[e.weekday] ?? `weekday ${e.weekday}`)
+    return parts.join(', ')
+  })
 })
 
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 const nextRunsPreview = computed(() => {
   if (scheduleType.value !== 'calendar') return []
-  const parsed = parsedCron.value
-  if (!parsed || parseError.value) return []
-  return getNextOccurrences(parsedCronToConfig(parsed), 3).map(formatDateTime)
+  const entries = parsedCron.value
+  if (!entries || parseError.value || entries.length === 0) return []
+  return getNextOccurrences(entriesToScheduleConfig(entries), 3).map(formatDateTime)
 })
 
 // Guard to prevent watch loop between modelValue and emit watchers
@@ -224,10 +362,23 @@ watch(() => props.modelValue, (val) => {
       intervalSeconds.value = val.interval
     } else {
       scheduleType.value = 'calendar'
-      const newCron = configToCron(val)
+      const origSchedules = val.schedules ?? []
+      const newCron = schedulesToCron(origSchedules)
       if (cronExpression.value !== newCron) {
         cronExpression.value = newCron
       }
+      // Detect lossy round-trip after cron expression settles
+      const origLen = origSchedules.length
+      nextTick(() => {
+        if (origLen > 1) {
+          const reparsed = parsedCron.value
+          cronRoundTripWarning.value = !!(reparsed && reparsed.length !== origLen)
+        } else {
+          cronRoundTripWarning.value = false
+        }
+        updatingFromProp = false
+      })
+      return
     }
   } else {
     enabled.value = false
@@ -238,6 +389,8 @@ watch(() => props.modelValue, (val) => {
 // Emit changes
 watch([enabled, scheduleType, intervalSeconds, cronExpression], () => {
   if (updatingFromProp) return
+
+  cronRoundTripWarning.value = false
 
   if (!enabled.value) {
     emit('update:modelValue', undefined)
@@ -252,9 +405,9 @@ watch([enabled, scheduleType, intervalSeconds, cronExpression], () => {
       emit('update:modelValue', undefined)
     }
   } else {
-    const parsed = parsedCron.value
-    if (!parsed || parseError.value) return
-    emit('update:modelValue', parsedCronToConfig(parsed))
+    const entries = parsedCron.value
+    if (!entries || parseError.value) return
+    emit('update:modelValue', entriesToScheduleConfig(entries))
   }
 })
 </script>
