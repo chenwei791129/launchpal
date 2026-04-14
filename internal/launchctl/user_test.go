@@ -155,6 +155,7 @@ func TestParseSchedule_MultipleIntervals(t *testing.T) {
 	schedule := parseSchedule(intervals, 0)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil")
+		return
 	}
 	if len(schedule.Schedules) != 2 {
 		t.Fatalf("expected 2 schedules, got %d", len(schedule.Schedules))
@@ -175,6 +176,7 @@ func TestParseSchedule_SingleArrayInterval(t *testing.T) {
 	schedule := parseSchedule(intervals, 0)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil")
+		return
 	}
 	if len(schedule.Schedules) != 1 {
 		t.Fatalf("expected 1 schedule, got %d", len(schedule.Schedules))
@@ -273,6 +275,7 @@ func TestParseSchedule_StartInterval(t *testing.T) {
 	schedule := parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil, expected schedule with Interval")
+		return
 	}
 	if schedule.Interval == nil {
 		t.Fatal("schedule.Interval is nil, expected 1800")
@@ -627,6 +630,7 @@ func TestParseSchedule_SingleDict(t *testing.T) {
 	schedule := parseSchedule(dict, 0)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil for single dict")
+		return
 	}
 	if len(schedule.Schedules) != 1 {
 		t.Fatalf("Schedules length = %d, want 1", len(schedule.Schedules))
@@ -1038,6 +1042,7 @@ func TestParseSchedule_DictToSchedules(t *testing.T) {
 	schedule := parseSchedule(dict, 0)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil")
+		return
 	}
 	if len(schedule.Schedules) != 1 {
 		t.Fatalf("expected 1 schedule, got %d", len(schedule.Schedules))
@@ -1064,6 +1069,7 @@ func TestParseSchedule_ArrayToSchedules(t *testing.T) {
 	schedule := parseSchedule(intervals, 0)
 	if schedule == nil {
 		t.Fatal("parseSchedule() returned nil")
+		return
 	}
 	if len(schedule.Schedules) != 3 {
 		t.Fatalf("expected 3 schedules, got %d", len(schedule.Schedules))

@@ -45,6 +45,7 @@ func TestBackupManager_Create(t *testing.T) {
 	// Verify returned Backup is non-nil with correct service name
 	if backup == nil {
 		t.Fatal("Create() returned nil backup")
+		return
 	}
 	if backup.Service != "com.test.service" {
 		t.Errorf("Create() Service = %v, want %v", backup.Service, "com.test.service")
