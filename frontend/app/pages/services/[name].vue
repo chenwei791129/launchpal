@@ -31,7 +31,7 @@
               'bg-gray-500': service?.status === 'stopped',
               'bg-yellow-500': service?.status === 'unknown'
             }"
-          ></span>
+          />
           <h1 class="text-lg font-semibold text-white">{{ service?.label || name }}</h1>
           <span
             class="px-2 py-0.5 rounded text-xs"
@@ -142,8 +142,8 @@
       <div v-if="loading" class="flex items-center justify-center h-full">
         <div class="flex items-center gap-3 text-gray-400">
           <svg class="animate-spin w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
           </svg>
           <span>Loading service...</span>
         </div>
@@ -179,7 +179,7 @@
                 v-model="editForm.program"
                 type="text"
                 class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-              />
+              >
             </div>
 
             <!-- Arguments -->
@@ -190,7 +190,7 @@
                 type="text"
                 placeholder="--daemon --port=8080"
                 class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-              />
+              >
               <p class="text-xs text-gray-500 mt-1">Space-separated arguments</p>
             </div>
 
@@ -201,17 +201,17 @@
                 v-model="editForm.workingDirectory"
                 type="text"
                 class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-              />
+              >
             </div>
 
             <!-- Checkboxes -->
             <div class="flex gap-6">
               <label class="flex items-center gap-2 text-sm text-gray-300">
-                <input v-model="editForm.runAtLoad" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+                <input v-model="editForm.runAtLoad" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
                 Run at Load
               </label>
               <label class="flex items-center gap-2 text-sm text-gray-300">
-                <input v-model="editForm.keepAlive" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+                <input v-model="editForm.keepAlive" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
                 Keep Alive
               </label>
             </div>
@@ -226,18 +226,18 @@
                     type="text"
                     placeholder="KEY"
                     class="flex-1 px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 font-mono text-sm"
-                  />
+                  >
                   <input
                     v-model="env.value"
                     :type="editEnvVisibility.has(index) ? 'text' : 'password'"
                     placeholder="Value"
                     class="flex-1 px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 text-sm"
-                  />
+                  >
                   <button
                     type="button"
-                    @click="toggleEditEnvVisibility(index)"
                     class="px-2 text-gray-500 hover:text-gray-300 transition-colors"
                     :title="editEnvVisibility.has(index) ? 'Hide value' : 'Show value'"
+                    @click="toggleEditEnvVisibility(index)"
                   >
                     <svg v-if="!editEnvVisibility.has(index)" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -249,8 +249,8 @@
                   </button>
                   <button
                     type="button"
-                    @click="removeEditEnvVar(index)"
                     class="px-2 text-gray-500 hover:text-red-400 transition-colors"
+                    @click="removeEditEnvVar(index)"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -260,22 +260,22 @@
               </div>
               <button
                 type="button"
-                @click="editEnvVars.push({ key: '', value: '' })"
                 class="mt-2 text-sm text-primary-400 hover:text-primary-300 transition-colors"
+                @click="editEnvVars.push({ key: '', value: '' })"
               >
                 + Add
               </button>
             </div>
 
             <!-- Schedule -->
-            <ScheduleForm v-model="editSchedule" v-model:wakeSystem="editWakeSystem" />
+            <ScheduleForm v-model="editSchedule" v-model:wake-system="editWakeSystem" />
 
             <!-- Save button -->
             <div class="flex items-center gap-3 pt-2">
               <button
-                @click="handleSave"
                 :disabled="saving"
                 class="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
+                @click="handleSave"
               >
                 {{ saving ? 'Saving...' : 'Save Changes' }}
               </button>
@@ -307,7 +307,7 @@
               </svg>
             </button>
           </div>
-          <div v-if="highlightedPlist" v-html="highlightedPlist" class="bg-surface-500 rounded-lg p-4 font-mono overflow-auto [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0 [&_code]:!text-sm"></div>
+          <div v-if="highlightedPlist" class="bg-surface-500 rounded-lg p-4 font-mono overflow-auto [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0 [&_code]:!text-sm" v-html="highlightedPlist"/>
           <pre v-else-if="plistContent" class="bg-surface-500 rounded-lg p-4 font-mono text-sm text-gray-300 whitespace-pre-wrap overflow-auto">{{ plistContent }}</pre>
           <div v-else class="flex items-center justify-center h-48 text-gray-500">
             <p>No plist content available</p>

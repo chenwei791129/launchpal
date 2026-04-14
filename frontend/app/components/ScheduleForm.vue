@@ -2,7 +2,7 @@
   <div class="space-y-3">
     <!-- Enable Schedule -->
     <label class="flex items-center gap-2 text-sm text-gray-300">
-      <input v-model="enabled" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+      <input v-model="enabled" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
       Enable Schedule
     </label>
 
@@ -11,21 +11,21 @@
       <div class="flex gap-2">
         <button
           type="button"
-          @click="scheduleType = 'calendar'"
           class="px-3 py-1.5 text-sm rounded transition-colors"
           :class="scheduleType === 'calendar'
             ? 'bg-primary-600 text-white'
             : 'bg-surface-400 text-gray-400 hover:text-gray-200'"
+          @click="scheduleType = 'calendar'"
         >
           Calendar Interval
         </button>
         <button
           type="button"
-          @click="scheduleType = 'interval'"
           class="px-3 py-1.5 text-sm rounded transition-colors"
           :class="scheduleType === 'interval'
             ? 'bg-primary-600 text-white'
             : 'bg-surface-400 text-gray-400 hover:text-gray-200'"
+          @click="scheduleType = 'interval'"
         >
           Fixed Interval
         </button>
@@ -39,7 +39,7 @@
           type="text"
           placeholder="* * * * *"
           class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 font-mono"
-        />
+        >
         <div class="flex items-center gap-4 text-xs text-gray-500">
           <span class="font-mono">minute hour day month weekday</span>
           <span>Use <code class="text-gray-400">*</code> for any, <code class="text-gray-400">N</code> single, <code class="text-gray-400">a-b</code> range, <code class="text-gray-400">a,b,c</code> list</span>
@@ -104,13 +104,13 @@
           min="10"
           placeholder="3600"
           class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-        />
+        >
         <p class="text-xs text-gray-500 mt-1">Minimum 10 seconds. Common values: 60 (1min), 3600 (1hr), 86400 (1day)</p>
       </div>
 
       <!-- Wake System -->
       <label class="flex items-center gap-2 text-sm text-gray-300">
-        <input v-model="wakeSystemLocal" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+        <input v-model="wakeSystemLocal" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
         Wake System
       </label>
       <p class="text-xs text-gray-500 -mt-2 pl-1">Wake the Mac from sleep when the scheduled time arrives</p>

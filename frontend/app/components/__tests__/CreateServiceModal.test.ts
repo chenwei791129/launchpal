@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { reactive } from 'vue'
-import { defineComponent, nextTick } from 'vue'
+import { reactive, defineComponent, nextTick  } from 'vue'
 
 
 const EnvVarSection = defineComponent({

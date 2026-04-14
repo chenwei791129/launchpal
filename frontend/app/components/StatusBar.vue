@@ -3,7 +3,7 @@
     <div class="flex items-center gap-4">
       <span>{{ serviceCount }} services</span>
       <span v-if="runningCount > 0" class="flex items-center gap-1">
-        <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+        <span class="w-2 h-2 bg-green-500 rounded-full"/>
         {{ runningCount }} running
       </span>
     </div>

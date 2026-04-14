@@ -68,6 +68,7 @@ A GUI for managing macOS LaunchAgents.
 ```bash
 make setup       # Install dependencies
 make test        # Run tests (Go tests + frontend vitest + TypeScript typecheck)
+make lint        # Run linters (Go golangci-lint + frontend eslint)
 make build       # Build the production app
 make build-debug # Build with devtools enabled
 make dev         # Build and launch the app

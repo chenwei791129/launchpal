@@ -1,14 +1,14 @@
 <template>
   <div v-if="isOpen" class="fixed inset-0 z-50 flex items-center justify-center">
     <!-- Backdrop -->
-    <div class="absolute inset-0 bg-black/60" @click="$emit('close')"></div>
+    <div class="absolute inset-0 bg-black/60" @click="$emit('close')"/>
 
     <!-- Modal -->
     <div class="relative bg-surface-300 rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden">
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-surface-100">
         <h2 class="text-lg font-semibold text-gray-100">{{ serviceType === 'system' ? 'Create New System Daemon' : 'Create New Service' }}</h2>
-        <button @click="$emit('close')" class="text-gray-400 hover:text-white">
+        <button class="text-gray-400 hover:text-white" @click="$emit('close')">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
           </svg>
@@ -16,7 +16,7 @@
       </div>
 
       <!-- Form -->
-      <form @submit.prevent="handleSubmit" class="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
+      <form class="p-6 space-y-4 overflow-y-auto max-h-[60vh]" @submit.prevent="handleSubmit">
         <!-- Label -->
         <div>
           <label class="block text-sm text-gray-400 mb-1">Service Label *</label>
@@ -26,7 +26,7 @@
             placeholder="com.example.myservice"
             required
             class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-          />
+          >
           <p class="text-xs text-gray-500 mt-1">Unique identifier (e.g., com.yourname.servicename)</p>
         </div>
 
@@ -39,7 +39,7 @@
             placeholder="/usr/local/bin/myapp"
             required
             class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-          />
+          >
         </div>
 
         <!-- Arguments -->
@@ -50,7 +50,7 @@
             type="text"
             placeholder="--daemon --port=8080"
             class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-          />
+          >
           <p class="text-xs text-gray-500 mt-1">Space-separated arguments</p>
         </div>
 
@@ -62,17 +62,17 @@
             type="text"
             placeholder="/Users/yourname/project"
             class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
-          />
+          >
         </div>
 
         <!-- Checkboxes -->
         <div class="flex gap-6">
           <label class="flex items-center gap-2 text-sm text-gray-300">
-            <input v-model="form.runAtLoad" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+            <input v-model="form.runAtLoad" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
             Run at Load
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-300">
-            <input v-model="form.keepAlive" type="checkbox" class="rounded bg-surface-400 border-surface-100" />
+            <input v-model="form.keepAlive" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
             Keep Alive
           </label>
         </div>
@@ -87,18 +87,18 @@
                 type="text"
                 placeholder="KEY"
                 class="flex-1 px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 font-mono text-sm"
-              />
+              >
               <input
                 v-model="env.value"
                 :type="envVisibility.has(index) ? 'text' : 'password'"
                 placeholder="Value"
                 class="flex-1 px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500 text-sm"
-              />
+              >
               <button
                 type="button"
-                @click="toggleEnvVisibility(index)"
                 class="px-2 text-gray-500 hover:text-gray-300 transition-colors"
                 :title="envVisibility.has(index) ? 'Hide value' : 'Show value'"
+                @click="toggleEnvVisibility(index)"
               >
                 <svg v-if="!envVisibility.has(index)" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -110,8 +110,8 @@
               </button>
               <button
                 type="button"
-                @click="removeEnvVar(index)"
                 class="px-2 text-gray-500 hover:text-red-400 transition-colors"
+                @click="removeEnvVar(index)"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -121,15 +121,15 @@
           </div>
           <button
             type="button"
-            @click="envVars.push({ key: '', value: '' })"
             class="mt-2 text-sm text-primary-400 hover:text-primary-300 transition-colors"
+            @click="envVars.push({ key: '', value: '' })"
           >
             + Add
           </button>
         </div>
 
         <!-- Schedule -->
-        <ScheduleForm v-model="schedule" v-model:wakeSystem="wakeSystem" />
+        <ScheduleForm v-model="schedule" v-model:wake-system="wakeSystem" />
 
         <!-- Log Paths (Auto-generated) -->
         <div v-if="form.label">
@@ -153,15 +153,15 @@
       <div class="flex justify-end gap-3 px-6 py-4 border-t border-surface-100">
         <button
           type="button"
-          @click="$emit('close')"
           class="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+          @click="$emit('close')"
         >
           Cancel
         </button>
         <button
-          @click="handleSubmit"
           :disabled="loading || !form.label || !form.program"
           class="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
+          @click="handleSubmit"
         >
           {{ loading ? 'Creating...' : 'Create Service' }}
         </button>
@@ -281,8 +281,8 @@ async function handleSubmit() {
     envVisibility.clear()
     schedule.value = undefined
     wakeSystem.value = false
-  } catch (err: any) {
-    error.value = err.message || 'Failed to create service'
+  } catch (err: unknown) {
+    error.value = err instanceof Error ? err.message : 'Failed to create service'
   } finally {
     loading.value = false
   }
