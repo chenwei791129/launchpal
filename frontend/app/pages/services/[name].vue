@@ -140,7 +140,9 @@
       <!-- Tab panels -->
       <template v-else-if="service">
         <!-- Summary tab -->
-        <ServiceSummary v-if="activeTab === 'summary'" :service="service" />
+        <div v-if="activeTab === 'summary'" class="h-full overflow-auto">
+          <ServiceSummary :service="service" />
+        </div>
 
         <!-- Edit tab (user services only) -->
         <div v-else-if="activeTab === 'edit'" class="p-6 space-y-4 h-full overflow-auto">
