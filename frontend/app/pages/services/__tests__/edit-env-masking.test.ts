@@ -117,18 +117,18 @@ describe('Edit tab — environment variable masking', () => {
     const valueInputs = wrapper.findAll('[data-testid="value-input"]')
     const toggleBtns = wrapper.findAll('[data-testid="toggle-btn"]')
 
-    expect(valueInputs[0].attributes('type')).toBe('password')
-    expect(valueInputs[1].attributes('type')).toBe('password')
+    expect(valueInputs[0]!.attributes('type')).toBe('password')
+    expect(valueInputs[1]!.attributes('type')).toBe('password')
 
     // Toggle only the first row
-    await toggleBtns[0].trigger('click')
-    expect(valueInputs[0].attributes('type')).toBe('text')
-    expect(valueInputs[1].attributes('type')).toBe('password')
+    await toggleBtns[0]!.trigger('click')
+    expect(valueInputs[0]!.attributes('type')).toBe('text')
+    expect(valueInputs[1]!.attributes('type')).toBe('password')
 
     // Toggle only the second row
-    await toggleBtns[1].trigger('click')
-    expect(valueInputs[0].attributes('type')).toBe('text')
-    expect(valueInputs[1].attributes('type')).toBe('text')
+    await toggleBtns[1]!.trigger('click')
+    expect(valueInputs[0]!.attributes('type')).toBe('text')
+    expect(valueInputs[1]!.attributes('type')).toBe('text')
   })
 
   it('eye icon is shown when value is hidden, eye-off icon when revealed', async () => {
@@ -155,7 +155,7 @@ describe('Edit tab — environment variable masking', () => {
     // Add a second row — it should be hidden
     await wrapper.find('[data-testid="add-btn"]').trigger('click')
     const valueInputs = wrapper.findAll('[data-testid="value-input"]')
-    expect(valueInputs[1].attributes('type')).toBe('password')
+    expect(valueInputs[1]!.attributes('type')).toBe('password')
   })
 
   it('deleting a row shifts visibility indices correctly', async () => {
@@ -168,17 +168,17 @@ describe('Edit tab — environment variable masking', () => {
 
     // Reveal the second row (index 1)
     const toggleBtns = wrapper.findAll('[data-testid="toggle-btn"]')
-    await toggleBtns[1].trigger('click')
-    expect(wrapper.findAll('[data-testid="value-input"]')[1].attributes('type')).toBe('text')
+    await toggleBtns[1]!.trigger('click')
+    expect(wrapper.findAll('[data-testid="value-input"]')[1]!.attributes('type')).toBe('text')
 
     // Delete the first row (index 0) — the revealed row should shift from index 1 to 0
-    await wrapper.findAll('[data-testid="delete-btn"]')[0].trigger('click')
+    await wrapper.findAll('[data-testid="delete-btn"]')[0]!.trigger('click')
 
     const valueInputs = wrapper.findAll('[data-testid="value-input"]')
     expect(valueInputs).toHaveLength(2)
     // The previously-revealed row (was index 1, now index 0) should still be revealed
-    expect(valueInputs[0].attributes('type')).toBe('text')
+    expect(valueInputs[0]!.attributes('type')).toBe('text')
     // The other row should remain masked
-    expect(valueInputs[1].attributes('type')).toBe('password')
+    expect(valueInputs[1]!.attributes('type')).toBe('password')
   })
 })

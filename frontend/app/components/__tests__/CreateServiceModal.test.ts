@@ -198,17 +198,17 @@ describe('CreateServiceModal – env var visibility masking', () => {
     const rows = wrapper.findAll('[data-testid="env-var-row"]')
     await rows[1]!.find('[data-testid="env-var-toggle"]').trigger('click')
     await nextTick()
-    expect(wrapper.findAll('[data-testid="env-var-value"]')[1].attributes('type')).toBe('text')
+    expect(wrapper.findAll('[data-testid="env-var-value"]')[1]!.attributes('type')).toBe('text')
 
     // Delete the first row (index 0)
-    await wrapper.findAll('[data-testid="env-var-remove"]')[0].trigger('click')
+    await wrapper.findAll('[data-testid="env-var-remove"]')[0]!.trigger('click')
     await nextTick()
 
     const valueInputs = wrapper.findAll('[data-testid="env-var-value"]')
     expect(valueInputs).toHaveLength(2)
     // The previously-revealed row (was index 1, now index 0) should still be revealed
-    expect(valueInputs[0].attributes('type')).toBe('text')
+    expect(valueInputs[0]!.attributes('type')).toBe('text')
     // The other row should remain masked
-    expect(valueInputs[1].attributes('type')).toBe('password')
+    expect(valueInputs[1]!.attributes('type')).toBe('password')
   })
 })
