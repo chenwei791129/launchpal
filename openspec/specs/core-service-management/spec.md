@@ -319,3 +319,46 @@ The system SHALL return `"unknown"` for empty files.
 
 - **WHEN** file content is empty
 - **THEN** detectPlistFormat returns `"unknown"`
+
+## Requirements
+
+### Requirement: Summary tab content is scrollable
+
+The Summary tab panel SHALL be vertically scrollable when content exceeds the visible area, consistent with the Edit and Inspect tabs.
+
+#### Scenario: Summary tab with overflowing content
+
+- **WHEN** a service has enough detail (environment variables, schedule, paths, logs) that the Summary tab content exceeds the viewport height
+- **THEN** a vertical scrollbar SHALL appear allowing the user to scroll to see all content
+
+#### Scenario: Summary tab with minimal content
+
+- **WHEN** a service has minimal detail that fits within the viewport
+- **THEN** no scrollbar SHALL appear and all content SHALL be visible without scrolling
+
+<!-- @trace
+source: summary-tab-scrollable
+updated: 2026-04-14
+code:
+  - frontend/app/pages/services/[name].vue
+  - internal/launchctl/user.go
+  - frontend/app/components/CreateServiceModal.vue
+  - frontend/vitest.setup.ts
+  - internal/launchctl/types.go
+  - frontend/wailsjs/go/models.ts
+  - frontend/package.json.md5
+  - CHANGELOG.md
+  - frontend/app/components/ScheduleForm.vue
+  - frontend/app/types/wails.d.ts
+  - README.md
+  - frontend/package.json
+  - frontend/vitest.config.ts
+  - frontend/app/components/ServiceSummary.vue
+  - frontend/app/composables/useNextOccurrences.ts
+tests:
+  - frontend/app/components/__tests__/ServiceSummary.test.ts
+  - frontend/app/pages/services/__tests__/edit-env-masking.test.ts
+  - frontend/app/components/__tests__/CreateServiceModal.test.ts
+  - frontend/app/composables/__tests__/useNextOccurrences.test.ts
+  - internal/launchctl/user_test.go
+-->
