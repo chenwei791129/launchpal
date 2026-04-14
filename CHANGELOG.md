@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.1](https://github.com/chenwei791129/launchpal/compare/v1.10.0...v1.10.1) (2026-04-14)
+
+
+### Bug Fixes
+
+* make Summary tab scrollable when content overflows ([e2916f4](https://github.com/chenwei791129/launchpal/commit/e2916f438c9558866c15bfa84d12c3258d735236))
+
 ## [1.10.0](https://github.com/chenwei791129/launchpal/compare/v1.9.0...v1.10.0) (2026-04-11)
 
 
