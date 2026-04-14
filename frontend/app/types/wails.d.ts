@@ -56,6 +56,7 @@ declare global {
           StartService(name: string): Promise<void>
           StopService(name: string): Promise<void>
           RestartService(name: string): Promise<void>
+          KickstartService(name: string): Promise<void>
           GetPlist(name: string): Promise<string>
           GetLogs(name: string, logType: string): Promise<string>
           CreateService(config: ServiceConfig): Promise<void>
