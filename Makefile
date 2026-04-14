@@ -31,6 +31,7 @@ test:
 # Run linter
 lint:
 	go tool golangci-lint run ./...
+	cd frontend && pnpm eslint .
 
 # Build the privhelper binary. Written to build/bin/launchpal-privhelper so
 # the wails build step (which writes build/bin/launchpal.app) can pick it up
