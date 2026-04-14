@@ -25,6 +25,8 @@ setup:
 # Run tests
 test:
 	go test -race ./...
+	cd frontend && pnpm vitest run
+	cd frontend && pnpm nuxi typecheck
 
 # Run linter
 lint:
