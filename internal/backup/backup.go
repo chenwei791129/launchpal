@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"launchpal/internal/plistutil"
 )
 
 // Backup represents a single backup entry
@@ -202,19 +204,21 @@ func (m *BackupManager) Get(serviceName, backupID string) (*Backup, error) {
 	return b, nil
 }
 
-// GetContent returns the content of a backup file
-func (m *BackupManager) GetContent(serviceName, backupID string) (string, error) {
+// GetContent returns the normalized content of a backup plist. Binary plists
+// are converted to XML via plutil so callers (e.g. diff viewers) receive
+// human-readable text. When the binary-to-XML conversion fails the raw bytes
+// are returned with ConvertFailed=true in the result.
+func (m *BackupManager) GetContent(serviceName, backupID string) (*plistutil.Content, error) {
 	backup, err := m.Get(serviceName, backupID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	content, err := os.ReadFile(backup.Path)
+	content, err := plistutil.NormalizeFromPath(backup.Path)
 	if err != nil {
-		return "", fmt.Errorf("failed to read backup content: %w", err)
+		return nil, fmt.Errorf("failed to read backup content: %w", err)
 	}
-
-	return string(content), nil
+	return content, nil
 }
 
 // Restore restores a backup to the target path

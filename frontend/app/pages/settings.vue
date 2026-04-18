@@ -108,16 +108,43 @@
                 <p class="text-white text-sm font-medium truncate">{{ backup.service }}</p>
                 <p class="text-gray-500 text-xs">{{ formatTimestamp(backup.timestamp) }}</p>
               </div>
-              <button
-                class="ml-3 px-3 py-1.5 text-xs bg-primary-600 hover:bg-primary-700 text-white rounded transition-colors"
-                @click="confirmRestore(backup)"
-              >
-                Restore
-              </button>
+              <div class="ml-3 flex items-center gap-2">
+                <span class="relative group" data-testid="diff-tooltip-wrapper">
+                  <button
+                    class="p-1.5 rounded hover:bg-surface-200 text-gray-400 hover:text-white transition-colors"
+                    title="View diff"
+                    @click="openDiff(backup)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h8M8 12h8M8 17h5M3 4h4v16H3V4zm14 0h4v16h-4V4z" />
+                    </svg>
+                  </button>
+                  <span
+                    data-testid="diff-tooltip"
+                    class="pointer-events-none absolute top-full right-0 mt-1 px-2 py-1 text-xs whitespace-nowrap bg-surface-600 text-white rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-150 z-10"
+                  >
+                    Preview diff against current plist
+                  </span>
+                </span>
+                <button
+                  class="px-3 py-1.5 text-xs bg-primary-600 hover:bg-primary-700 text-white rounded transition-colors"
+                  @click="confirmRestore(backup)"
+                >
+                  Restore
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </section>
+
+      <!-- Diff Preview Dialog -->
+      <BackupDiffDialog
+        :visible="showDiffDialog"
+        :backup="backupToDiff"
+        @close="closeDiff"
+        @restore="onDiffRestore"
+      />
 
       <!-- Restore Confirmation Dialog -->
       <Teleport to="body">
@@ -207,14 +234,9 @@
 
 <script setup lang="ts">
 import { useAppVersion } from '~/composables/useAppVersion'
-
-interface Backup {
-  id: string
-  service: string
-  timestamp: string
-  path: string
-  originalPath?: string
-}
+import BackupDiffDialog from '~/components/BackupDiffDialog.vue'
+import { formatTimestamp } from '~/utils/formatters'
+import type { Backup } from '~/types/wails'
 
 const appVersion = useAppVersion()
 const backupPath = '~/.launchpal/backups/'
@@ -223,6 +245,8 @@ const backups = ref<Backup[]>([])
 const loadingBackups = ref(false)
 const showRestoreDialog = ref(false)
 const backupToRestore = ref<Backup | null>(null)
+const showDiffDialog = ref(false)
+const backupToDiff = ref<Backup | null>(null)
 
 async function copyBackupPath() {
   try {
@@ -245,21 +269,24 @@ async function loadBackups() {
   }
 }
 
-function formatTimestamp(timestamp: string) {
-  const date = new Date(timestamp)
-  return date.toLocaleString('zh-TW', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  })
-}
-
 function confirmRestore(backup: Backup) {
   backupToRestore.value = backup
   showRestoreDialog.value = true
+}
+
+function openDiff(backup: Backup) {
+  backupToDiff.value = backup
+  showDiffDialog.value = true
+}
+
+function closeDiff() {
+  showDiffDialog.value = false
+  backupToDiff.value = null
+}
+
+function onDiffRestore(backup: Backup) {
+  closeDiff()
+  confirmRestore(backup)
 }
 
 async function executeRestore() {

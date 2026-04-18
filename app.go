@@ -8,6 +8,7 @@ import (
 
 	"launchpal/internal/backup"
 	"launchpal/internal/launchctl"
+	"launchpal/internal/plistutil"
 )
 
 // App struct
@@ -118,9 +119,18 @@ func (a *App) ListBackups(serviceName string) ([]backup.Backup, error) {
 	return a.backup.List(serviceName)
 }
 
-// GetBackupContent returns the content of a backup
-func (a *App) GetBackupContent(serviceName, backupID string) (string, error) {
+// GetBackupContent returns the normalized content of a backup plist (binary
+// plists are auto-converted to XML).
+func (a *App) GetBackupContent(serviceName, backupID string) (*plistutil.Content, error) {
 	return a.backup.GetContent(serviceName, backupID)
+}
+
+// GetCurrentPlist returns the current plist content of a user service,
+// normalized to XML. Used by the backup diff preview. Returns an empty Content
+// (not an error) when the service is absent or its plist file is missing so
+// the diff view can render the full backup as additions.
+func (a *App) GetCurrentPlist(name string) (*plistutil.Content, error) {
+	return a.manager.GetPlistContent(name)
 }
 
 // RestoreBackup restores a backup to the service's plist path

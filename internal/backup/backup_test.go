@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -119,7 +121,7 @@ func TestBackupManager_List(t *testing.T) {
 	}
 }
 
-func TestBackupManager_GetContent(t *testing.T) {
+func TestBackupManager_GetContent_XMLPlist(t *testing.T) {
 	tmpDir := t.TempDir()
 	m := &BackupManager{baseDir: tmpDir}
 
@@ -137,19 +139,94 @@ func TestBackupManager_GetContent(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	// Verify content matches original
-	content, err := m.GetContent("com.test.content", backup.ID)
+	got, err := m.GetContent("com.test.content", backup.ID)
 	if err != nil {
 		t.Fatalf("GetContent() error = %v", err)
 	}
-	if content != plistContent {
-		t.Errorf("GetContent() = %v, want %v", content, plistContent)
+	if got.Data != plistContent {
+		t.Errorf("Data = %q, want %q", got.Data, plistContent)
+	}
+	if got.Format != "xml" {
+		t.Errorf("Format = %q, want xml", got.Format)
+	}
+	if got.ConvertFailed {
+		t.Errorf("ConvertFailed = true, want false")
 	}
 
-	// Verify error for nonexistent backup ID
 	_, err = m.GetContent("com.test.content", "99999999-999999")
 	if err == nil {
 		t.Error("GetContent() with nonexistent ID should return error")
+	}
+}
+
+func TestBackupManager_GetContent_BinaryPlistConvertedToXML(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &BackupManager{baseDir: tmpDir}
+
+	xmlSource := `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict><key>Label</key><string>com.test.binary.backup</string></dict>
+</plist>`
+	xmlPath := filepath.Join(t.TempDir(), "source.plist")
+	if err := os.WriteFile(xmlPath, []byte(xmlSource), 0644); err != nil {
+		t.Fatalf("write xml: %v", err)
+	}
+	binaryPath := filepath.Join(t.TempDir(), "binary.plist")
+	cmd := exec.Command("plutil", "-convert", "binary1", "-o", binaryPath, xmlPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("plutil not available: %v (output: %s)", err, out)
+	}
+
+	backup, err := m.Create("com.test.binary", binaryPath)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	got, err := m.GetContent("com.test.binary", backup.ID)
+	if err != nil {
+		t.Fatalf("GetContent() error = %v", err)
+	}
+	if got.Format != "binary" {
+		t.Errorf("Format = %q, want binary", got.Format)
+	}
+	if got.ConvertFailed {
+		t.Errorf("ConvertFailed = true, want false")
+	}
+	if !strings.Contains(got.Data, "com.test.binary.backup") {
+		t.Errorf("converted Data missing expected label: %q", got.Data)
+	}
+	if !strings.Contains(got.Data, "<?xml") {
+		t.Errorf("converted Data not XML; got prefix: %q", got.Data)
+	}
+}
+
+func TestBackupManager_GetContent_CorruptedBinaryFallsBackToRaw(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &BackupManager{baseDir: tmpDir}
+
+	corrupt := append([]byte("bplist00"), 0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA)
+	srcFile := filepath.Join(t.TempDir(), "corrupt.plist")
+	if err := os.WriteFile(srcFile, corrupt, 0644); err != nil {
+		t.Fatalf("write corrupt: %v", err)
+	}
+
+	backup, err := m.Create("com.test.corrupt", srcFile)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	got, err := m.GetContent("com.test.corrupt", backup.ID)
+	if err != nil {
+		t.Fatalf("GetContent() error = %v", err)
+	}
+	if got.Format != "binary" {
+		t.Errorf("Format = %q, want binary", got.Format)
+	}
+	if !got.ConvertFailed {
+		t.Errorf("ConvertFailed = false, want true")
+	}
+	if got.Data != string(corrupt) {
+		t.Errorf("fallback Data does not match raw bytes")
 	}
 }
 

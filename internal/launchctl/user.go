@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"howett.net/plist"
+
+	"launchpal/internal/plistutil"
 )
 
 func guiDomain() string {
@@ -120,7 +122,7 @@ func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceSta
 		WorkingDir:  pd.WorkingDirectory,
 		Type:        ServiceTypeUser,
 		ReadOnly:    false,
-		PlistFormat: detectPlistFormat(data),
+		PlistFormat: plistutil.DetectFormat(data),
 	}
 
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
@@ -475,6 +477,23 @@ func (m *UserManager) GetPlist(name string) (string, error) {
 	}
 
 	return string(data), nil
+}
+
+// GetPlistContent returns the current plist content normalized to XML. Binary
+// plists are converted via plutil. If the plist file does not exist an empty
+// Content is returned with no error so callers (e.g. the diff preview) can
+// represent the service as having no current version.
+func (m *UserManager) GetPlistContent(name string) (*plistutil.Content, error) {
+	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
+
+	content, err := plistutil.NormalizeFromPath(plistPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &plistutil.Content{}, nil
+		}
+		return nil, fmt.Errorf("failed to read plist file: %w", err)
+	}
+	return content, nil
 }
 
 // GetLogs returns stdout or stderr log content

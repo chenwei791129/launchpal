@@ -155,30 +155,3 @@ func readLogTail(path string) (string, error) {
 
 	return string(data), nil
 }
-
-// detectPlistFormat detects whether a plist file is XML or binary format
-func detectPlistFormat(data []byte) string {
-	if len(data) == 0 {
-		return "unknown"
-	}
-	// Binary plist starts with "bplist"
-	if len(data) >= 6 && string(data[0:6]) == "bplist" {
-		return "binary"
-	}
-	// XML plist typically starts with "<?xml" or whitespace followed by "<?xml"
-	for i := 0; i < len(data) && i < 100; i++ {
-		if data[i] == '<' {
-			if len(data) > i+5 && string(data[i:i+5]) == "<?xml" {
-				return "xml"
-			}
-			break
-		}
-	}
-	// If we see printable ASCII, likely XML
-	for i := 0; i < len(data) && i < 100; i++ {
-		if data[i] < 32 && data[i] != '\n' && data[i] != '\r' && data[i] != '\t' {
-			return "binary"
-		}
-	}
-	return "xml"
-}

@@ -18,6 +18,10 @@ export function GetBackupContent(arg1, arg2) {
   return window['go']['main']['App']['GetBackupContent'](arg1, arg2);
 }
 
+export function GetCurrentPlist(arg1) {
+  return window['go']['main']['App']['GetCurrentPlist'](arg1);
+}
+
 export function GetLogs(arg1, arg2) {
   return window['go']['main']['App']['GetLogs'](arg1, arg2);
 }

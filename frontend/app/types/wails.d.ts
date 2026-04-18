@@ -32,6 +32,20 @@ export interface ScheduleConfig {
   interval?: number
 }
 
+export interface PlistContent {
+  data: string
+  format: 'xml' | 'binary' | 'unknown' | ''
+  convertFailed: boolean
+}
+
+export interface Backup {
+  id: string
+  service: string
+  timestamp: string
+  path: string
+  originalPath?: string
+}
+
 export interface ServiceConfig {
   label: string
   program?: string
@@ -67,9 +81,10 @@ declare global {
           GetSystemService(name: string, serviceType: string): Promise<Service>
           GetSystemPlist(name: string, serviceType: string): Promise<string>
           GetSystemLogs(name: string, serviceType: string, logType: string): Promise<string>
-          ListAllBackups(): Promise<{ id: string; service: string; timestamp: string; path: string; originalPath?: string }[]>
-          ListBackups(serviceName: string): Promise<{ id: string; service: string; timestamp: string; path: string; originalPath?: string }[]>
-          GetBackupContent(serviceName: string, backupID: string): Promise<string>
+          ListAllBackups(): Promise<Backup[]>
+          ListBackups(serviceName: string): Promise<Backup[]>
+          GetBackupContent(serviceName: string, backupID: string): Promise<PlistContent>
+          GetCurrentPlist(name: string): Promise<PlistContent>
           RestoreBackup(serviceName: string, backupID: string): Promise<void>
           GetVersion(): Promise<string>
           CheckPermissions(): Promise<Record<string, boolean>>

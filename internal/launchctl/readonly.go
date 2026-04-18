@@ -3,11 +3,12 @@ package launchctl
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"howett.net/plist"
+
+	"launchpal/internal/plistutil"
 )
 
 // readOnlyManager provides shared read-only operations for system service managers
@@ -82,7 +83,7 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 		WorkingDir:  pd.WorkingDirectory,
 		Type:        m.serviceType,
 		ReadOnly:    true,
-		PlistFormat: detectPlistFormat(data),
+		PlistFormat: plistutil.DetectFormat(data),
 	}
 
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
@@ -104,20 +105,17 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 	return service, nil
 }
 
-// getPlist returns the raw plist content (auto-converts binary to XML)
 func (m *readOnlyManager) getPlist(name string) (string, error) {
 	plistPath := filepath.Join(m.basePath, name+".plist")
 
-	cmd := exec.Command("plutil", "-convert", "xml1", "-o", "-", plistPath)
-	output, err := cmd.Output()
+	content, err := plistutil.NormalizeFromPath(plistPath)
 	if err != nil {
 		if os.IsPermission(err) || strings.Contains(err.Error(), "permission denied") {
 			return "", fmt.Errorf("permission denied reading %s", name)
 		}
 		return "", fmt.Errorf("failed to read plist file: %w", err)
 	}
-
-	return string(output), nil
+	return content.Data, nil
 }
 
 // getLogs returns stdout or stderr log content

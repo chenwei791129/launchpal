@@ -213,3 +213,24 @@ export namespace launchctl {
 
 }
 
+export namespace plistutil {
+	
+	export class Content {
+	    data: string;
+	    format: string;
+	    convertFailed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Content(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.data = source["data"];
+	        this.format = source["format"];
+	        this.convertFailed = source["convertFailed"];
+	    }
+	}
+
+}
+

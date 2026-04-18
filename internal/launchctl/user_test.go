@@ -3,11 +3,14 @@ package launchctl
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"howett.net/plist"
+
+	"launchpal/internal/plistutil"
 )
 
 func TestUserManager_List(t *testing.T) {
@@ -31,6 +34,85 @@ func TestUserManager_GetLaunchAgentsPath(t *testing.T) {
 
 	if path != expected {
 		t.Errorf("getLaunchAgentsPath() = %v, want %v", path, expected)
+	}
+}
+
+func TestUserManager_GetPlistContent_XMLFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	xml := `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict><key>Label</key><string>com.test.current</string></dict>
+</plist>`
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.current.plist"), []byte(xml), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := m.GetPlistContent("com.test.current")
+	if err != nil {
+		t.Fatalf("GetPlistContent error = %v", err)
+	}
+	if got.Data != xml {
+		t.Errorf("Data mismatch: %q", got.Data)
+	}
+	if got.Format != "xml" {
+		t.Errorf("Format = %q, want xml", got.Format)
+	}
+	if got.ConvertFailed {
+		t.Errorf("ConvertFailed = true, want false")
+	}
+}
+
+func TestUserManager_GetPlistContent_BinaryFileConvertedToXML(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	xmlSource := `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict><key>Label</key><string>com.test.binary.current</string></dict>
+</plist>`
+	xmlPath := filepath.Join(t.TempDir(), "source.plist")
+	if err := os.WriteFile(xmlPath, []byte(xmlSource), 0644); err != nil {
+		t.Fatalf("write xml: %v", err)
+	}
+	binaryPath := filepath.Join(tmpDir, "com.test.binary.current.plist")
+	cmd := exec.Command("plutil", "-convert", "binary1", "-o", binaryPath, xmlPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Skipf("plutil not available: %v (output: %s)", err, out)
+	}
+
+	got, err := m.GetPlistContent("com.test.binary.current")
+	if err != nil {
+		t.Fatalf("GetPlistContent error = %v", err)
+	}
+	if got.Format != "binary" {
+		t.Errorf("Format = %q, want binary", got.Format)
+	}
+	if got.ConvertFailed {
+		t.Errorf("ConvertFailed = true, want false")
+	}
+	if !strings.Contains(got.Data, "com.test.binary.current") {
+		t.Errorf("Data missing label: %q", got.Data)
+	}
+}
+
+func TestUserManager_GetPlistContent_MissingFileReturnsEmptyNoError(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	got, err := m.GetPlistContent("com.test.absent")
+	if err != nil {
+		t.Fatalf("GetPlistContent error = %v (expected nil)", err)
+	}
+	if got == nil {
+		t.Fatal("GetPlistContent returned nil Content")
+	}
+	if got.Data != "" {
+		t.Errorf("Data = %q, want empty", got.Data)
+	}
+	if got.Format != "" && got.Format != "unknown" {
+		t.Errorf("Format = %q, want empty or unknown", got.Format)
 	}
 }
 
@@ -200,7 +282,6 @@ func TestParseSchedule_StartInterval(t *testing.T) {
 	}
 }
 
-
 func TestUserManager_Get(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -331,7 +412,6 @@ func TestUserManager_Get_KeepAliveDict(t *testing.T) {
 	}
 }
 
-
 func TestDetectPlistFormat(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -357,14 +437,13 @@ func TestDetectPlistFormat(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := detectPlistFormat(tt.data)
+			result := plistutil.DetectFormat(tt.data)
 			if result != tt.expected {
 				t.Errorf("detectPlistFormat() = %q, want %q", result, tt.expected)
 			}
 		})
 	}
 }
-
 
 func TestUserManager_GetPlist(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -479,7 +558,6 @@ func TestUserManager_GetLogs(t *testing.T) {
 	}
 }
 
-
 func TestUserManager_CRUD(t *testing.T) {
 	tmpDir := t.TempDir()
 	m := &UserManager{launchAgentsPath: tmpDir}
@@ -538,7 +616,6 @@ func TestUserManager_CRUD(t *testing.T) {
 		t.Errorf("Delete() error = %q, want it to contain 'not found'", err.Error())
 	}
 }
-
 
 func TestParseSchedule_SingleDict(t *testing.T) {
 	// Single dict (not wrapped in an array)
