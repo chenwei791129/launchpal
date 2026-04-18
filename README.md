@@ -18,6 +18,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 📄 Inspect plist files with syntax highlighting
 - 📂 Reveal plist files in Finder with one click
 - 💾 Automatic backup before modifications
+- 🔍 Side-by-side diff preview before restoring a backup (binary plists are auto-converted to XML)
 
 ## Screenshots
 

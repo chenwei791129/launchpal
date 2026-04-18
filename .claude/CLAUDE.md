@@ -21,8 +21,10 @@ macOS LaunchAgent 圖形化管理工具。
 │   │   ├── user.go        # UserManager 實作（~/Library/LaunchAgents）
 │   │   ├── system.go      # SystemManager 實作（/Library/LaunchDaemons，唯讀）
 │   │   └── apple_system.go # AppleSystemManager 實作（/System/Library/LaunchDaemons，唯讀）
-│   └── backup/            # 備份管理
-│       └── backup.go      # BackupManager 實作
+│   ├── backup/            # 備份管理
+│   │   └── backup.go      # BackupManager 實作
+│   └── plistutil/         # plist 格式偵測與 binary→XML 正規化（供 backup、launchctl 共用）
+│       └── plistutil.go   # DetectFormat、NormalizeFromPath
 ├── frontend/              # Nuxt 4 前端專案
 │   ├── app/
 │   │   ├── pages/         # 頁面（index, system, apple-system, settings, services/[name]）
@@ -55,6 +57,7 @@ make clean       # 清除建置產物
   - `<timestamp>.meta.json` - 原始路徑等 metadata
 - 自動備份時機：Update、Delete 前
 - 保留數量：最近 10 個
+- Settings → Backup History 每一筆可透過 Diff 按鈕開啟 **Side-by-side diff 預覽**（左 current / 右 backup，紅/綠配色）再決定是否 Restore；binary plist 會由後端自動轉 XML，若 service 已刪除則左欄全為 placeholder、右欄整份為新增。Diff 行上限 10,000 列，超過顯示截斷提示。
 
 ## 服務類型
 
