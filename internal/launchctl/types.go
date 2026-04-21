@@ -13,24 +13,25 @@ import (
 
 // Service represents a LaunchAgent service
 type Service struct {
-	Name        string            `json:"name"`
-	Label       string            `json:"label"`
-	Status      string            `json:"status"` // "running", "stopped", "unknown"
-	PID         int               `json:"pid,omitempty"`
-	Path        string            `json:"path"`
-	Program     string            `json:"program,omitempty"`
-	Arguments   []string          `json:"arguments,omitempty"`
-	RunAtLoad   bool              `json:"runAtLoad"`
-	KeepAlive   bool              `json:"keepAlive"`
-	Schedule    *ScheduleConfig   `json:"schedule,omitempty"`
-	Environment map[string]string `json:"environment,omitempty"`
-	StdoutPath  string            `json:"stdoutPath,omitempty"`
-	StderrPath  string            `json:"stderrPath,omitempty"`
-	WakeSystem  bool              `json:"wakeSystem"`
-	WorkingDir  string            `json:"workingDirectory,omitempty"`
-	Type        string            `json:"type"`        // "user", "system", "apple-system"
-	ReadOnly    bool              `json:"readOnly"`    // true for system services
-	PlistFormat string            `json:"plistFormat"` // "xml", "binary", "unknown"
+	Name             string            `json:"name"`
+	Label            string            `json:"label"`
+	Status           string            `json:"status"` // "running", "stopped", "unknown"
+	PID              int               `json:"pid,omitempty"`
+	Path             string            `json:"path"`
+	Program          string            `json:"program,omitempty"`
+	Arguments        []string          `json:"arguments,omitempty"`
+	RunAtLoad        bool              `json:"runAtLoad"`
+	KeepAlive        bool              `json:"keepAlive"`
+	Schedule         *ScheduleConfig   `json:"schedule,omitempty"`
+	Environment      map[string]string `json:"environment,omitempty"`
+	StdoutPath       string            `json:"stdoutPath,omitempty"`
+	StderrPath       string            `json:"stderrPath,omitempty"`
+	WakeSystem       bool              `json:"wakeSystem"`
+	WorkingDir       string            `json:"workingDirectory,omitempty"`
+	Type             string            `json:"type"`             // "user", "system", "apple-system"
+	ReadOnly         bool              `json:"readOnly"`         // true for system services
+	PlistFormat      string            `json:"plistFormat"`      // "xml", "binary", "unknown"
+	StatusConfidence string            `json:"statusConfidence"` // "verified", "unverified"
 }
 
 // CalendarEntry represents a single StartCalendarInterval entry
@@ -76,6 +77,12 @@ const (
 	StatusStopped = "stopped"
 	StatusLoaded  = "loaded"
 	StatusUnknown = "unknown"
+)
+
+// Status confidence constants
+const (
+	ConfidenceVerified   = "verified"
+	ConfidenceUnverified = "unverified"
 )
 
 // Log type constants

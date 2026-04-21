@@ -27,8 +27,10 @@ func (m *readOnlyManager) list() ([]Service, error) {
 		return nil, fmt.Errorf("failed to read LaunchDaemons directory: %w", err)
 	}
 
-	// Batch-fetch all service statuses with a single launchctl list call
 	statusMap := getBatchServiceStatus()
+	// One `ps` invocation shared across every heuristic detection call in this
+	// List, instead of O(candidates * services) forks.
+	ppidTable, _ := readAllPPIDsFn()
 
 	services := []Service{}
 	for _, entry := range entries {
@@ -37,7 +39,7 @@ func (m *readOnlyManager) list() ([]Service, error) {
 		}
 
 		name := strings.TrimSuffix(entry.Name(), ".plist")
-		service, err := m.getWithStatus(name, statusMap)
+		service, err := m.getWithStatus(name, statusMap, ppidTable)
 		if err != nil {
 			continue
 		}
@@ -49,11 +51,12 @@ func (m *readOnlyManager) list() ([]Service, error) {
 
 // get returns a single service by name (queries status individually)
 func (m *readOnlyManager) get(name string) (*Service, error) {
-	return m.getWithStatus(name, nil)
+	return m.getWithStatus(name, nil, nil)
 }
 
-// getWithStatus returns a service, using pre-fetched statusMap if provided
-func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]serviceStatus) (*Service, error) {
+// getWithStatus returns a service, using pre-fetched statusMap and ppidTable
+// if provided (both may be nil for single-service queries).
+func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]serviceStatus, ppidTable map[int]int) (*Service, error) {
 	plistPath := filepath.Join(m.basePath, name+".plist")
 
 	data, err := os.ReadFile(plistPath)
@@ -90,17 +93,19 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 	service.WakeSystem = pd.WakeSystem
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
-	// Use pre-fetched status if available, otherwise query individually
+	// Resolve status/PID/confidence. For system-domain managers, `launchctl
+	// list` (which powers statusMap) only sees gui/<uid> services, so misses
+	// are the common case — fall through to heuristic detection instead of
+	// defaulting to Stopped.
 	if statusMap != nil {
 		if s, ok := statusMap[pd.Label]; ok {
 			service.Status = s.status
 			service.PID = s.pid
-		} else {
-			service.Status = StatusStopped
+			service.StatusConfidence = ConfidenceVerified
+			return service, nil
 		}
-	} else {
-		service.Status, service.PID = getServiceStatus(pd.Label)
 	}
+	service.Status, service.PID, service.StatusConfidence = DetectSystemServiceStatus(pd, ppidTable)
 
 	return service, nil
 }

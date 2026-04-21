@@ -55,6 +55,7 @@ type plistData struct {
 	Label                 string            `plist:"Label"`
 	Program               string            `plist:"Program"`
 	ProgramArguments      []string          `plist:"ProgramArguments"`
+	UserName              string            `plist:"UserName"`
 	RunAtLoad             bool              `plist:"RunAtLoad"`
 	KeepAlive             interface{}       `plist:"KeepAlive"`
 	StartCalendarInterval interface{}       `plist:"StartCalendarInterval"`
@@ -121,19 +122,20 @@ func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceSta
 	}
 
 	service := &Service{
-		Name:        name,
-		Label:       pd.Label,
-		Path:        plistPath,
-		Program:     pd.Program,
-		Arguments:   pd.ProgramArguments,
-		RunAtLoad:   pd.RunAtLoad,
-		Environment: pd.EnvironmentVariables,
-		StdoutPath:  pd.StandardOutPath,
-		StderrPath:  pd.StandardErrorPath,
-		WorkingDir:  pd.WorkingDirectory,
-		Type:        ServiceTypeUser,
-		ReadOnly:    false,
-		PlistFormat: plistutil.DetectFormat(data),
+		Name:             name,
+		Label:            pd.Label,
+		Path:             plistPath,
+		Program:          pd.Program,
+		Arguments:        pd.ProgramArguments,
+		RunAtLoad:        pd.RunAtLoad,
+		Environment:      pd.EnvironmentVariables,
+		StdoutPath:       pd.StandardOutPath,
+		StderrPath:       pd.StandardErrorPath,
+		WorkingDir:       pd.WorkingDirectory,
+		Type:             ServiceTypeUser,
+		ReadOnly:         false,
+		PlistFormat:      plistutil.DetectFormat(data),
+		StatusConfidence: ConfidenceVerified,
 	}
 
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
@@ -286,12 +288,9 @@ func getServiceStatus(label string) (string, int) {
 		}
 	}
 
-	// Fallback: use pgrep to check if process is running
-	// Skip common shells as they would match unrelated processes
-	commonShells := map[string]bool{
-		"/bin/bash": true, "/bin/sh": true, "/bin/zsh": true,
-		"/usr/bin/bash": true, "/usr/bin/sh": true, "/usr/bin/zsh": true,
-	}
+	// Fallback: use pgrep to check if process is running.
+	// Skip common shells as they would match unrelated processes;
+	// commonShells lives in status_detect.go and is shared across managers.
 	if program != "" && !commonShells[program] {
 		pgrepCmd := exec.Command("pgrep", "-f", program)
 		if pgrepOutput, err := pgrepCmd.Output(); err == nil {
