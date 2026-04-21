@@ -52,22 +52,43 @@ AppleSystemManager.Get SHALL read and parse a plist from `/System/Library/Launch
 Both SHALL set the `Type` field to their respective type (`"system"` or `"apple-system"`).
 Both SHALL set `ReadOnly` to `true`.
 Both SHALL detect plist format (xml or binary) and populate `PlistFormat`.
+Both SHALL populate `Status`, `PID`, and `StatusConfidence` according to the `system-daemon-status-detection` capability.
 Both SHALL return a permission denied error when the file is not readable.
 
 #### Scenario: Get a system service
 
 - **WHEN** Get is called with a valid service name in `/Library/LaunchDaemons`
-- **THEN** the returned Service has Type=`"system"`, ReadOnly=`true`, and all parsed plist fields populated
+- **THEN** the returned Service has Type=`"system"`, ReadOnly=`true`, all parsed plist fields populated, and Status/PID/StatusConfidence populated per heuristic detection
 
 #### Scenario: Get an Apple system service
 
 - **WHEN** Get is called with a valid service name in `/System/Library/LaunchDaemons`
-- **THEN** the returned Service has Type=`"apple-system"`, ReadOnly=`true`, and all parsed plist fields populated
+- **THEN** the returned Service has Type=`"apple-system"`, ReadOnly=`true`, all parsed plist fields populated, and Status/PID/StatusConfidence populated per heuristic detection
 
 #### Scenario: Permission denied on Get
 
 - **WHEN** Get is called for a plist file the user cannot read
 - **THEN** the system returns an error containing "permission denied"
+
+
+<!-- @trace
+source: system-daemon-status-detection
+updated: 2026-04-21
+code:
+  - internal/launchctl/user.go
+  - README.md
+  - internal/launchctl/readonly.go
+  - frontend/app/pages/services/[name].vue
+  - frontend/wailsjs/go/models.ts
+  - internal/launchctl/status_detect.go
+  - frontend/app/types/wails.d.ts
+  - internal/launchctl/types.go
+  - frontend/app/components/ServiceRow.vue
+  - frontend/app/components/StatusConfidenceIcon.vue
+tests:
+  - internal/launchctl/readonly_test.go
+  - internal/launchctl/status_detect_test.go
+-->
 
 ### Requirement: Get raw plist content with format conversion
 
@@ -125,3 +146,5 @@ The Service struct SHALL include a `ReadOnly` field set to `false` for user serv
 
 - **WHEN** a service is loaded from AppleSystemManager
 - **THEN** Type is `"apple-system"` and ReadOnly is `true`
+
+## Requirements
