@@ -2,6 +2,17 @@
 
 macOS LaunchAgent 圖形化管理工具。
 
+## UI 語言
+
+**前端 UI 全部文字（含 tooltip、label、button、description、alert、error message）必須使用英文。** 即使討論或 spec 使用中文，實際寫入 Vue 模板或 TypeScript 字串字面量時一律翻成英文。
+
+- **原因**：全 UI（"System Services"、"Read-only"、"Stop service" 等）都是英文，中文字串會破壞一致性；本專案尚未引入 i18n 框架，寫死中文等於永久鎖死該語系。
+- **套用時機**：
+  - 新增 `.vue` template 文字或 `<script setup>` 內的字串字面量（tooltip、`alert()`、`throw new Error()`、`label`）
+  - 改既有字串時若發現中文，順手翻成英文
+  - 從 spec/tasks（中文）實作 UI 時，翻譯而非直接貼上
+- **例外**：`settings.vue` 等若未來加入 i18n 才可支援中文，屆時英文仍為預設 locale。
+
 ## 技術棧
 
 - **後端**: Go + Wails v2
