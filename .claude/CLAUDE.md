@@ -1,155 +1,162 @@
 # LaunchPal
 
-macOS LaunchAgent 圖形化管理工具。
+A GUI for managing macOS LaunchAgents.
 
-## UI 語言
+## UI Language
 
-**前端 UI 全部文字（含 tooltip、label、button、description、alert、error message）必須使用英文。** 即使討論或 spec 使用中文，實際寫入 Vue 模板或 TypeScript 字串字面量時一律翻成英文。
+**Every user-facing string in the frontend (tooltips, labels, buttons, descriptions, alerts, error messages) MUST be written in English.** Even when the discussion, spec, or task notes are in Chinese, translate the text before putting it into a Vue template or TypeScript string literal.
 
-- **原因**：全 UI（"System Services"、"Read-only"、"Stop service" 等）都是英文，中文字串會破壞一致性；本專案尚未引入 i18n 框架，寫死中文等於永久鎖死該語系。
-- **套用時機**：
-  - 新增 `.vue` template 文字或 `<script setup>` 內的字串字面量（tooltip、`alert()`、`throw new Error()`、`label`）
-  - 改既有字串時若發現中文，順手翻成英文
-  - 從 spec/tasks（中文）實作 UI 時，翻譯而非直接貼上
-- **例外**：`settings.vue` 等若未來加入 i18n 才可支援中文，屆時英文仍為預設 locale。
+- **Why**: The rest of the UI ("System Services", "Read-only", "Stop service", etc.) is in English. Mixing in Chinese strings breaks consistency, and because this project has no i18n framework yet, hard-coding Chinese permanently locks the wording to that language.
+- **When it applies**:
+  - Adding text in a `.vue` template or a string literal in `<script setup>` (tooltip, `alert()`, `throw new Error()`, `label`, etc.).
+  - While editing existing strings: if you notice Chinese, translate it opportunistically.
+  - When implementing UI from a spec or tasks file written in Chinese: translate the wording, do not paste it verbatim.
+- **Exception**: Chinese is acceptable only once an i18n framework is introduced; English must remain the default locale.
 
-## 技術棧
+## Tech Stack
 
-- **後端**: Go + Wails v2
-- **前端**: Nuxt 4 + Vue 3 + TailwindCSS
-- **平台**: macOS only（launchctl 是 macOS 專屬）
+- **Backend**: Go + Wails v2
+- **Frontend**: Nuxt 4 + Vue 3 + TailwindCSS
+- **Platform**: macOS only (`launchctl` is macOS-specific)
 
-## 目錄結構
+## Directory Layout
 
 ```
-├── app.go                 # Wails 應用程式綁定（前端呼叫的 API）
-├── main.go                # 應用程式入口
-├── Makefile               # 建置指令
+├── app.go                    # Wails bindings exposed to the frontend
+├── main.go                   # Application entry point
+├── Makefile                  # Build recipes
 ├── internal/
-│   ├── launchctl/         # launchctl 命令封裝
-│   │   ├── types.go       # Service, ServiceConfig 等型別（含 StatusConfidence）
-│   │   ├── manager.go     # Manager interface
-│   │   ├── user.go        # UserManager 實作（~/Library/LaunchAgents）
-│   │   ├── system.go      # SystemManager 實作（/Library/LaunchDaemons，唯讀）
-│   │   ├── apple_system.go # AppleSystemManager 實作（/System/Library/LaunchDaemons，唯讀）
-│   │   └── status_detect.go # System domain 啟發式狀態偵測（pgrep -u + ppid=1 過濾）
-│   ├── backup/            # 備份管理
-│   │   └── backup.go      # BackupManager 實作
-│   └── plistutil/         # plist 格式偵測與 binary→XML 正規化（供 backup、launchctl 共用）
-│       └── plistutil.go   # DetectFormat、NormalizeFromPath
-├── frontend/              # Nuxt 4 前端專案
+│   ├── launchctl/            # launchctl command wrappers
+│   │   ├── types.go          # Service, ServiceConfig, and related types (includes StatusConfidence)
+│   │   ├── manager.go        # Manager interface
+│   │   ├── user.go           # UserManager (~/Library/LaunchAgents)
+│   │   ├── system.go         # SystemManager (/Library/LaunchDaemons, read-only)
+│   │   ├── apple_system.go   # AppleSystemManager (/System/Library/LaunchDaemons, read-only)
+│   │   ├── readonly.go       # Shared read-only logic for SystemManager and AppleSystemManager
+│   │   └── status_detect.go  # Heuristic status detection for the system domain (pgrep -u + ppid=1 filter)
+│   ├── backup/               # Backup management
+│   │   └── backup.go         # BackupManager implementation
+│   └── plistutil/            # plist format detection and binary→XML normalization (shared by backup, launchctl)
+│       └── plistutil.go      # DetectFormat, NormalizeFromPath
+├── frontend/                 # Nuxt 4 frontend project
 │   ├── app/
-│   │   ├── pages/         # 頁面（index, system, apple-system, settings, services/[name]）
-│   │   ├── components/    # Vue 元件
-│   │   ├── composables/   # 組合式函數
-│   │   └── types/         # TypeScript 型別
+│   │   ├── app.vue           # Root component
+│   │   ├── pages/            # Pages (index, system, apple-system, settings, services/[name])
+│   │   ├── components/       # Vue components
+│   │   ├── composables/      # Composables
+│   │   ├── layouts/          # Layouts
+│   │   ├── assets/           # Static assets
+│   │   ├── utils/            # Utility helpers
+│   │   └── types/            # TypeScript types
 │   └── nuxt.config.ts
 ├── build/
-│   └── darwin/            # macOS 建置設定
-└── wails.json             # Wails 專案設定
+│   └── darwin/               # macOS build configuration
+└── wails.json                # Wails project configuration
 ```
 
-## 開發指令
+## Development Commands
 
 ```bash
-make setup       # 安裝依賴
-make test        # 執行測試
-make build       # 建置 production app
-make build-debug # 建置含 devtools
-make dev         # 建置並開啟 app
-make dmg         # 建置並打包為 DMG
-make clean       # 清除建置產物
+make setup       # Install dependencies
+make test        # Run tests
+make build       # Build the production app
+make build-debug # Build with devtools enabled
+make dev         # Build and launch the app
+make dmg         # Build and package as DMG
+make clean       # Remove build artifacts
 ```
 
-## 備份機制
+## Backup Mechanism
 
-- 備份目錄：`~/.launchpal/backups/<service-name>/`
-- 備份格式：
-  - `<timestamp>.plist` - plist 備份檔
-  - `<timestamp>.meta.json` - 原始路徑等 metadata
-- 自動備份時機：Update、Delete 前
-- 保留數量：最近 10 個
-- Settings → Backup History 每一筆可透過 Diff 按鈕開啟 **Side-by-side diff 預覽**（左 current / 右 backup，紅/綠配色）再決定是否 Restore；binary plist 會由後端自動轉 XML，若 service 已刪除則左欄全為 placeholder、右欄整份為新增。Diff 行上限 10,000 列，超過顯示截斷提示。
+- Backup directory: `~/.launchpal/backups/<service-name>/`
+- Backup files:
+  - `<timestamp>.plist` — plist backup
+  - `<timestamp>.meta.json` — metadata (original path, etc.)
+- Automatic backups are taken before `Update` and `Delete`.
+- Retention: the 10 most recent backups.
+- Settings → Backup History exposes a Diff button on each entry that opens a **side-by-side diff preview** (current on the left, backup on the right, red/green coloring) before the user decides whether to Restore. Binary plists are auto-converted to XML by the backend; if the service has been deleted, the left column renders as placeholders and the right column appears as pure additions. The diff is capped at 10,000 lines, and a truncation notice is shown beyond that.
 
-## 服務類型
+## Service Types
 
-LaunchPal 支援三種類型的服務：
+LaunchPal supports three service categories:
 
 1. **User Services** (`~/Library/LaunchAgents`)
-   - 完整的讀寫權限
-   - 可以啟動、停止、建立、更新、刪除服務
-   - 支援立即執行（Kickstart：`launchctl kickstart -k`）
-   - 支援排程設定（StartCalendarInterval / StartInterval）
-   - Cron 語法支援範圍 `a-b`、列舉 `a,b,c`，自動笛卡爾積展開為多筆 StartCalendarInterval（上限 50 筆）
-   - 支援環境變數設定（EnvironmentVariables）
+   - Full read/write access.
+   - Can start, stop, create, update, and delete services.
+   - Supports immediate execution (Kickstart: `launchctl kickstart -k`).
+   - Supports scheduling (`StartCalendarInterval` / `StartInterval`).
+   - Cron syntax accepts ranges (`a-b`) and enumerations (`a,b,c`) and is expanded into the Cartesian product of `StartCalendarInterval` entries (capped at 50 entries).
+   - Supports environment variables (`EnvironmentVariables`).
 
 2. **System Services** (`/Library/LaunchDaemons`)
-   - 唯讀模式
-   - 可以查看服務資訊、狀態、plist 內容和 logs
-   - 第三方系統級服務
+   - Read-only.
+   - Can view service information, status, plist contents, and logs.
+   - Third-party system-level services.
 
 3. **Apple System Services** (`/System/Library/LaunchDaemons`)
-   - 唯讀模式
-   - 可以查看服務資訊、狀態、plist 內容和 logs
-   - macOS 系統內建服務
-   - 許多服務使用 binary plist 格式，會自動轉換為 XML 顯示
+   - Read-only.
+   - Can view service information, status, plist contents, and logs.
+   - macOS built-in services.
+   - Many of these use the binary plist format and are automatically converted to XML for display.
 
-## 狀態檢測邏輯
+## Status Detection Logic
 
 ### User domain (`UserManager`)
 
-1. 先用 `launchctl list <label>` 取得服務資訊
-2. 從輸出中解析 PID（若有則為 running）
-3. 若無 PID，用 `pgrep -f <program>` 作為 fallback
-4. 跳過常見 shell（bash, sh, zsh）的 pgrep 檢測以避免誤判
-5. `StatusConfidence` 永遠為 `verified`（`launchctl list` 在 user domain 為 authoritative）
+1. Query `launchctl list <label>` for the service entry.
+2. Parse a PID from the output (present ⇒ running).
+3. If no PID, fall back to `pgrep -f <program>`.
+4. Skip the pgrep fallback for common shells (bash, sh, zsh) to avoid false matches.
+5. `StatusConfidence` is always `verified` because `launchctl list` is authoritative in the user domain.
 
 ### System domain (`SystemManager` / `AppleSystemManager`)
 
-`launchctl list` 在 user context 下只看得到 `gui/<uid>` domain 的服務，完全查不到 `/Library/LaunchDaemons` 與 `/System/Library/LaunchDaemons` 的 system daemon，故改用 `status_detect.go` 的啟發式偵測：
+`launchctl list` in a user context only surfaces services in the `gui/<uid>` domain; it cannot see system daemons under `/Library/LaunchDaemons` or `/System/Library/LaunchDaemons`. `status_detect.go` performs a heuristic detection instead:
 
-1. 從 plist 取得 `UserName`（預設 `root`）與 `program`（`Program` 優先，否則 `ProgramArguments[0]`）
-2. `program` 為空 → `unknown` / PID 0 / `unverified`
-3. `program` 落在 `commonShells` → `loaded` / PID 0 / `verified`
-4. 執行 `pgrep -u <UserName> -f <program>` 取得候選 PID
-5. 用 `ps -o ppid= -p <pid>` 過濾保留 `ppid == 1`（由 launchd 起）的 PID
-6. 1 個 → `running` / PID / `verified`；0 個 → `stopped` / 0 / `verified`；多個 → `running` / 首個 / `unverified`
+1. Read `UserName` from the plist (defaults to `root`) and resolve `program` (`Program` if present, otherwise `ProgramArguments[0]`).
+2. `program` empty → `unknown` / PID 0 / `unverified`.
+3. `program` in `commonShells` → `loaded` / PID 0 / `verified`.
+4. Run `pgrep -u <UserName> -f <program>` to collect candidate PIDs.
+5. Filter candidates using `ps -o ppid= -p <pid>`, keeping only those whose parent PID is 1 (launchd).
+6. Exactly 1 kept → `running` / PID / `verified`; 0 kept → `stopped` / 0 / `verified`; more than 1 → `running` / first PID / `unverified`.
 
-### `StatusConfidence` 欄位
+`readOnlyManager.list` issues a single `ps -axo pid=,ppid=` up front and shares the resulting map across every detection call to avoid an O(services × candidates) fan-out of `ps` subprocesses. If the fetch fails while candidates exist, detection degrades to `running` / `unverified` rather than a confident false negative.
 
-`Service` 結構新增 `StatusConfidence string`（`verified` / `unverified`）。前端在 `unverified` 時於 Status 旁顯示 info icon + tooltip 提示「可能不是實際對應的 PID」，純資訊性、無任何動作按鈕。
+### `StatusConfidence` field
 
-## Plist 格式處理
+The `Service` struct carries a `StatusConfidence string` (`verified` / `unverified`). When the value is `unverified`, the frontend renders an info icon next to the Status column with a tooltip explaining that the displayed status and PID may not correspond to the exact process launchd started. The icon is purely informational — there is no click handler, no Wails call, and no action button behind it.
 
-- 自動偵測 plist 格式（XML 或 binary）
-- Binary plist 會使用 `plutil` 自動轉換為 XML 格式顯示
-- 在 Summary 頁面顯示原始格式類型
+## Plist Format Handling
 
-## Commit Message 規範
+- Plist format is auto-detected (XML or binary).
+- Binary plists are converted to XML via `plutil` for display.
+- The Summary page shows the original format.
 
-本專案使用 [release-please](https://github.com/googleapis/release-please) 自動管理版本號與發布（見 `.github/workflows/release-please.yml`）。`feat` 類型的 commit 會觸發 minor 版本升級，`fix` 會觸發 patch 升級。
+## Commit Message Conventions
 
-- 若變更**未涉及主程式邏輯**（如文件、CI、設定檔、測試、重構），應使用 `chore`、`docs`、`ci`、`test`、`refactor` 等類型，避免不必要的版本更新
-- 僅在**實際新增或變更使用者可感知功能**時才使用 `feat`
-- 僅在**修復實際 bug** 時才使用 `fix`
-- 當用戶要求 commit 當前改動時，應**依功能別分開 commit**，不要將不同功能的變更混在同一個 commit
+This project uses [release-please](https://github.com/googleapis/release-please) to automate version bumps and releases (see `.github/workflows/release-please.yml`). A `feat` commit triggers a minor bump; `fix` triggers a patch.
 
-## Homebrew 發布
+- For changes that **do not affect production behavior** (docs, CI, configuration, tests, refactors), use `chore`, `docs`, `ci`, `test`, `refactor`, etc., so no unnecessary release is cut.
+- Use `feat` **only** when introducing or changing user-visible functionality.
+- Use `fix` **only** when fixing an actual bug.
+- When the user asks to commit pending changes, **split by concern** — do not bundle unrelated work into a single commit.
 
-- Homebrew Tap：`chenwei791129/homebrew-apps`（獨立 repo，可供多個 app 共用）
-- 安裝指令：`brew install --cask chenwei791129/apps/launchpal`
-- Cask formula 位於 `homebrew-apps` repo 的 `Casks/launchpal.rb`
-- 因未簽名，使用 `postflight` 自動移除 quarantine attribute
-- Release 時 `release-please.yml` 的 `update-homebrew` job 自動更新 formula（版本號 + SHA256）
-- 跨 repo 寫入使用 `HOMEBREW_TAP_TOKEN`（Fine-grained PAT，scope 限 homebrew-apps）
+## Homebrew Distribution
 
-## 已知限制
+- Homebrew tap: `chenwei791129/homebrew-apps` (a standalone repo, shareable across multiple apps).
+- Install command: `brew install --cask chenwei791129/apps/launchpal`.
+- The cask formula lives at `Casks/launchpal.rb` inside the `homebrew-apps` repo.
+- Because the app is not code-signed, a `postflight` block automatically clears the quarantine attribute.
+- The `update-homebrew` job in `release-please.yml` updates the formula (version + SHA256) on each release.
+- Cross-repo writes use `HOMEBREW_TAP_TOKEN` (a fine-grained PAT scoped to `homebrew-apps`).
 
-- 僅能修改用戶級別服務（~/Library/LaunchAgents）
-- 系統服務（/Library/LaunchDaemons、/System/Library/LaunchDaemons）為唯讀模式
-- 無法停止以 root 運行的服務（需 sudo 權限）
-- 部分系統服務可能需要 Full Disk Access 權限才能查看
+## Known Limitations
 
-## Worktree 設定
+- Write operations are limited to user-level services (`~/Library/LaunchAgents`).
+- System services (`/Library/LaunchDaemons`, `/System/Library/LaunchDaemons`) are read-only.
+- Cannot stop services running as root (would require sudo).
+- Some system services require Full Disk Access to be readable.
 
-使用 `.worktrees/` 目錄（已加入 .gitignore）
+## Worktree Setup
+
+Use the `.worktrees/` directory (already in `.gitignore`).
