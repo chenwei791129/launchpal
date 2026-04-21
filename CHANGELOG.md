@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/chenwei791129/launchpal/compare/v1.11.0...v1.11.1) (2026-04-21)
+
+
+### Bug Fixes
+
+* **launchctl:** refuse empty-label bootout/kickstart targets ([36e7032](https://github.com/chenwei791129/launchpal/commit/36e703206e9fea01db6bbcfd91ad02d7ec08e638))
+
 ## [1.11.0](https://github.com/chenwei791129/launchpal/compare/v1.10.1...v1.11.0) (2026-04-18)
 
 
