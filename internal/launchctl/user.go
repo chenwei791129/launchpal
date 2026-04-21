@@ -18,6 +18,17 @@ func guiDomain() string {
 	return fmt.Sprintf("gui/%d", os.Getuid())
 }
 
+// serviceTarget builds a launchctl service-target of the form
+// `<domain>/<label>`. An empty label is rejected: `launchctl bootout gui/<uid>/`
+// is interpreted as the whole gui/<uid> domain-target, which unloads every
+// user LaunchAgent and collapses the desktop session (requiring re-login).
+func serviceTarget(domain, label string) (string, error) {
+	if label == "" {
+		return "", fmt.Errorf("service label is empty; refusing to build launchctl target that would unload the whole %s domain", domain)
+	}
+	return domain + "/" + label, nil
+}
+
 // UserManager manages user LaunchAgents in ~/Library/LaunchAgents
 type UserManager struct {
 	launchAgentsPath string
@@ -318,8 +329,16 @@ func (m *UserManager) Stop(name string) error {
 		return err
 	}
 
+	target, err := serviceTarget(guiDomain(), service.Label)
+	if err != nil {
+		// A plist without a Label cannot be loaded by launchd, so there is
+		// nothing to stop. (See serviceTarget for why we never issue the
+		// malformed launchctl call.)
+		return nil
+	}
+
 	// Try launchctl bootout first
-	cmd := exec.Command("launchctl", "bootout", guiDomain()+"/"+service.Label)
+	cmd := exec.Command("launchctl", "bootout", target)
 	_, _ = cmd.CombinedOutput() // Ignore error, service may not be loaded
 
 	// Check if process is still running and kill it
@@ -649,7 +668,10 @@ func (m *UserManager) Kickstart(name string) error {
 	}
 
 	domain := guiDomain()
-	target := domain + "/" + pd.Label
+	target, err := serviceTarget(domain, pd.Label)
+	if err != nil {
+		return fmt.Errorf("cannot kickstart %s: %w", name, err)
+	}
 
 	// Check if the service is loaded by querying launchctl list
 	checkCmd := exec.Command("launchctl", "list", pd.Label)

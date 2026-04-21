@@ -1136,3 +1136,74 @@ func TestScheduleConfig_NoHasMultiple(t *testing.T) {
 func intPtr(v int) *int {
 	return &v
 }
+
+// emptyPlistXML is a plist with no Label — the exact shape that triggered the
+// bug where deleting this file tore down the entire user GUI domain.
+const emptyPlistXML = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict/>
+</plist>`
+
+func TestServiceTarget_RejectsEmptyLabel(t *testing.T) {
+	if _, err := serviceTarget("gui/501", ""); err == nil {
+		t.Fatal("serviceTarget with empty label should return error to prevent tearing down the whole domain")
+	}
+	got, err := serviceTarget("gui/501", "com.test.app")
+	if err != nil {
+		t.Fatalf("serviceTarget error = %v", err)
+	}
+	if got != "gui/501/com.test.app" {
+		t.Errorf("serviceTarget = %q, want %q", got, "gui/501/com.test.app")
+	}
+}
+
+func TestUserManager_Stop_SkipsEmptyLabel(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.empty.plist"), []byte(emptyPlistXML), 0644); err != nil {
+		t.Fatalf("write plist: %v", err)
+	}
+
+	// Stop MUST NOT execute `launchctl bootout gui/<uid>/` (empty service-name)
+	// because that would be interpreted as a domain-target and unload every
+	// user LaunchAgent, collapsing the desktop session.
+	if err := m.Stop("com.empty"); err != nil {
+		t.Fatalf("Stop() with empty-Label plist returned error: %v", err)
+	}
+}
+
+func TestUserManager_Delete_EmptyLabelPlist(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	plistPath := filepath.Join(tmpDir, "com.google.keystone.agent.plist")
+	if err := os.WriteFile(plistPath, []byte(emptyPlistXML), 0644); err != nil {
+		t.Fatalf("write plist: %v", err)
+	}
+
+	if err := m.Delete("com.google.keystone.agent"); err != nil {
+		t.Fatalf("Delete() with empty-Label plist returned error: %v", err)
+	}
+	if _, err := os.Stat(plistPath); !os.IsNotExist(err) {
+		t.Error("Delete() should remove the plist file even when Label is empty")
+	}
+}
+
+func TestUserManager_Kickstart_EmptyLabelReturnsError(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.empty.plist"), []byte(emptyPlistXML), 0644); err != nil {
+		t.Fatalf("write plist: %v", err)
+	}
+
+	err := m.Kickstart("com.empty")
+	if err == nil {
+		t.Fatal("Kickstart() with empty-Label plist must return an error instead of issuing a malformed launchctl target")
+	}
+	if !strings.Contains(err.Error(), "label") {
+		t.Errorf("Kickstart() error = %q, want it to mention the missing label", err.Error())
+	}
+}
