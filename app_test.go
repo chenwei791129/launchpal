@@ -39,8 +39,8 @@ func TestRevealInFinder_ValidPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp file: %v", err)
 	}
-	defer os.Remove(f.Name())
-	f.Close()
+	defer func() { _ = os.Remove(f.Name()) }()
+	_ = f.Close()
 
 	app := NewApp()
 	if err := app.RevealInFinder(f.Name()); err != nil {
