@@ -14,7 +14,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 📅 Cron-style range (`9-17`) and enumeration (`1,3,5`) syntax with automatic expansion
 - 🌐 Configure environment variables for services
 - ✏️ Edit existing service configurations
-- 🔍 Browse system services (read-only)
+- 🔍 Browse system services (read-only) with heuristic status detection (no elevation required); ambiguous matches are flagged with an info icon
 - 📄 Inspect plist files with syntax highlighting
 - 📂 Reveal plist files in Finder with one click
 - 💾 Automatic backup before modifications

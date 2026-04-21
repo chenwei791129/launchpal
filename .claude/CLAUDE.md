@@ -16,11 +16,12 @@ macOS LaunchAgent 圖形化管理工具。
 ├── Makefile               # 建置指令
 ├── internal/
 │   ├── launchctl/         # launchctl 命令封裝
-│   │   ├── types.go       # Service, ServiceConfig 等型別
+│   │   ├── types.go       # Service, ServiceConfig 等型別（含 StatusConfidence）
 │   │   ├── manager.go     # Manager interface
 │   │   ├── user.go        # UserManager 實作（~/Library/LaunchAgents）
 │   │   ├── system.go      # SystemManager 實作（/Library/LaunchDaemons，唯讀）
-│   │   └── apple_system.go # AppleSystemManager 實作（/System/Library/LaunchDaemons，唯讀）
+│   │   ├── apple_system.go # AppleSystemManager 實作（/System/Library/LaunchDaemons，唯讀）
+│   │   └── status_detect.go # System domain 啟發式狀態偵測（pgrep -u + ppid=1 過濾）
 │   ├── backup/            # 備份管理
 │   │   └── backup.go      # BackupManager 實作
 │   └── plistutil/         # plist 格式偵測與 binary→XML 正規化（供 backup、launchctl 共用）
@@ -84,10 +85,28 @@ LaunchPal 支援三種類型的服務：
 
 ## 狀態檢測邏輯
 
+### User domain (`UserManager`)
+
 1. 先用 `launchctl list <label>` 取得服務資訊
 2. 從輸出中解析 PID（若有則為 running）
 3. 若無 PID，用 `pgrep -f <program>` 作為 fallback
 4. 跳過常見 shell（bash, sh, zsh）的 pgrep 檢測以避免誤判
+5. `StatusConfidence` 永遠為 `verified`（`launchctl list` 在 user domain 為 authoritative）
+
+### System domain (`SystemManager` / `AppleSystemManager`)
+
+`launchctl list` 在 user context 下只看得到 `gui/<uid>` domain 的服務，完全查不到 `/Library/LaunchDaemons` 與 `/System/Library/LaunchDaemons` 的 system daemon，故改用 `status_detect.go` 的啟發式偵測：
+
+1. 從 plist 取得 `UserName`（預設 `root`）與 `program`（`Program` 優先，否則 `ProgramArguments[0]`）
+2. `program` 為空 → `unknown` / PID 0 / `unverified`
+3. `program` 落在 `commonShells` → `loaded` / PID 0 / `verified`
+4. 執行 `pgrep -u <UserName> -f <program>` 取得候選 PID
+5. 用 `ps -o ppid= -p <pid>` 過濾保留 `ppid == 1`（由 launchd 起）的 PID
+6. 1 個 → `running` / PID / `verified`；0 個 → `stopped` / 0 / `verified`；多個 → `running` / 首個 / `unverified`
+
+### `StatusConfidence` 欄位
+
+`Service` 結構新增 `StatusConfidence string`（`verified` / `unverified`）。前端在 `unverified` 時於 Status 旁顯示 info icon + tooltip 提示「可能不是實際對應的 PID」，純資訊性、無任何動作按鈕。
 
 ## Plist 格式處理
 
