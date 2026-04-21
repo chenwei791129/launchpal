@@ -5,7 +5,7 @@
     @click="navigateTo(`/services/${service.name}?type=${service.type}`)"
   >
     <!-- Status indicator -->
-    <div class="w-16 shrink-0 flex items-center justify-center">
+    <div class="w-16 shrink-0 flex items-center justify-center gap-1">
       <span
         class="w-2.5 h-2.5 rounded-full"
         :class="{
@@ -15,6 +15,7 @@
           'bg-yellow-500': service.status === 'unknown'
         }"
       ></span>
+      <StatusConfidenceIcon :confidence="service.statusConfidence" size="sm" />
     </div>
 
     <!-- Service info -->

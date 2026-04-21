@@ -115,6 +115,7 @@ export namespace launchctl {
 	    type: string;
 	    readOnly: boolean;
 	    plistFormat: string;
+	    statusConfidence: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Service(source);
@@ -140,6 +141,7 @@ export namespace launchctl {
 	        this.type = source["type"];
 	        this.readOnly = source["readOnly"];
 	        this.plistFormat = source["plistFormat"];
+	        this.statusConfidence = source["statusConfidence"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

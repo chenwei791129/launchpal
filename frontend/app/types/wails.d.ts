@@ -17,6 +17,7 @@ export interface Service {
   type: 'user' | 'system' | 'apple-system'
   readOnly: boolean
   plistFormat: 'xml' | 'binary' | 'unknown'
+  statusConfidence: 'verified' | 'unverified'
 }
 
 export interface CalendarEntry {

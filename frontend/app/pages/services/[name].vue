@@ -44,6 +44,7 @@
           >
             {{ service?.status || 'unknown' }}
           </span>
+          <StatusConfidenceIcon :confidence="service?.statusConfidence" size="md" />
         </div>
 
         <!-- Action buttons (hidden for read-only services) -->
