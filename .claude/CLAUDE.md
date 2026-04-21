@@ -116,11 +116,11 @@ LaunchPal supports three service categories:
 1. Read `UserName` from the plist (defaults to `root`) and resolve `program` (`Program` if present, otherwise `ProgramArguments[0]`).
 2. `program` empty → `unknown` / PID 0 / `unverified`.
 3. `program` in `commonShells` → `loaded` / PID 0 / `verified`.
-4. Run `pgrep -u <UserName> -f <program>` to collect candidate PIDs.
-5. Filter candidates using `ps -o ppid= -p <pid>`, keeping only those whose parent PID is 1 (launchd).
-6. Exactly 1 kept → `running` / PID / `verified`; 0 kept → `stopped` / 0 / `verified`; more than 1 → `running` / first PID / `unverified`.
+4. Resolve `UserName` to a numeric UID via `os/user.Lookup` (cached per List call).
+5. Scan the process table (a `map[int]processInfo{UID, PPID, Args}` built from a single `ps -axo uid=,pid=,ppid=,args=` call) for entries where `UID` matches the resolved UID, `PPID == 1` (launchd), and `Args` contains the program path. Sort the matches ascending.
+6. Exactly 1 kept → `running` / PID / `verified`; 0 kept → `stopped` / 0 / `verified`; more than 1 → `running` / lowest PID / `unverified`.
 
-`readOnlyManager.list` issues a single `ps -axo pid=,ppid=` up front and shares the resulting map across every detection call to avoid an O(services × candidates) fan-out of `ps` subprocesses. If the fetch fails while candidates exist, detection degrades to `running` / `unverified` rather than a confident false negative.
+`readOnlyManager.list` issues exactly one `ps` invocation and one UID cache per List call, shared across every detection call. This collapses the former per-service `pgrep` + per-candidate `ps ppid=` fan-out into a single subprocess fork — on a machine with 411 Apple system services, list latency drops from several seconds to ~100 ms. For the single-service `get()` path, `DetectSystemServiceStatus` fetches the table lazily when called with a nil argument. If the process-table fetch or UID lookup fails, detection degrades to `stopped` / `unverified` rather than a confident false negative.
 
 ### `StatusConfidence` field
 
