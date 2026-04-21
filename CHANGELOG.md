@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/chenwei791129/launchpal/compare/v1.12.0...v1.12.1) (2026-04-21)
+
+
+### Performance Improvements
+
+* **launchctl:** replace per-service pgrep fork with a single ps snapshot ([953afaa](https://github.com/chenwei791129/launchpal/commit/953afaa27bd30a9155dadfae2c6d0bfc79d6f05d))
+
 ## [1.12.0](https://github.com/chenwei791129/launchpal/compare/v1.11.1...v1.12.0) (2026-04-21)
 
 
