@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.12.0](https://github.com/chenwei791129/launchpal/compare/v1.11.1...v1.12.0) (2026-04-21)
+
+
+### Features
+
+* **launchctl:** add heuristic status detection for system daemons ([281e3c8](https://github.com/chenwei791129/launchpal/commit/281e3c85c6e6098b194964129639f2f3564d4f11))
+* **ui:** surface unverified status confidence with info icon ([2ffe296](https://github.com/chenwei791129/launchpal/commit/2ffe29668e2781234b51776e3a62d2f2f8d07c3b))
+
+
+### Bug Fixes
+
+* **ui:** restore StatusConfidenceIcon tooltip visibility and switch to English ([df7c510](https://github.com/chenwei791129/launchpal/commit/df7c510eb4a6bd6a55ba3c4b6abd68aa45057144))
+* **ui:** translate About section from Chinese to English ([d325d28](https://github.com/chenwei791129/launchpal/commit/d325d28387d46a2e185e7c0770a12a62a787e750))
+
 ## [1.11.1](https://github.com/chenwei791129/launchpal/compare/v1.11.0...v1.11.1) (2026-04-21)
 
 
