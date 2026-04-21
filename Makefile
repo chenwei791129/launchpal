@@ -23,7 +23,7 @@ setup:
 
 # Run tests
 test:
-	go test ./...
+	go test -race ./...
 
 # Run linter
 lint:
