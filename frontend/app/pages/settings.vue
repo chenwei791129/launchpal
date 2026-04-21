@@ -195,14 +195,15 @@
             </div>
             <div>
               <h3 class="text-xl font-semibold text-white">LaunchPal</h3>
-              <p class="text-gray-400">macOS LaunchAgent 圖形化管理工具</p>
+              <p class="text-gray-400">A GUI for managing macOS LaunchAgents</p>
             </div>
           </div>
 
           <div class="border-t border-surface-100 pt-4">
             <p class="text-gray-400 text-sm leading-relaxed">
-              LaunchPal 是一款專為 macOS 設計的 LaunchAgent 管理工具，提供直觀的圖形化介面，
-              讓您輕鬆管理系統服務。支援服務的啟動、停止、重啟，以及 plist 檔案的檢視與編輯。
+              LaunchPal is a LaunchAgent management tool built for macOS, offering an intuitive
+              graphical interface to manage system services. It supports starting, stopping, and
+              restarting services, as well as inspecting and editing plist files.
             </p>
           </div>
 
