@@ -1,13 +1,16 @@
 package launchctl
 
 import (
+	"fmt"
 	"os/exec"
+	"os/user"
+	"slices"
 	"strconv"
 	"strings"
 )
 
-// commonShells lists shell executable paths that should not be matched by pgrep,
-// because the launchctl list output for a shell-wrapped daemon would otherwise
+// commonShells lists shell executable paths that should not be matched by the
+// process-table scan. For a shell-wrapped daemon the shell would otherwise
 // collide with unrelated user shell processes.
 var commonShells = map[string]bool{
 	"/bin/bash":     true,
@@ -18,23 +21,43 @@ var commonShells = map[string]bool{
 	"/usr/bin/zsh":  true,
 }
 
+// processInfo holds the uid, ppid, and full argv string for a single running
+// process. ProcessTable is keyed by pid.
+type processInfo struct {
+	UID  int
+	PPID int
+	Args string
+}
+
+// ProcessTable maps pid → processInfo. Callers that detect many services at
+// once should build the table once and share it.
+type ProcessTable map[int]processInfo
+
 // Package-level function variables so tests can substitute stub implementations
-// without spawning real processes.
+// without spawning real subprocesses.
 var (
-	pgrepCandidatesFn = runPgrepCandidates
-	readAllPPIDsFn    = readAllPPIDs
+	readProcessTableFn = readProcessTable
+	userLookupFn       = user.Lookup
 )
 
 // DetectSystemServiceStatus returns the runtime status, PID, and detection
-// confidence for a system-domain daemon. If ppidTable is non-nil, parent-PID
-// lookups read from it (avoiding a `ps` fork per candidate); otherwise the
-// function fetches the full ppid table once. Callers that invoke this for many
-// services (e.g. List) should pre-fetch the table via readAllPPIDs and pass it
-// in to amortize the cost.
-func DetectSystemServiceStatus(pd plistData, ppidTable map[int]int) (status string, pid int, confidence string) {
-	user := pd.UserName
-	if user == "" {
-		user = "root"
+// confidence for a system-domain daemon. The algorithm mirrors
+// `pgrep -u <user> -f <program>` + `ps ppid=1` filtering but operates on a
+// pre-fetched process table to avoid per-service subprocess forks.
+//
+// The program match uses plain substring (strings.Contains) rather than
+// pgrep's regex semantics. In practice daemon Program paths are full absolute
+// paths without regex metacharacters, so this is strictly narrower and
+// cannot produce false positives that pgrep would have rejected.
+//
+// If table is nil, it is fetched lazily via readProcessTableFn. If uidCache is
+// nil, a single-shot cache is created for the call; callers doing many
+// detections in one List should share a cache to avoid repeated
+// `os/user.Lookup` calls.
+func DetectSystemServiceStatus(pd plistData, table ProcessTable, uidCache map[string]int) (status string, pid int, confidence string) {
+	userName := pd.UserName
+	if userName == "" {
+		userName = "root"
 	}
 
 	program := pd.Program
@@ -50,90 +73,129 @@ func DetectSystemServiceStatus(pd plistData, ppidTable map[int]int) (status stri
 		return StatusLoaded, 0, ConfidenceVerified
 	}
 
-	candidates, err := pgrepCandidatesFn(user, program)
-	if err != nil || len(candidates) == 0 {
-		return StatusStopped, 0, ConfidenceVerified
+	uid, uidErr := resolveUID(userName, uidCache)
+	if uidErr != nil {
+		// Without a resolvable uid we cannot filter candidates; degrade to
+		// unverified rather than reporting confident Stopped.
+		return StatusStopped, 0, ConfidenceUnverified
 	}
 
-	table := ppidTable
 	if table == nil {
-		var fetchErr error
-		table, fetchErr = readAllPPIDsFn()
-		if fetchErr != nil || table == nil {
-			// Cannot determine parent PIDs; candidates exist but cannot be
-			// filtered. Reporting Stopped would be a confident false negative,
-			// so degrade to Running with unverified confidence.
-			return StatusRunning, candidates[0], ConfidenceUnverified
+		var err error
+		table, err = readProcessTableFn()
+		if err != nil || table == nil {
+			// Cannot distinguish "not running" from "couldn't check"; a
+			// confident Stopped would be misleading, so report unverified.
+			return StatusStopped, 0, ConfidenceUnverified
 		}
 	}
 
-	kept := make([]int, 0, len(candidates))
-	for _, c := range candidates {
-		if table[c] == 1 {
-			kept = append(kept, c)
+	candidates := make([]int, 0)
+	for pid, info := range table {
+		if info.UID != uid {
+			continue
 		}
+		if info.PPID != 1 {
+			continue
+		}
+		if !strings.Contains(info.Args, program) {
+			continue
+		}
+		candidates = append(candidates, pid)
 	}
+	slices.Sort(candidates)
 
-	switch len(kept) {
+	switch len(candidates) {
 	case 0:
 		return StatusStopped, 0, ConfidenceVerified
 	case 1:
-		return StatusRunning, kept[0], ConfidenceVerified
+		return StatusRunning, candidates[0], ConfidenceVerified
 	default:
-		return StatusRunning, kept[0], ConfidenceUnverified
+		return StatusRunning, candidates[0], ConfidenceUnverified
 	}
 }
 
-// runPgrepCandidates executes `pgrep -u <user> -f <program>` as an argv slice
-// (no shell interpretation) and returns the matched PIDs.
-func runPgrepCandidates(user, program string) ([]int, error) {
-	cmd := exec.Command("pgrep", "-u", user, "-f", program)
-	out, err := cmd.Output()
+// resolveUID turns a system user name into a numeric uid, consulting the
+// cache first. On a cache miss it calls userLookupFn and stores the result.
+// If cache is nil a scratch cache is used.
+func resolveUID(name string, cache map[string]int) (int, error) {
+	if cache != nil {
+		if uid, ok := cache[name]; ok {
+			return uid, nil
+		}
+	}
+	u, err := userLookupFn(name)
 	if err != nil {
-		// Exit code 1 from pgrep means "no matches", which is not a real error
-		// for our purposes. Return empty slice in that case.
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
-			return nil, nil
-		}
-		return nil, err
+		return 0, err
 	}
-
-	lines := strings.Split(string(out), "\n")
-	pids := make([]int, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if pid, err := strconv.Atoi(line); err == nil && pid > 0 {
-			pids = append(pids, pid)
-		}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil {
+		return 0, fmt.Errorf("invalid uid %q for user %s: %w", u.Uid, name, err)
 	}
-	return pids, nil
+	if cache != nil {
+		cache[name] = uid
+	}
+	return uid, nil
 }
 
-// readAllPPIDs returns a pid→ppid map for every process visible to the current
-// user, via a single `ps -axo pid=,ppid=` invocation. Callers amortize the cost
-// across many daemon checks by sharing one result.
-func readAllPPIDs() (map[int]int, error) {
-	cmd := exec.Command("ps", "-axo", "pid=,ppid=")
+// readProcessTable runs a single `ps -axo uid=,pid=,ppid=,args=` and returns
+// the parsed table. Output format: each line has three whitespace-separated
+// integers followed by the full argv string (which may itself contain
+// whitespace and runs to end-of-line).
+func readProcessTable() (ProcessTable, error) {
+	cmd := exec.Command("ps", "-axo", "uid=,pid=,ppid=,args=")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
+	return parseProcessTable(string(out)), nil
+}
 
-	table := make(map[int]int)
-	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
+// parseProcessTable parses raw `ps -axo uid=,pid=,ppid=,args=` output. It is
+// split out from readProcessTable so tests can exercise parsing deterministically.
+//
+// Each line has three numeric fields followed by the full argv string, which
+// may itself contain whitespace and runs to end-of-line. `strings.Fields` on
+// the whole line would collapse spaces inside argv, so the three leading
+// fields are carved off with `strings.Cut` and the remainder kept verbatim.
+func parseProcessTable(raw string) ProcessTable {
+	table := make(ProcessTable, 512)
+	for _, line := range strings.Split(raw, "\n") {
+		uidStr, rest, ok := cutField(line)
+		if !ok {
 			continue
 		}
-		pid, err1 := strconv.Atoi(fields[0])
-		ppid, err2 := strconv.Atoi(fields[1])
-		if err1 != nil || err2 != nil {
+		pidStr, rest, ok := cutField(rest)
+		if !ok {
 			continue
 		}
-		table[pid] = ppid
+		ppidStr, args, ok := cutField(rest)
+		if !ok {
+			continue
+		}
+		uid, err1 := strconv.Atoi(uidStr)
+		pid, err2 := strconv.Atoi(pidStr)
+		ppid, err3 := strconv.Atoi(ppidStr)
+		if err1 != nil || err2 != nil || err3 != nil {
+			continue
+		}
+		table[pid] = processInfo{UID: uid, PPID: ppid, Args: args}
 	}
-	return table, nil
+	return table
+}
+
+// cutField trims leading spaces and returns the first space-delimited field
+// plus the remainder (leading spaces stripped). Returns ok=false if no field
+// is present. macOS `ps` right-aligns numeric columns with spaces, never
+// tabs — so splitting on " " is sufficient.
+func cutField(s string) (field, rest string, ok bool) {
+	s = strings.TrimLeft(s, " ")
+	if s == "" {
+		return "", "", false
+	}
+	before, after, found := strings.Cut(s, " ")
+	if !found {
+		return before, "", true
+	}
+	return before, strings.TrimLeft(after, " "), true
 }

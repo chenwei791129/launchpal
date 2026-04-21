@@ -2,6 +2,7 @@ package launchctl
 
 import (
 	"os"
+	"os/user"
 	"path/filepath"
 	"testing"
 )
@@ -25,32 +26,24 @@ func writeSystemPlist(t *testing.T, dir, name, content string) {
 }
 
 // TestReadOnly_GetWithStatus_MissInvokesDetection verifies that when the batch
-// launchctl map does not contain the service label, heuristic detection is
-// invoked (replacing the old "default to Stopped" fallback).
+// launchctl map does not contain the service label, heuristic detection runs
+// against the shared process table.
 func TestReadOnly_GetWithStatus_MissInvokesDetection(t *testing.T) {
 	tmpDir := t.TempDir()
 	writeSystemPlist(t, tmpDir, "com.test.sampled", sampleSystemPlist)
 
-	detectCalled := false
-	withStubPgrep(t, func(user, program string) ([]int, error) {
-		detectCalled = true
-		if program != "/usr/sbin/sampled" {
-			t.Errorf("program = %q, want %q", program, "/usr/sbin/sampled")
-		}
-		return []int{42}, nil
-	})
+	withStubUserLookup(t, defaultStubUsers())
 
+	table := ProcessTable{
+		42: {UID: 0, PPID: 1, Args: "/usr/sbin/sampled"},
+	}
 	m := &readOnlyManager{basePath: tmpDir, serviceType: ServiceTypeSystem}
 
-	// Pass an empty statusMap to simulate a batch miss (label not present).
-	svc, err := m.getWithStatus("com.test.sampled", map[string]serviceStatus{}, map[int]int{42: 1})
+	svc, err := m.getWithStatus("com.test.sampled", map[string]serviceStatus{}, table, map[string]int{})
 	if err != nil {
 		t.Fatalf("getWithStatus error = %v", err)
 	}
 
-	if !detectCalled {
-		t.Fatal("heuristic detection was not called on batch miss")
-	}
 	if svc.Status != StatusRunning {
 		t.Errorf("Status = %q, want %q", svc.Status, StatusRunning)
 	}
@@ -68,10 +61,14 @@ func TestReadOnly_GetWithStatus_MissWithMultipleCandidates(t *testing.T) {
 	tmpDir := t.TempDir()
 	writeSystemPlist(t, tmpDir, "com.test.sampled", sampleSystemPlist)
 
-	withStubPgrep(t, func(user, program string) ([]int, error) { return []int{10, 20}, nil })
+	withStubUserLookup(t, defaultStubUsers())
 
+	table := ProcessTable{
+		10: {UID: 0, PPID: 1, Args: "/usr/sbin/sampled"},
+		20: {UID: 0, PPID: 1, Args: "/usr/sbin/sampled"},
+	}
 	m := &readOnlyManager{basePath: tmpDir, serviceType: ServiceTypeSystem}
-	svc, err := m.getWithStatus("com.test.sampled", map[string]serviceStatus{}, map[int]int{10: 1, 20: 1})
+	svc, err := m.getWithStatus("com.test.sampled", map[string]serviceStatus{}, table, map[string]int{})
 	if err != nil {
 		t.Fatalf("getWithStatus error = %v", err)
 	}
@@ -86,13 +83,14 @@ func TestReadOnly_GetWithStatus_MissWithMultipleCandidates(t *testing.T) {
 
 // TestReadOnly_GetWithStatus_HitSkipsDetectionAndSetsVerified verifies that a
 // batch map hit keeps the fast path and marks confidence = verified without
-// calling heuristic detection.
+// consulting the process table or the user lookup.
 func TestReadOnly_GetWithStatus_HitSkipsDetectionAndSetsVerified(t *testing.T) {
 	tmpDir := t.TempDir()
 	writeSystemPlist(t, tmpDir, "com.test.sampled", sampleSystemPlist)
 
-	withStubPgrep(t, func(user, program string) ([]int, error) {
-		t.Fatal("heuristic detection should NOT be called when batch map has the label")
+	// Any call into user.Lookup or the process-table fetch would be a bug.
+	withCustomUserLookup(t, func(string) (*user.User, error) {
+		t.Fatal("user.Lookup should not be called when batch map has the label")
 		return nil, nil
 	})
 
@@ -100,7 +98,7 @@ func TestReadOnly_GetWithStatus_HitSkipsDetectionAndSetsVerified(t *testing.T) {
 		"com.test.sampled": {status: StatusRunning, pid: 7777},
 	}
 	m := &readOnlyManager{basePath: tmpDir, serviceType: ServiceTypeSystem}
-	svc, err := m.getWithStatus("com.test.sampled", statusMap, nil)
+	svc, err := m.getWithStatus("com.test.sampled", statusMap, nil, nil)
 	if err != nil {
 		t.Fatalf("getWithStatus error = %v", err)
 	}
@@ -117,17 +115,17 @@ func TestReadOnly_GetWithStatus_HitSkipsDetectionAndSetsVerified(t *testing.T) {
 }
 
 // TestReadOnly_GetWithStatus_NilStatusMapInvokesDetection ensures the
-// individual-query path (statusMap == nil) also uses heuristic detection for
-// read-only managers; with a nil ppidTable, detection falls back to fetching.
+// individual-query path (statusMap == nil, table == nil) triggers lazy
+// detection: readProcessTableFn is called once for this single service.
 func TestReadOnly_GetWithStatus_NilStatusMapInvokesDetection(t *testing.T) {
 	tmpDir := t.TempDir()
 	writeSystemPlist(t, tmpDir, "com.test.sampled", sampleSystemPlist)
 
-	withStubPgrep(t, func(user, program string) ([]int, error) { return nil, nil })
-	withStubReadAllPPIDs(t, func() (map[int]int, error) { return map[int]int{}, nil })
+	withStubUserLookup(t, defaultStubUsers())
+	withStubReadProcessTable(t, func() (ProcessTable, error) { return ProcessTable{}, nil })
 
 	m := &readOnlyManager{basePath: tmpDir, serviceType: ServiceTypeSystem}
-	svc, err := m.getWithStatus("com.test.sampled", nil, nil)
+	svc, err := m.getWithStatus("com.test.sampled", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("getWithStatus error = %v", err)
 	}

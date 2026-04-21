@@ -28,9 +28,14 @@ func (m *readOnlyManager) list() ([]Service, error) {
 	}
 
 	statusMap := getBatchServiceStatus()
-	// One `ps` invocation shared across every heuristic detection call in this
-	// List, instead of O(candidates * services) forks.
-	ppidTable, _ := readAllPPIDsFn()
+	// One `ps` snapshot and one UserName→uid cache shared across every
+	// heuristic detection call in this List, collapsing O(services) subprocess
+	// forks to exactly one. If the fetch fails, `table` is nil and each
+	// DetectSystemServiceStatus call will lazily retry — the 411-daemon retry
+	// cascade is inefficient in the rare ps-broken state but still produces
+	// the correct Stopped/Unverified verdict for every service.
+	table, _ := readProcessTableFn()
+	uidCache := make(map[string]int)
 
 	services := []Service{}
 	for _, entry := range entries {
@@ -39,7 +44,7 @@ func (m *readOnlyManager) list() ([]Service, error) {
 		}
 
 		name := strings.TrimSuffix(entry.Name(), ".plist")
-		service, err := m.getWithStatus(name, statusMap, ppidTable)
+		service, err := m.getWithStatus(name, statusMap, table, uidCache)
 		if err != nil {
 			continue
 		}
@@ -51,12 +56,13 @@ func (m *readOnlyManager) list() ([]Service, error) {
 
 // get returns a single service by name (queries status individually)
 func (m *readOnlyManager) get(name string) (*Service, error) {
-	return m.getWithStatus(name, nil, nil)
+	return m.getWithStatus(name, nil, nil, nil)
 }
 
-// getWithStatus returns a service, using pre-fetched statusMap and ppidTable
-// if provided (both may be nil for single-service queries).
-func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]serviceStatus, ppidTable map[int]int) (*Service, error) {
+// getWithStatus returns a service, using pre-fetched statusMap, process table,
+// and uidCache when provided. All three may be nil for single-service queries,
+// in which case DetectSystemServiceStatus fetches what it needs on demand.
+func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]serviceStatus, table ProcessTable, uidCache map[string]int) (*Service, error) {
 	plistPath := filepath.Join(m.basePath, name+".plist")
 
 	data, err := os.ReadFile(plistPath)
@@ -105,7 +111,7 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 			return service, nil
 		}
 	}
-	service.Status, service.PID, service.StatusConfidence = DetectSystemServiceStatus(pd, ppidTable)
+	service.Status, service.PID, service.StatusConfidence = DetectSystemServiceStatus(pd, table, uidCache)
 
 	return service, nil
 }
