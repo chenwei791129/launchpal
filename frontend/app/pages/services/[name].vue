@@ -12,7 +12,7 @@
         </svg>
         <span class="text-white">{{ service?.label || name }}</span>
         <span
-          v-if="service?.readOnly"
+          v-if="service?.readOnly && !canWrite"
           class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-600/30 text-gray-400"
         >
           Read-only
@@ -47,8 +47,10 @@
           <StatusConfidenceIcon :confidence="service?.statusConfidence" size="md" />
         </div>
 
-        <!-- Action buttons (hidden for read-only services) -->
-        <div v-if="!service?.readOnly" class="flex items-center gap-2">
+        <!-- Action buttons: user services are always writable; system
+             services are gated by Admin Mode (apple-system is never
+             writable). -->
+        <div v-if="canWrite" class="flex items-center gap-2">
           <button
             v-if="service?.status === 'running' || service?.status === 'loaded'"
             class="flex items-center gap-2 px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-sm rounded-lg transition-colors"
@@ -94,6 +96,28 @@
             Run Now
           </button>
         </div>
+        <!-- Lock hint when the service is read-only because Admin Mode is off. -->
+        <div
+          v-else-if="serviceType === 'system' && !admin.isEnabled.value"
+          class="flex items-center gap-2 text-sm text-gray-400"
+          title="Enable Admin Mode to manage"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <NuxtLink to="/settings" class="underline hover:text-white">
+            Enable Admin Mode to manage
+          </NuxtLink>
+        </div>
+      </div>
+      <!-- Action error surfaces Start/Stop/Restart/Run Now failures that
+           would otherwise vanish into the console. -->
+      <div v-if="actionError" class="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-sm text-red-400 flex items-start gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <div class="flex-1 break-all">{{ actionError }}</div>
+        <button class="text-red-400 hover:text-white" @click="actionError = ''">×</button>
       </div>
     </header>
 
@@ -262,7 +286,12 @@
         </div>
 
         <!-- Logs tab -->
-        <ServiceLogs v-else-if="activeTab === 'logs'" :service-name="name" class="h-full" />
+        <ServiceLogs
+          v-else-if="activeTab === 'logs'"
+          :service-name="name"
+          :service-type="serviceType"
+          class="h-full"
+        />
 
         <!-- Inspect tab -->
         <div v-else-if="activeTab === 'inspect'" class="p-4 h-full overflow-auto">
@@ -322,11 +351,21 @@
 <script setup lang="ts">
 import type { Service, ServiceConfig, ScheduleConfig } from '~/types/wails'
 import { highlightCode } from '~/composables/useHighlighter'
+import { useAdminMode } from '~/composables/useAdminMode'
 import { parseShellArgs, serializeShellArgs } from '~/utils/shell-args'
 
 const route = useRoute()
 const name = computed(() => route.params.name as string)
 const serviceType = computed(() => (route.query.type as string) || 'user')
+const admin = useAdminMode()
+
+// canWrite is true for user services and for system services when Admin
+// Mode is Enabled. apple-system services are never writable.
+const canWrite = computed(() => {
+  if (serviceType.value === 'user') return true
+  if (serviceType.value === 'system') return admin.isEnabled.value
+  return false
+})
 
 const service = ref<Service | null>(null)
 const plistContent = ref<string | null>(null)
@@ -342,10 +381,20 @@ const tabs = computed(() => {
     { id: 'logs', label: 'Logs' },
     { id: 'inspect', label: 'Inspect' },
   ]
-  if (serviceType.value === 'user') {
+  // Edit tab follows canWrite so it appears for system daemons while Admin
+  // Mode is enabled and disappears when the user disables it mid-session.
+  if (canWrite.value) {
     base.splice(1, 0, { id: 'edit', label: 'Edit' })
   }
   return base
+})
+
+// If Admin Mode turns off while the Edit tab is active, slide the user back
+// to Summary so the UI doesn't get stuck on a tab that no longer exists.
+watch(canWrite, (writable) => {
+  if (!writable && activeTab.value === 'edit') {
+    activeTab.value = 'summary'
+  }
 })
 
 const backLink = computed(() => {
@@ -400,14 +449,40 @@ async function loadService() {
   }
 }
 
+// startFn / stopFn / restartFn pick the right Wails binding based on the
+// service type. System-domain writes require Admin Mode; if the backend
+// replies with ErrReadOnlyManager the message surfaces in the console.
+const startFn = computed(() => {
+  return serviceType.value === 'system'
+    ? window.go?.main?.App?.StartSystemService
+    : window.go?.main?.App?.StartService
+})
+const stopFn = computed(() => {
+  return serviceType.value === 'system'
+    ? window.go?.main?.App?.StopSystemService
+    : window.go?.main?.App?.StopService
+})
+const restartFn = computed(() => {
+  return serviceType.value === 'system'
+    ? window.go?.main?.App?.RestartSystemService
+    : window.go?.main?.App?.RestartService
+})
+
+// actionError surfaces backend errors from Start/Stop/Restart/Run Now to
+// the user — silent console.error leaves the GUI looking like a no-op when
+// launchd rejects the request (e.g. "file not found", plist parse error).
+const actionError = ref('')
+
 async function handleStart() {
   actionLoading.value = true
+  actionError.value = ''
   try {
-    if (window.go?.main?.App?.StartService) {
-      await window.go.main.App.StartService(name.value)
+    if (startFn.value) {
+      await startFn.value(name.value)
       await loadService()
     }
   } catch (e) {
+    actionError.value = e instanceof Error ? e.message : String(e)
     console.error('Failed to start service:', e)
   } finally {
     actionLoading.value = false
@@ -416,12 +491,14 @@ async function handleStart() {
 
 async function handleStop() {
   actionLoading.value = true
+  actionError.value = ''
   try {
-    if (window.go?.main?.App?.StopService) {
-      await window.go.main.App.StopService(name.value)
+    if (stopFn.value) {
+      await stopFn.value(name.value)
       await loadService()
     }
   } catch (e) {
+    actionError.value = e instanceof Error ? e.message : String(e)
     console.error('Failed to stop service:', e)
   } finally {
     actionLoading.value = false
@@ -430,12 +507,14 @@ async function handleStop() {
 
 async function handleRestart() {
   actionLoading.value = true
+  actionError.value = ''
   try {
-    if (window.go?.main?.App?.RestartService) {
-      await window.go.main.App.RestartService(name.value)
+    if (restartFn.value) {
+      await restartFn.value(name.value)
       await loadService()
     }
   } catch (e) {
+    actionError.value = e instanceof Error ? e.message : String(e)
     console.error('Failed to restart service:', e)
   } finally {
     actionLoading.value = false
@@ -459,13 +538,21 @@ async function confirmRunNow() {
 
 async function executeKickstart() {
   actionLoading.value = true
+  actionError.value = ''
   try {
-    if (window.go?.main?.App?.KickstartService) {
-      await window.go.main.App.KickstartService(name.value)
+    // System daemons have no dedicated kickstart binding — RestartSystemService
+    // already routes to the helper's Kickstart RPC (`launchctl kickstart -k`),
+    // which is the same semantic as KickstartService for user services.
+    const kickFn = serviceType.value === 'system'
+      ? window.go?.main?.App?.RestartSystemService
+      : window.go?.main?.App?.KickstartService
+    if (kickFn) {
+      await kickFn(name.value)
       await loadService()
     }
   } catch (e) {
-    console.error('Failed to kickstart service:', e)
+    actionError.value = e instanceof Error ? e.message : String(e)
+    console.error('Failed to run kickstart:', e)
   } finally {
     actionLoading.value = false
   }
@@ -553,7 +640,11 @@ async function handleSave() {
       stderrPath: service.value.stderrPath,
     }
 
-    await window.go.main.App.UpdateService(name.value, config)
+    if (serviceType.value === 'system') {
+      await window.go.main.App.UpdateSystemService(name.value, config)
+    } else {
+      await window.go.main.App.UpdateService(name.value, config)
+    }
     saveSuccess.value = true
     setTimeout(() => { saveSuccess.value = false }, 3000)
     await loadService()

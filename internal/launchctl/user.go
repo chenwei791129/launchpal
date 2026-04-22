@@ -553,84 +553,10 @@ func expandTilde(path string) string {
 	return path
 }
 
-// writePlist writes a ServiceConfig to a plist file
+// writePlist writes a ServiceConfig to a plist file.
 func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
-	pd := map[string]interface{}{
-		"Label": config.Label,
-	}
+	pd := BuildPlistDict(config, true)
 
-	// Set program or program arguments
-	if config.Program != "" {
-		pd["Program"] = config.Program
-	}
-	if len(config.Arguments) > 0 {
-		pd["ProgramArguments"] = config.Arguments
-	}
-
-	// Set other options
-	if config.RunAtLoad {
-		pd["RunAtLoad"] = true
-	}
-	if config.KeepAlive {
-		pd["KeepAlive"] = true
-	}
-	if config.WorkingDir != "" {
-		pd["WorkingDirectory"] = config.WorkingDir
-	}
-	if config.StdoutPath != "" {
-		pd["StandardOutPath"] = expandTilde(config.StdoutPath)
-	}
-	if config.StderrPath != "" {
-		pd["StandardErrorPath"] = expandTilde(config.StderrPath)
-	}
-	if config.WakeSystem {
-		pd["WakeSystem"] = true
-	}
-	if len(config.Environment) > 0 {
-		pd["EnvironmentVariables"] = config.Environment
-	}
-
-	// Handle schedule
-	if config.Schedule != nil {
-		if config.Schedule.Interval != nil {
-			pd["StartInterval"] = *config.Schedule.Interval
-		} else {
-			entryToDict := func(e CalendarEntry) map[string]int {
-				d := make(map[string]int)
-				if e.Minute != nil {
-					d["Minute"] = *e.Minute
-				}
-				if e.Hour != nil {
-					d["Hour"] = *e.Hour
-				}
-				if e.Day != nil {
-					d["Day"] = *e.Day
-				}
-				if e.Weekday != nil {
-					d["Weekday"] = *e.Weekday
-				}
-				if e.Month != nil {
-					d["Month"] = *e.Month
-				}
-				return d
-			}
-
-			if len(config.Schedule.Schedules) > 1 {
-				arr := make([]map[string]int, len(config.Schedule.Schedules))
-				for i, e := range config.Schedule.Schedules {
-					arr[i] = entryToDict(e)
-				}
-				pd["StartCalendarInterval"] = arr
-			} else if len(config.Schedule.Schedules) == 1 {
-				pd["StartCalendarInterval"] = entryToDict(config.Schedule.Schedules[0])
-			} else {
-				// Empty schedules = "every minute" in launchd semantics
-				pd["StartCalendarInterval"] = make(map[string]int)
-			}
-		}
-	}
-
-	// Marshal to XML plist format
 	var buf bytes.Buffer
 	encoder := plist.NewEncoder(&buf)
 	encoder.Indent("\t")
@@ -638,7 +564,6 @@ func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
 		return fmt.Errorf("failed to encode plist: %w", err)
 	}
 
-	// Write to file
 	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
 		return fmt.Errorf("failed to write plist file: %w", err)
 	}

@@ -24,7 +24,7 @@
         <span class="text-white font-medium truncate">{{ service.label }}</span>
         <span v-if="service.pid" class="text-xs text-gray-500">PID {{ service.pid }}</span>
         <span
-          v-if="service.readOnly"
+          v-if="service.readOnly && !canWrite"
           class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-gray-600/30 text-gray-400"
         >
           Read-only
@@ -54,7 +54,7 @@
 
     <!-- Action buttons -->
     <div class="w-24 shrink-0 flex items-center gap-1">
-      <template v-if="!service.readOnly">
+      <template v-if="canWrite">
         <!-- Start/Stop button -->
         <button
           v-if="service.status === 'running' || service.status === 'loaded'"
@@ -79,7 +79,8 @@
           </svg>
         </button>
 
-        <!-- Delete button -->
+        <!-- Delete button — shown whenever the row is writable. Parent
+             component is responsible for the confirmation dialog. -->
         <button
           class="p-1.5 rounded hover:bg-red-600/20 text-gray-400 hover:text-red-400 transition-colors"
           title="Delete service"
@@ -107,7 +108,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Service } from '~/types/wails'
+import { useAdminMode } from '~/composables/useAdminMode'
 
 const props = defineProps<{
   service: Service
@@ -120,9 +123,24 @@ const emit = defineEmits<{
   refresh: []
 }>()
 
+const admin = useAdminMode()
+
+// canWrite collapses the writability decision for the row: user services
+// are always writable, system services are writable while Admin Mode is on,
+// apple-system services are never writable. The backend's readOnly flag
+// still reflects the domain's default posture but no longer drives the UI.
+const canWrite = computed(() => {
+  if (props.service.type === 'user') return true
+  if (props.service.type === 'system') return admin.isEnabled.value
+  return false
+})
+
 async function handleStart() {
   try {
-    await window.go.main.App.StartService(props.service.name)
+    const fn = props.service.type === 'system'
+      ? window.go.main.App.StartSystemService
+      : window.go.main.App.StartService
+    await fn(props.service.name)
     emit('refresh')
   } catch (error) {
     console.error('Failed to start service:', error)
@@ -131,7 +149,10 @@ async function handleStart() {
 
 async function handleStop() {
   try {
-    await window.go.main.App.StopService(props.service.name)
+    const fn = props.service.type === 'system'
+      ? window.go.main.App.StopSystemService
+      : window.go.main.App.StopService
+    await fn(props.service.name)
     emit('refresh')
   } catch (error) {
     console.error('Failed to stop service:', error)

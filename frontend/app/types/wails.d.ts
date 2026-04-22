@@ -61,6 +61,13 @@ export interface ServiceConfig {
   workingDirectory?: string
 }
 
+export type AdminModeState = 'disabled' | 'requesting' | 'enabled' | 'shutting_down'
+
+export interface AdminModeStatus {
+  state: AdminModeState
+  error: string | null
+}
+
 declare global {
   interface Window {
     go: {
@@ -86,9 +93,19 @@ declare global {
           ListBackups(serviceName: string): Promise<Backup[]>
           GetBackupContent(serviceName: string, backupID: string): Promise<PlistContent>
           GetCurrentPlist(name: string): Promise<PlistContent>
+          GetCurrentSystemPlist(name: string): Promise<PlistContent>
           RestoreBackup(serviceName: string, backupID: string): Promise<void>
           GetVersion(): Promise<string>
           CheckPermissions(): Promise<Record<string, boolean>>
+          EnableAdminMode(): Promise<void>
+          DisableAdminMode(): Promise<void>
+          GetAdminModeStatus(): Promise<AdminModeStatus>
+          StartSystemService(name: string): Promise<void>
+          StopSystemService(name: string): Promise<void>
+          RestartSystemService(name: string): Promise<void>
+          CreateSystemService(config: ServiceConfig): Promise<void>
+          UpdateSystemService(name: string, config: ServiceConfig): Promise<void>
+          DeleteSystemService(name: string): Promise<void>
         }
       }
     }

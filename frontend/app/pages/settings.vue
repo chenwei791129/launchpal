@@ -25,6 +25,56 @@
 
     <!-- Content -->
     <div class="flex-1 overflow-y-auto p-4 space-y-6">
+      <!-- Admin Mode Section -->
+      <section class="bg-surface-400 rounded-xl p-4">
+        <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">Admin Mode</h2>
+        <div class="flex items-start gap-3 mb-4">
+          <div class="w-10 h-10 bg-surface-200 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" :class="adminBadgeColor" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <p class="text-white font-medium">{{ adminStateLabel }}</p>
+              <span class="px-2 py-0.5 rounded text-xs" :class="adminBadgeClass">
+                {{ adminStateLabel }}
+              </span>
+            </div>
+            <p class="text-gray-400 text-sm mb-2">
+              Enable Admin Mode to manage system LaunchDaemons (under /Library/LaunchDaemons). You will be prompted for your password once per session; no privileged process remains after LaunchPal exits.
+            </p>
+            <p v-if="admin.lastError.value" class="text-red-400 text-sm mb-2">
+              {{ admin.lastError.value }}
+            </p>
+            <div class="flex items-center gap-2">
+              <button
+                v-if="!admin.isEnabled.value && !admin.isShuttingDown.value"
+                :disabled="admin.loading.value || admin.isRequesting.value"
+                class="px-3 py-1.5 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 text-white rounded-lg transition-colors"
+                @click="admin.enable()"
+              >
+                {{ admin.isRequesting.value ? 'Requesting...' : 'Enable Admin Mode' }}
+              </button>
+              <button
+                v-else-if="admin.isEnabled.value"
+                :disabled="admin.loading.value"
+                class="px-3 py-1.5 text-sm bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors"
+                @click="admin.disable()"
+              >
+                Disable Admin Mode
+              </button>
+              <span
+                v-else-if="admin.isShuttingDown.value"
+                class="text-sm text-gray-400"
+              >
+                Shutting down helper...
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Version Section -->
       <section class="bg-surface-400 rounded-xl p-4">
         <h2 class="text-sm font-medium text-gray-400 uppercase tracking-wider mb-4">Version</h2>
@@ -151,7 +201,7 @@
         <div
           v-if="showRestoreDialog"
           class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          @click.self="showRestoreDialog = false"
+          @click.self="closeRestoreDialog"
         >
           <div class="bg-surface-400 rounded-xl shadow-xl p-6 w-96">
             <h3 class="text-lg font-semibold text-white mb-2">Restore Backup</h3>
@@ -162,21 +212,31 @@
               <p class="text-white text-sm font-medium">{{ backupToRestore?.service }}</p>
               <p class="text-gray-500 text-xs">{{ backupToRestore ? formatTimestamp(backupToRestore.timestamp) : '' }}</p>
             </div>
-            <p class="text-yellow-500 text-sm mb-6">
+            <p class="text-yellow-500 text-sm mb-4">
               This will overwrite the current plist file.
             </p>
+            <div
+              v-if="restoreBlockedByAdminMode"
+              class="bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-sm rounded-lg p-3 mb-4"
+            >
+              This backup targets <code class="text-yellow-300">/Library/LaunchDaemons/</code>.
+              Enable Admin Mode above before restoring.
+            </div>
+            <p v-if="restoreError" class="text-red-400 text-sm mb-4">{{ restoreError }}</p>
             <div class="flex justify-end gap-3">
               <button
                 class="px-4 py-2 text-gray-400 hover:text-white transition-colors"
-                @click="showRestoreDialog = false"
+                :disabled="restoringBackup"
+                @click="closeRestoreDialog"
               >
                 Cancel
               </button>
               <button
-                class="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+                class="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+                :disabled="restoringBackup || restoreBlockedByAdminMode"
                 @click="executeRestore"
               >
-                Restore
+                {{ restoringBackup ? 'Restoring...' : 'Restore' }}
               </button>
             </div>
           </div>
@@ -235,19 +295,48 @@
 
 <script setup lang="ts">
 import { useAppVersion } from '~/composables/useAppVersion'
+import { useAdminMode } from '~/composables/useAdminMode'
 import BackupDiffDialog from '~/components/BackupDiffDialog.vue'
 import { formatTimestamp } from '~/utils/formatters'
 import type { Backup } from '~/types/wails'
 
 const appVersion = useAppVersion()
+const admin = useAdminMode()
+
+// Single lookup keyed by AdminModeState. Each state maps to its label,
+// badge classes, and icon color so the template can bind directly without
+// triplicate switches.
+const adminStateStyles: Record<string, { label: string, badge: string, icon: string }> = {
+  enabled:       { label: 'Enabled',       badge: 'bg-green-600/20 text-green-400',   icon: 'text-green-400' },
+  requesting:    { label: 'Requesting',    badge: 'bg-yellow-600/20 text-yellow-400', icon: 'text-yellow-400' },
+  shutting_down: { label: 'Shutting down', badge: 'bg-orange-600/20 text-orange-400', icon: 'text-orange-400' },
+  disabled:      { label: 'Disabled',      badge: 'bg-gray-600/20 text-gray-400',     icon: 'text-gray-400' },
+}
+const adminStyle = computed(() => adminStateStyles[admin.state.value] ?? adminStateStyles.disabled)
+const adminStateLabel = computed(() => adminStyle.value.label)
+const adminBadgeClass = computed(() => adminStyle.value.badge)
+const adminBadgeColor = computed(() => adminStyle.value.icon)
 const backupPath = '~/.launchpal/backups/'
 
 const backups = ref<Backup[]>([])
 const loadingBackups = ref(false)
 const showRestoreDialog = ref(false)
 const backupToRestore = ref<Backup | null>(null)
+const restoringBackup = ref(false)
+const restoreError = ref<string | null>(null)
 const showDiffDialog = ref(false)
 const backupToDiff = ref<Backup | null>(null)
+
+// System-domain restores must go through the privileged helper, so we block
+// the action client-side when Admin Mode is off and surface a clear error
+// instead of letting the backend return "read-only manager" in an alert that
+// would leave the dialog stuck open.
+function isSystemBackup(backup: Backup | null): boolean {
+  return !!backup?.originalPath?.startsWith('/Library/LaunchDaemons/')
+}
+const restoreBlockedByAdminMode = computed(
+  () => isSystemBackup(backupToRestore.value) && !admin.isEnabled.value,
+)
 
 async function copyBackupPath() {
   try {
@@ -272,7 +361,15 @@ async function loadBackups() {
 
 function confirmRestore(backup: Backup) {
   backupToRestore.value = backup
+  restoreError.value = null
   showRestoreDialog.value = true
+}
+
+function closeRestoreDialog() {
+  showRestoreDialog.value = false
+  backupToRestore.value = null
+  restoreError.value = null
+  restoringBackup.value = false
 }
 
 function openDiff(backup: Backup) {
@@ -292,21 +389,31 @@ function onDiffRestore(backup: Backup) {
 
 async function executeRestore() {
   if (!backupToRestore.value) return
+  if (restoreBlockedByAdminMode.value) {
+    // Fail fast — the backend would return ErrReadOnlyManager, but surfacing
+    // that via alert() leaves the dialog stuck open. Show it inline instead.
+    restoreError.value =
+      'This is a system service backup. Enable Admin Mode in Settings before restoring.'
+    return
+  }
 
+  restoreError.value = null
+  restoringBackup.value = true
   try {
-    if (window.go?.main?.App?.RestoreBackup) {
-      await window.go.main.App.RestoreBackup(
-        backupToRestore.value.service,
-        backupToRestore.value.id
-      )
+    if (!window.go?.main?.App?.RestoreBackup) {
+      throw new Error('RestoreBackup binding is not available')
     }
-    showRestoreDialog.value = false
-    backupToRestore.value = null
-    // Reload backups after restore
+    await window.go.main.App.RestoreBackup(
+      backupToRestore.value.service,
+      backupToRestore.value.id,
+    )
+    closeRestoreDialog()
     await loadBackups()
   } catch (e) {
     console.error('Failed to restore backup:', e)
-    alert('Failed to restore backup: ' + (e as Error).message)
+    restoreError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    restoringBackup.value = false
   }
 }
 

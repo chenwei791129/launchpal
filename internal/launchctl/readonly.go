@@ -116,6 +116,23 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 	return service, nil
 }
 
+// getPlistContent returns the plist normalized to XML (matching the user
+// domain's UserManager.GetPlistContent shape). Used by the backup-diff
+// preview so the left column — the "current on-disk plist" — renders the
+// same way for both domains. A missing file returns an empty Content
+// without error so the diff view can draw the backup as pure additions.
+func (m *readOnlyManager) getPlistContent(name string) (*plistutil.Content, error) {
+	plistPath := filepath.Join(m.basePath, name+".plist")
+	content, err := plistutil.NormalizeFromPath(plistPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &plistutil.Content{}, nil
+		}
+		return nil, fmt.Errorf("failed to read plist file: %w", err)
+	}
+	return content, nil
+}
+
 func (m *readOnlyManager) getPlist(name string) (string, error) {
 	plistPath := filepath.Join(m.basePath, name+".plist")
 
