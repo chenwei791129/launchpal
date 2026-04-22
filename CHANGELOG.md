@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/chenwei791129/launchpal/compare/v1.12.1...v1.13.0) (2026-04-22)
+
+
+### Features
+
+* **admin-mode:** add session-scoped privileged helper for system daemon writes ([#25](https://github.com/chenwei791129/launchpal/issues/25)) ([3c4ed37](https://github.com/chenwei791129/launchpal/commit/3c4ed37babc6e72f4fd73409027e1731c8c492bd))
+
 ## [1.12.1](https://github.com/chenwei791129/launchpal/compare/v1.12.0...v1.12.1) (2026-04-21)
 
 
