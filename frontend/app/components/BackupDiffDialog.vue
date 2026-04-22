@@ -136,13 +136,26 @@ const formatWarning = computed(() => {
   return sides.length > 0 ? sides.join(' and ') : null
 })
 
+// System-domain backups (created by the privhelper during Admin-Mode
+// Update/Delete) target /Library/LaunchDaemons/. UserManager's
+// GetCurrentPlist can't read those, so it would always return an empty
+// Content and the diff would show the backup as pure additions. Detect
+// the domain from originalPath and pick the matching binding.
+function isSystemBackup(originalPath: string | undefined): boolean {
+  if (!originalPath) return false
+  return originalPath.startsWith('/Library/LaunchDaemons/')
+}
+
 async function loadDiff() {
   if (!props.backup) return
   loading.value = true
   error.value = null
   try {
+    const currentFn = isSystemBackup(props.backup.originalPath)
+      ? window.go.main.App.GetCurrentSystemPlist
+      : window.go.main.App.GetCurrentPlist
     const [current, backup] = await Promise.all([
-      window.go.main.App.GetCurrentPlist(props.backup.service),
+      currentFn(props.backup.service),
       window.go.main.App.GetBackupContent(props.backup.service, props.backup.id),
     ])
     currentContent.value = current

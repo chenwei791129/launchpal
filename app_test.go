@@ -55,3 +55,24 @@ func TestRevealInFinder_NonexistentPath(t *testing.T) {
 		t.Error("RevealInFinder with nonexistent path should return an error")
 	}
 }
+
+func TestIsSystemDaemonPath(t *testing.T) {
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"/Library/LaunchDaemons/com.example.plist", true},
+		{"/Library/LaunchDaemons/nested/com.example.plist", true},
+		{"/Library/LaunchDaemons//trailing.plist", true}, // filepath.Clean normalizes
+		{"/Library/LaunchAgents/com.example.plist", false},
+		{"/System/Library/LaunchDaemons/com.apple.plist", false},
+		{"/Users/foo/Library/LaunchAgents/com.example.plist", false},
+		{"/Library/LaunchDaemonsX/sneaky.plist", false}, // must not match sibling dir
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isSystemDaemonPath(tc.path); got != tc.want {
+			t.Errorf("isSystemDaemonPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}

@@ -88,9 +88,12 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   serviceName: string
-}>()
+  serviceType?: string
+}>(), {
+  serviceType: 'user',
+})
 
 const logType = ref<'stdout' | 'stderr'>('stdout')
 const logs = ref<string | null>(null)
@@ -104,10 +107,16 @@ async function loadLogs() {
   error.value = null
 
   try {
-    if (window.go?.main?.App?.GetLogs) {
-      logs.value = await window.go.main.App.GetLogs(props.serviceName, logType.value)
+    // System-domain services live under /Library/LaunchDaemons or
+    // /System/Library/LaunchDaemons — UserManager.GetLogs can't resolve
+    // those, so route through the system-aware binding instead.
+    const app = window.go?.main?.App
+    if (props.serviceType === 'user' && app?.GetLogs) {
+      logs.value = await app.GetLogs(props.serviceName, logType.value)
+    } else if (props.serviceType !== 'user' && app?.GetSystemLogs) {
+      logs.value = await app.GetSystemLogs(props.serviceName, props.serviceType, logType.value)
     } else {
-      // Development fallback
+      // Development fallback (no Wails bindings available)
       logs.value = null
     }
 

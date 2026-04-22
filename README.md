@@ -15,6 +15,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 🌐 Configure environment variables for services
 - ✏️ Edit existing service configurations
 - 🔍 Browse system services (read-only) with heuristic status detection (no elevation required); ambiguous matches are flagged with an info icon
+- 🔐 **Admin Mode** — manage `/Library/LaunchDaemons` system services with a single authorization per session (no persistent root process; helper exits when LaunchPal does)
 - 📄 Inspect plist files with syntax highlighting
 - 📂 Reveal plist files in Finder with one click
 - 💾 Automatic backup before modifications
@@ -93,12 +94,25 @@ make build
 # The app will be in build/bin/launchpal.app
 ```
 
+## Admin Mode
+
+LaunchPal can manage system services under `/Library/LaunchDaemons` via an optional **Admin Mode**:
+
+1. Open **Settings** → **Admin Mode** → **Enable Admin Mode**.
+2. macOS prompts once for your password (or Touch ID) and launches a root-privileged helper process.
+3. While Admin Mode is enabled, the **System Services** page lets you Start / Stop / Restart / Edit / Delete / Create daemons.
+4. Click **Disable Admin Mode** (or quit LaunchPal) to stop the helper — nothing persists on the system.
+
+**Why session-scoped?** LaunchPal is unsigned and cannot register a persistent privileged helper. The session-scoped model trades "enter your password once per launch" for "no root daemon lingers on your machine after LaunchPal exits". The helper exits automatically if LaunchPal crashes or is force-quit (parent PID watchdog, 2-second response time).
+
+**Scope of Admin Mode writes**: only `/Library/LaunchDaemons/`. `/System/Library/LaunchDaemons/` remains read-only under Admin Mode (SIP would reject writes anyway).
+
 ## Known Limitations
 
-- Can only modify user-level services (~/Library/LaunchAgents)
-- System services (/Library/LaunchDaemons, /System/Library/LaunchDaemons) are read-only
-- Cannot stop services running as root
-- Some system services may require Full Disk Access permission to view
+- User services (`~/Library/LaunchAgents`) can be managed without authorization.
+- System services (`/Library/LaunchDaemons`) require Admin Mode; authorization is prompted **once per LaunchPal session** and not cached across sessions (by design — no persistent root daemon).
+- Apple system services (`/System/Library/LaunchDaemons`) are always read-only.
+- Some system services may require Full Disk Access permission to view.
 
 ## License
 

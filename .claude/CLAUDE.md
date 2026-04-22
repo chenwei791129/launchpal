@@ -23,17 +23,26 @@ A GUI for managing macOS LaunchAgents.
 
 ```
 ├── app.go                    # Wails bindings exposed to the frontend
+├── admin_mode.go             # Admin Mode state machine + helper lifecycle (Enable/Disable/status)
 ├── main.go                   # Application entry point
-├── Makefile                  # Build recipes
+├── Makefile                  # Build recipes (includes build-helper / install-helper for privhelper)
+├── cmd/
+│   └── launchpal-privhelper/ # Root-privileged helper binary entry point (session-scoped, no persistence)
 ├── internal/
 │   ├── launchctl/            # launchctl command wrappers
 │   │   ├── types.go          # Service, ServiceConfig, and related types (includes StatusConfidence)
 │   │   ├── manager.go        # Manager interface
 │   │   ├── user.go           # UserManager (~/Library/LaunchAgents)
-│   │   ├── system.go         # SystemManager (/Library/LaunchDaemons, read-only)
-│   │   ├── apple_system.go   # AppleSystemManager (/System/Library/LaunchDaemons, read-only)
+│   │   ├── system.go         # SystemManager — dual mode: read-only by default, Admin Mode delegates writes via AdminClient
+│   │   ├── apple_system.go   # AppleSystemManager (/System/Library/LaunchDaemons, always read-only)
 │   │   ├── readonly.go       # Shared read-only logic for SystemManager and AppleSystemManager
 │   │   └── status_detect.go  # Heuristic status detection for the system domain (pgrep -u + ppid=1 filter)
+│   ├── privhelper/           # RPC protocol + server + client shared by app.go and the helper binary
+│   │   ├── protocol.go       # Request/Response types, method name + error code constants
+│   │   ├── server.go         # Newline-delimited JSON server, peer UID verification, idle/parent watchdog
+│   │   ├── client.go         # Client side: Connect (retry), LaunchHelper (osascript), typed method wrappers
+│   │   ├── handlers.go       # Bootstrap/Bootout/Kickstart/WritePlist/DeletePlist/List handlers, path + label validation
+│   │   └── peer_darwin.go    # LOCAL_PEERCRED implementation (via golang.org/x/sys/unix)
 │   ├── backup/               # Backup management
 │   │   └── backup.go         # BackupManager implementation
 │   └── plistutil/            # plist format detection and binary→XML normalization (shared by backup, launchctl)
@@ -89,15 +98,39 @@ LaunchPal supports three service categories:
    - Supports environment variables (`EnvironmentVariables`).
 
 2. **System Services** (`/Library/LaunchDaemons`)
-   - Read-only.
-   - Can view service information, status, plist contents, and logs.
+   - Read-only by default. Write access (Start/Stop/Restart/Create/Update/Delete) requires Admin Mode to be enabled (see below).
+   - Can view service information, status, plist contents, and logs without Admin Mode.
    - Third-party system-level services.
 
 3. **Apple System Services** (`/System/Library/LaunchDaemons`)
-   - Read-only.
+   - Always read-only, even with Admin Mode enabled (SIP would block writes anyway).
    - Can view service information, status, plist contents, and logs.
    - macOS built-in services.
    - Many of these use the binary plist format and are automatically converted to XML for display.
+
+## Admin Mode (session-scoped privileged helper)
+
+Because LaunchPal is unsigned and cannot register a persistent `SMAppService` daemon, write access to `/Library/LaunchDaemons` is gated by a **session-scoped helper** the user enables explicitly.
+
+- **Binary**: `launchpal-privhelper`, shipped inside the app bundle at `LaunchPal.app/Contents/MacOS/launchpal-privhelper`. Built by `make build-helper`, installed into the bundle by `make install-helper` (both run automatically from `make build`).
+- **Launch**: triggered by the `EnableAdminMode` Wails binding. LaunchPal runs `osascript -e 'do shell script "... with administrator privileges"'`, prompting the user for their password or Touch ID once per session.
+- **IPC**: Unix domain socket at `$TMPDIR/launchpal-<uid>-<16-hex-random>.sock`, `chmod 0600`, peer UID verified via `LOCAL_PEERCRED` before any RPC is processed. Messages are newline-delimited JSON.
+- **Scope**: the helper can only Bootstrap/Bootout/Kickstart and WritePlist/DeletePlist under `/Library/LaunchDaemons/`. Paths outside this directory and labels with shell metacharacters are rejected before any `launchctl` invocation.
+- **Log access**: after a successful Create/Update, `SystemManager` sends an `EnsureLogAccess` RPC with the plist's `StandardOutPath` / `StandardErrorPath`. The helper `MkdirAll`s the parent directory as `0755`, `Chmod`s it to `0755` if it already existed with a stricter mode (common launchd default is `0744` which blocks user traversal), and touches the log file as `0644` with `O_NOFOLLOW` if missing. Paths are restricted to the allowlist `/var/log/`, `/private/var/log/`, `/Library/Logs/`, `/tmp/`, `/private/tmp/` and must live at least one sub-directory deep — `/var/log/foo.log` is rejected to prevent re-moding a system log root.
+- **Lifecycle**:
+  - Parent watchdog polls LaunchPal's PID once per second via `syscall.Kill(pid, 0)`; when the parent is gone the helper removes the socket and exits within 2 seconds.
+  - Idle timeout: 30 minutes without RPC traffic triggers self-exit.
+  - Graceful shutdown via the `Shutdown` RPC (sent by `DisableAdminMode`) with a 3-second ack timeout.
+- **Backups**: when the helper overwrites/deletes a plist it first writes a backup under `<user-home>/.launchpal/backups/<label>/` and `lchown`s the created files to the launching user's UID/GID so the user-side LaunchPal can read them. `O_NOFOLLOW` is used to block symlink attacks against the backup path.
+- **State machine (frontend-visible)**:
+  ```
+  Disabled → Requesting → Enabled     (successful authorization + handshake)
+                        ↓
+                     Disabled          (user cancel / helper handshake failure / helper crash)
+  Enabled → ShuttingDown → Disabled   (DisableAdminMode)
+  Enabled → Disabled                   (helper crash — error: "helper_crashed")
+  ```
+  State changes emit the `admin_mode:state` Wails event. The frontend composable `useAdminMode()` exposes `state`, `lastError`, `isEnabled`, and `enable()`/`disable()` methods.
 
 ## Status Detection Logic
 
@@ -152,9 +185,9 @@ This project uses [release-please](https://github.com/googleapis/release-please)
 
 ## Known Limitations
 
-- Write operations are limited to user-level services (`~/Library/LaunchAgents`).
-- System services (`/Library/LaunchDaemons`, `/System/Library/LaunchDaemons`) are read-only.
-- Cannot stop services running as root (would require sudo).
+- User services (`~/Library/LaunchAgents`) can be managed without any authorization.
+- System services (`/Library/LaunchDaemons`) require Admin Mode; enabling it prompts for authorization **once per LaunchPal session** — there is no cross-session credential cache by design.
+- Apple system services (`/System/Library/LaunchDaemons`) are always read-only (SIP).
 - Some system services require Full Disk Access to be readable.
 
 ## Worktree Setup

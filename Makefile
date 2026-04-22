@@ -1,4 +1,4 @@
-.PHONY: setup test lint build build-debug dev dmg clean help
+.PHONY: setup test lint build build-debug build-helper install-helper dev dmg clean help
 
 # Show available commands
 help:
@@ -8,8 +8,9 @@ help:
 	@echo "  setup        Install dependencies"
 	@echo "  test         Run tests"
 	@echo "  lint         Run linter"
-	@echo "  build        Build production app"
+	@echo "  build        Build production app (includes privhelper)"
 	@echo "  build-debug  Build with devtools enabled"
+	@echo "  build-helper Build the launchpal-privhelper binary"
 	@echo "  dev          Build and run app"
 	@echo "  dmg          Build and package as DMG"
 	@echo "  clean        Clean build artifacts"
@@ -29,13 +30,35 @@ test:
 lint:
 	go tool golangci-lint run ./...
 
+# Build the privhelper binary. Written to build/bin/launchpal-privhelper so
+# the wails build step (which writes build/bin/launchpal.app) can pick it up
+# alongside the main binary.
+build-helper:
+	mkdir -p build/bin
+	CGO_ENABLED=1 go build -trimpath -o build/bin/launchpal-privhelper ./cmd/launchpal-privhelper
+
+# Copy the privhelper into the .app bundle next to the main binary. This must
+# run after `wails build` so the bundle directory exists. The install target
+# is a no-op when the bundle is missing (used by `make build` below which
+# runs this after wails succeeds).
+install-helper: build-helper
+	@if [ -d build/bin/launchpal.app/Contents/MacOS ]; then \
+		cp build/bin/launchpal-privhelper build/bin/launchpal.app/Contents/MacOS/launchpal-privhelper; \
+		chmod 0755 build/bin/launchpal.app/Contents/MacOS/launchpal-privhelper; \
+		echo "Installed launchpal-privhelper into app bundle"; \
+	else \
+		echo "No app bundle found at build/bin/launchpal.app — skipping install-helper"; \
+	fi
+
 # Build production app
 build:
 	go tool wails build
+	$(MAKE) install-helper
 
 # Build with devtools enabled
 build-debug:
 	go tool wails build -debug
+	$(MAKE) install-helper
 
 # Build and run app
 dev: build-debug

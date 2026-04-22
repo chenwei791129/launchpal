@@ -10,8 +10,28 @@ export function CreateService(arg1) {
   return window['go']['main']['App']['CreateService'](arg1);
 }
 
+export function CreateSystemService(arg1) {
+  return window['go']['main']['App']['CreateSystemService'](arg1);
+}
+
 export function DeleteService(arg1) {
   return window['go']['main']['App']['DeleteService'](arg1);
+}
+
+export function DeleteSystemService(arg1) {
+  return window['go']['main']['App']['DeleteSystemService'](arg1);
+}
+
+export function DisableAdminMode() {
+  return window['go']['main']['App']['DisableAdminMode']();
+}
+
+export function EnableAdminMode() {
+  return window['go']['main']['App']['EnableAdminMode']();
+}
+
+export function GetAdminModeStatus() {
+  return window['go']['main']['App']['GetAdminModeStatus']();
 }
 
 export function GetBackupContent(arg1, arg2) {
@@ -20,6 +40,10 @@ export function GetBackupContent(arg1, arg2) {
 
 export function GetCurrentPlist(arg1) {
   return window['go']['main']['App']['GetCurrentPlist'](arg1);
+}
+
+export function GetCurrentSystemPlist(arg1) {
+  return window['go']['main']['App']['GetCurrentSystemPlist'](arg1);
 }
 
 export function GetLogs(arg1, arg2) {
@@ -78,6 +102,10 @@ export function RestartService(arg1) {
   return window['go']['main']['App']['RestartService'](arg1);
 }
 
+export function RestartSystemService(arg1) {
+  return window['go']['main']['App']['RestartSystemService'](arg1);
+}
+
 export function RestoreBackup(arg1, arg2) {
   return window['go']['main']['App']['RestoreBackup'](arg1, arg2);
 }
@@ -90,10 +118,22 @@ export function StartService(arg1) {
   return window['go']['main']['App']['StartService'](arg1);
 }
 
+export function StartSystemService(arg1) {
+  return window['go']['main']['App']['StartSystemService'](arg1);
+}
+
 export function StopService(arg1) {
   return window['go']['main']['App']['StopService'](arg1);
 }
 
+export function StopSystemService(arg1) {
+  return window['go']['main']['App']['StopSystemService'](arg1);
+}
+
 export function UpdateService(arg1, arg2) {
   return window['go']['main']['App']['UpdateService'](arg1, arg2);
+}
+
+export function UpdateSystemService(arg1, arg2) {
+  return window['go']['main']['App']['UpdateSystemService'](arg1, arg2);
 }

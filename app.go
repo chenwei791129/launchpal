@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"launchpal/internal/backup"
 	"launchpal/internal/launchctl"
@@ -19,6 +21,7 @@ type App struct {
 	systemManager  *launchctl.SystemManager
 	appleSystemMgr *launchctl.AppleSystemManager
 	backup         *backup.BackupManager
+	admin          *adminModeManager
 }
 
 // NewApp creates a new App application struct with default version
@@ -28,12 +31,14 @@ func NewApp() *App {
 
 // NewAppWithVersion creates a new App with the specified version
 func NewAppWithVersion(version string) *App {
+	sysMgr := launchctl.NewSystemManager()
 	return &App{
 		version:        version,
 		manager:        launchctl.NewUserManager(),
-		systemManager:  launchctl.NewSystemManager(),
+		systemManager:  sysMgr,
 		appleSystemMgr: launchctl.NewAppleSystemManager(),
 		backup:         backup.NewBackupManager(),
+		admin:          newAdminModeManager(sysMgr),
 	}
 }
 
@@ -45,6 +50,31 @@ func (a *App) GetVersion() string {
 // startup is called when the app starts
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	// Wire the Wails event emitter so state transitions reach the frontend
+	// without requiring a poll.
+	a.admin.event = &wailsEventEmitter{ctx: ctx}
+}
+
+// EnableAdminMode launches the privileged helper (prompts for user
+// authorization via osascript) and installs it as the write backend for
+// SystemManager. Returns nil when Admin Mode is already Enabled or when the
+// user cancelled the authorization prompt; returns an error only when the
+// helper could not be started.
+func (a *App) EnableAdminMode() error {
+	return a.admin.Enable(a.ctx)
+}
+
+// DisableAdminMode gracefully shuts the helper down and reverts SystemManager
+// to read-only. Safe to call when Admin Mode is already Disabled.
+func (a *App) DisableAdminMode() error {
+	return a.admin.Disable(a.ctx)
+}
+
+// GetAdminModeStatus returns the current Admin Mode state and any recent
+// error code. The frontend polls this (and listens to the
+// "admin_mode:state" event) to drive the UI.
+func (a *App) GetAdminModeStatus() AdminModeStatus {
+	return a.admin.status()
 }
 
 // ListServices returns all LaunchAgent services
@@ -133,24 +163,55 @@ func (a *App) GetCurrentPlist(name string) (*plistutil.Content, error) {
 	return a.manager.GetPlistContent(name)
 }
 
-// RestoreBackup restores a backup to the service's plist path
+// GetCurrentSystemPlist is the system-domain counterpart of GetCurrentPlist:
+// it reads /Library/LaunchDaemons/<name>.plist for diffing against a backup.
+// Same empty-on-missing convention as GetCurrentPlist.
+func (a *App) GetCurrentSystemPlist(name string) (*plistutil.Content, error) {
+	return a.systemManager.GetPlistContent(name)
+}
+
+// RestoreBackup restores a backup to the service's plist path. Dispatches on
+// the backup's target location: user-domain backups (under ~/Library/LaunchAgents
+// or any path writable by the GUI user) use a direct file copy; system-domain
+// backups (paths under /Library/LaunchDaemons) are routed through the
+// privileged helper, which fails with ErrReadOnlyManager if Admin Mode is off.
+// The target path comes from the service's current location when available and
+// falls back to the OriginalPath stored in the backup metadata.
 func (a *App) RestoreBackup(serviceName, backupID string) error {
-	// Try to get existing service path first
-	svc, err := a.manager.Get(serviceName)
-	if err == nil {
-		return a.backup.Restore(serviceName, backupID, svc.Path)
+	targetPath := ""
+	if svc, err := a.manager.Get(serviceName); err == nil && svc.Path != "" {
+		targetPath = svc.Path
+	}
+	if targetPath == "" {
+		b, err := a.backup.Get(serviceName, backupID)
+		if err != nil {
+			return err
+		}
+		targetPath = b.OriginalPath
+	}
+	if targetPath == "" {
+		return fmt.Errorf("cannot restore: service not found and no original path in backup")
 	}
 
-	// Service doesn't exist, use original path from backup metadata
-	b, err := a.backup.Get(serviceName, backupID)
-	if err != nil {
-		return err
+	// Paths under /Library/LaunchDaemons are root-owned; a direct copyFile
+	// would fail with EACCES. Route through the helper instead.
+	if isSystemDaemonPath(targetPath) {
+		content, err := a.backup.GetContent(serviceName, backupID)
+		if err != nil {
+			return err
+		}
+		return a.systemManager.RestorePlist(targetPath, []byte(content.Data))
 	}
-	if b.OriginalPath != "" {
-		return a.backup.Restore(serviceName, backupID, b.OriginalPath)
-	}
+	return a.backup.Restore(serviceName, backupID, targetPath)
+}
 
-	return fmt.Errorf("cannot restore: service not found and no original path in backup")
+// isSystemDaemonPath reports whether path lives under /Library/LaunchDaemons.
+// The comparison uses a clean absolute-path + trailing-separator check so
+// look-alike directories (e.g. /Library/LaunchDaemonsX) don't match.
+func isSystemDaemonPath(path string) bool {
+	clean := filepath.Clean(path)
+	prefix := "/Library/LaunchDaemons/"
+	return strings.HasPrefix(clean+"/", prefix)
 }
 
 // KickstartService immediately runs a user service via launchctl kickstart
@@ -202,6 +263,39 @@ func (a *App) GetSystemLogs(name string, serviceType string, logType string) (st
 	default:
 		return "", fmt.Errorf("invalid service type: %s", serviceType)
 	}
+}
+
+// StartSystemService starts a system daemon via the privileged helper.
+// Requires Admin Mode enabled; returns launchctl.ErrReadOnlyManager otherwise.
+func (a *App) StartSystemService(name string) error {
+	return a.systemManager.Start(name)
+}
+
+// StopSystemService stops a system daemon via the privileged helper.
+func (a *App) StopSystemService(name string) error {
+	return a.systemManager.Stop(name)
+}
+
+// RestartSystemService kickstarts (-k) a system daemon via the helper.
+func (a *App) RestartSystemService(name string) error {
+	return a.systemManager.Restart(name)
+}
+
+// UpdateSystemService writes a new plist for a system daemon via the helper
+// (the helper takes a backup before overwriting).
+func (a *App) UpdateSystemService(name string, config launchctl.ServiceConfig) error {
+	return a.systemManager.Update(name, &config)
+}
+
+// CreateSystemService creates a new system daemon plist and bootstraps it.
+func (a *App) CreateSystemService(config launchctl.ServiceConfig) error {
+	return a.systemManager.Create(&config)
+}
+
+// DeleteSystemService boots out and removes a system daemon plist (with a
+// backup) via the helper.
+func (a *App) DeleteSystemService(name string) error {
+	return a.systemManager.Delete(name)
 }
 
 // RevealInFinder opens Finder and highlights the file at the given path.

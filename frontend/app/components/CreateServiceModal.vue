@@ -7,7 +7,7 @@
     <div class="relative bg-surface-300 rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] overflow-hidden">
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-surface-100">
-        <h2 class="text-lg font-semibold text-gray-100">Create New Service</h2>
+        <h2 class="text-lg font-semibold text-gray-100">{{ serviceType === 'system' ? 'Create New System Daemon' : 'Create New Service' }}</h2>
         <button @click="$emit('close')" class="text-gray-400 hover:text-white">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -174,9 +174,12 @@
 import type { ServiceConfig, ScheduleConfig } from '~/types/wails.d'
 import { parseShellArgs } from '~/utils/shell-args'
 
-defineProps<{
+const props = withDefaults(defineProps<{
   isOpen: boolean
-}>()
+  serviceType?: 'user' | 'system'
+}>(), {
+  serviceType: 'user',
+})
 
 const emit = defineEmits<{
   close: []
@@ -220,10 +223,20 @@ function removeEnvVar(index: number) {
   for (const i of next) envVisibility.add(i)
 }
 
-const logPaths = computed(() => ({
-  stdout: `~/Library/Logs/${form.label}/stdout.log`,
-  stderr: `~/Library/Logs/${form.label}/stderr.log`,
-}))
+// System daemons run as root and cannot expand `~`, so route their logs
+// under /var/log — the conventional system log directory — keyed by label.
+const logPaths = computed(() => {
+  if (props.serviceType === 'system') {
+    return {
+      stdout: `/var/log/${form.label}/stdout.log`,
+      stderr: `/var/log/${form.label}/stderr.log`,
+    }
+  }
+  return {
+    stdout: `~/Library/Logs/${form.label}/stdout.log`,
+    stderr: `~/Library/Logs/${form.label}/stderr.log`,
+  }
+})
 
 async function handleSubmit() {
   if (!form.label || !form.program) return
@@ -249,7 +262,11 @@ async function handleSubmit() {
       stderrPath: logPaths.value.stderr,
     }
 
-    await window.go.main.App.CreateService(config)
+    if (props.serviceType === 'system') {
+      await window.go.main.App.CreateSystemService(config)
+    } else {
+      await window.go.main.App.CreateService(config)
+    }
     emit('created')
     emit('close')
 

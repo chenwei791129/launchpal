@@ -215,6 +215,25 @@ export namespace launchctl {
 
 }
 
+export namespace main {
+	
+	export class AdminModeStatus {
+	    state: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AdminModeStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.error = source["error"];
+	    }
+	}
+
+}
+
 export namespace plistutil {
 	
 	export class Content {
