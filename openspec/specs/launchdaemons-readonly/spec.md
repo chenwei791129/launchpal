@@ -28,6 +28,55 @@ SystemManager and AppleSystemManager SHALL return `ErrReadOnlyManager` for all w
 - **WHEN** Start, Stop, Restart, Create, Update, or Delete is called on AppleSystemManager
 - **THEN** each call returns `ErrReadOnlyManager`
 
+
+<!-- @trace
+source: session-privileged-helper
+updated: 2026-04-22
+code:
+  - frontend/app/pages/services/[name].vue
+  - frontend/app/components/ServiceLogs.vue
+  - internal/launchctl/readonly.go
+  - internal/launchctl/system.go
+  - internal/privhelper/peer_darwin.go
+  - frontend/wailsjs/go/main/App.d.ts
+  - launchpal-privhelper
+  - Makefile
+  - cmd/launchpal-privhelper/main.go
+  - go.mod
+  - internal/launchctl/user.go
+  - frontend/app/components/ServiceRow.vue
+  - app.go
+  - frontend/wailsjs/go/models.ts
+  - internal/launchctl/plist_encode.go
+  - frontend/app/components/BackupDiffDialog.vue
+  - frontend/app/components/CreateServiceModal.vue
+  - frontend/app/types/wails.d.ts
+  - internal/privhelper/nofollow_other.go
+  - internal/privhelper/protocol.go
+  - internal/privhelper/server.go
+  - frontend/app/composables/useAdminMode.ts
+  - frontend/app/pages/system.vue
+  - frontend/app/pages/settings.vue
+  - internal/privhelper/nofollow_darwin.go
+  - frontend/wailsjs/go/main/App.js
+  - README.md
+  - internal/privhelper/peer_other.go
+  - internal/privhelper/handlers.go
+  - admin_mode.go
+  - internal/privhelper/client.go
+tests:
+  - internal/privhelper/handlers_test.go
+  - internal/privhelper/server_test.go
+  - internal/launchctl/plist_encode_test.go
+  - internal/privhelper/protocol_test.go
+  - internal/privhelper/client_test.go
+  - cmd/launchpal-privhelper/helper_test.go
+  - app_test.go
+  - admin_mode_test.go
+  - admin_mode_testhelpers_test.go
+  - internal/launchctl/system_test.go
+-->
+
 ### Requirement: List system services
 
 SystemManager SHALL list all `.plist` files in `/Library/LaunchDaemons`.
