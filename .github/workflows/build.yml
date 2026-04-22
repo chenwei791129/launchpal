@@ -3,6 +3,8 @@ name: Build LaunchPal
 on:
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - 'CHANGELOG.md'
   workflow_call:
     inputs:
       version:
