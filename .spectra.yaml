@@ -22,9 +22,16 @@ claude_slash_commands: false
 # Custom git worktrees directory
 # worktrees_dir: .spectra/worktrees
 
-# Claude Code skill effort levels (low/medium/high/max)
-# claude_effort:
-#   apply: high
+# Claude Code skill effort levels (low/medium/high/xhigh/max)
+claude_effort:
+  apply: xhigh
+  archive: low
+  ask: low
+  audit: xhigh
+  debug: xhigh
+  discuss: medium
+  ingest: xhigh
+  propose: xhigh
 
 # AI tools to generate instruction files for
 # tools:
