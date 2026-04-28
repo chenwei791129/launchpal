@@ -307,6 +307,7 @@
               </svg>
             </button>
           </div>
+          <!-- eslint-disable-next-line vue/no-v-html -- shiki escapes input before producing the highlighted HTML -->
           <div v-if="highlightedPlist" class="bg-surface-500 rounded-lg p-4 font-mono overflow-auto [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0 [&_code]:!text-sm" v-html="highlightedPlist"/>
           <pre v-else-if="plistContent" class="bg-surface-500 rounded-lg p-4 font-mono text-sm text-gray-300 whitespace-pre-wrap overflow-auto">{{ plistContent }}</pre>
           <div v-else class="flex items-center justify-center h-48 text-gray-500">

@@ -24,7 +24,7 @@ const props = withDefaults(
     confidence?: 'verified' | 'unverified'
     size?: 'sm' | 'md'
   }>(),
-  { size: 'sm' },
+  { confidence: 'verified', size: 'sm' },
 )
 
 const sizeClass = computed(() => (props.size === 'md' ? 'w-4 h-4' : 'w-3.5 h-3.5'))
