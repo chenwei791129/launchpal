@@ -11,7 +11,6 @@ const loading = ref(false)
 // Event subscription is lazy: the first component that mounts uses the
 // composable to register the listener; subsequent subscribers reuse it.
 let subscribed = false
-let _unsubscribe: (() => void) | null = null
 
 declare global {
   interface Window {
@@ -42,7 +41,7 @@ function ensureSubscribed() {
   subscribed = true
   const runtime = window.runtime
   if (runtime?.EventsOn) {
-    _unsubscribe = runtime.EventsOn('admin_mode:state', (...args) => {
+    runtime.EventsOn('admin_mode:state', (...args) => {
       const payload = args[0] as AdminModeStatus | undefined
       applyStatus(payload)
     })
