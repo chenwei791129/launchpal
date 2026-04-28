@@ -14,7 +14,7 @@
           'bg-gray-500': service.status === 'stopped',
           'bg-yellow-500': service.status === 'unknown'
         }"
-      ></span>
+      />
       <StatusConfidenceIcon :confidence="service.statusConfidence" size="sm" />
     </div>
 
