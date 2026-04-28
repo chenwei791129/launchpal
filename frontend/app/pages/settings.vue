@@ -298,7 +298,7 @@ import { useAppVersion } from '~/composables/useAppVersion'
 import { useAdminMode } from '~/composables/useAdminMode'
 import BackupDiffDialog from '~/components/BackupDiffDialog.vue'
 import { formatTimestamp } from '~/utils/formatters'
-import type { Backup } from '~/types/wails'
+import type { AdminModeState, Backup } from '~/types/wails'
 
 const appVersion = useAppVersion()
 const admin = useAdminMode()
@@ -306,13 +306,13 @@ const admin = useAdminMode()
 // Single lookup keyed by AdminModeState. Each state maps to its label,
 // badge classes, and icon color so the template can bind directly without
 // triplicate switches.
-const adminStateStyles: Record<string, { label: string, badge: string, icon: string }> = {
+const adminStateStyles: Record<AdminModeState, { label: string, badge: string, icon: string }> = {
   enabled:       { label: 'Enabled',       badge: 'bg-green-600/20 text-green-400',   icon: 'text-green-400' },
   requesting:    { label: 'Requesting',    badge: 'bg-yellow-600/20 text-yellow-400', icon: 'text-yellow-400' },
   shutting_down: { label: 'Shutting down', badge: 'bg-orange-600/20 text-orange-400', icon: 'text-orange-400' },
   disabled:      { label: 'Disabled',      badge: 'bg-gray-600/20 text-gray-400',     icon: 'text-gray-400' },
 }
-const adminStyle = computed(() => adminStateStyles[admin.state.value] ?? adminStateStyles.disabled)
+const adminStyle = computed(() => adminStateStyles[admin.state.value])
 const adminStateLabel = computed(() => adminStyle.value.label)
 const adminBadgeClass = computed(() => adminStyle.value.badge)
 const adminBadgeColor = computed(() => adminStyle.value.icon)

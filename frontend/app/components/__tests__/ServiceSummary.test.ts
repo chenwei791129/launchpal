@@ -30,6 +30,7 @@ const makeService = (environment?: Record<string, string>): Service => ({
   name: 'com.example.test',
   label: 'com.example.test',
   status: 'stopped',
+  statusConfidence: 'verified',
   path: '/Library/LaunchAgents/com.example.test.plist',
   runAtLoad: false,
   keepAlive: false,
