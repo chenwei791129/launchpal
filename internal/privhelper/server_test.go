@@ -107,7 +107,7 @@ func TestServer_AcceptsMatchingPeer(t *testing.T) {
 	s := startTestServer(t, ServerOptions{AuthorizedUID: 42, PeerUID: stubPeerUID(42)})
 
 	conn := dial(t, s.opts.SocketPath)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	write(t, conn, Request{ID: 1, Method: MethodPing})
 
@@ -142,7 +142,7 @@ func TestServer_RejectsMismatchedPeer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// The server closes without reading; writing may succeed into the pipe
 	// but the read side should EOF promptly.
@@ -177,7 +177,7 @@ func TestServer_SerialRequestProcessing(t *testing.T) {
 	})
 
 	conn := dial(t, s.opts.SocketPath)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Pipeline 3 requests back-to-back.
 	for _, id := range []int64{1, 2, 3} {
@@ -209,7 +209,7 @@ func TestServer_MalformedJSON(t *testing.T) {
 	s := startTestServer(t, ServerOptions{AuthorizedUID: os.Getuid()})
 
 	conn := dial(t, s.opts.SocketPath)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if _, err := conn.Write([]byte("{not json\n")); err != nil {
 		t.Fatalf("write: %v", err)

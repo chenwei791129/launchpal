@@ -17,7 +17,7 @@ func pairedInternal(t *testing.T, respond func(req privhelper.Request) privhelpe
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		defer serverEnd.Close()
+		defer func() { _ = serverEnd.Close() }()
 		decoder := json.NewDecoder(serverEnd)
 		encoder := json.NewEncoder(serverEnd)
 		for {
@@ -32,8 +32,8 @@ func pairedInternal(t *testing.T, respond func(req privhelper.Request) privhelpe
 	}()
 	client := privhelper.NewClient(privhelper.ClientOptions{Conn: clientEnd})
 	cleanup := func() {
-		client.Close()
-		serverEnd.Close()
+		_ = client.Close()
+		_ = serverEnd.Close()
 		<-done
 	}
 	return client, cleanup

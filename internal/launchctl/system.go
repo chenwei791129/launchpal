@@ -3,7 +3,6 @@ package launchctl
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -300,16 +299,6 @@ func encodePlist(config *ServiceConfig) ([]byte, error) {
 		return nil, fmt.Errorf("encode plist: %w", err)
 	}
 	return buf.Bytes(), nil
-}
-
-// encodePlistBase64 is a convenience used by tests and the admin-client
-// wrapper in app.go: marshal + base64 in one step.
-func encodePlistBase64(config *ServiceConfig) (string, error) {
-	data, err := encodePlist(config)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(data), nil
 }
 
 // Ensure SystemManager implements Manager interface

@@ -20,7 +20,7 @@ func pairedClientServer(t *testing.T, respond func(req Request) Response) (*Clie
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		defer serverEnd.Close()
+		defer func() { _ = serverEnd.Close() }()
 		decoder := json.NewDecoder(serverEnd)
 		encoder := json.NewEncoder(serverEnd)
 		for {
@@ -37,8 +37,8 @@ func pairedClientServer(t *testing.T, respond func(req Request) Response) (*Clie
 
 	client := NewClient(ClientOptions{Conn: clientEnd})
 	cleanup := func() {
-		client.Close()
-		serverEnd.Close()
+		_ = client.Close()
+		_ = serverEnd.Close()
 		<-done
 	}
 	return client, cleanup
@@ -147,7 +147,7 @@ func TestConnect_SucceedsOnceListenerStarts(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_ = l.Close()
 	}()
 
@@ -155,7 +155,7 @@ func TestConnect_SucceedsOnceListenerStarts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	<-ready
 }
 
