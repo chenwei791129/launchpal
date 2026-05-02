@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.1](https://github.com/chenwei791129/launchpal/compare/v1.13.0...v1.13.1) (2026-05-02)
+
+
+### Bug Fixes
+
+* **ci:** copy launchpal-privhelper into app bundle during build ([29b6584](https://github.com/chenwei791129/launchpal/commit/29b6584ddf1197346a3f38b14ccaa8dc1c516d46))
+
 ## [1.13.0](https://github.com/chenwei791129/launchpal/compare/v1.12.1...v1.13.0) (2026-04-22)
 
 
