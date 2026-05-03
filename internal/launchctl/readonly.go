@@ -146,26 +146,32 @@ func (m *readOnlyManager) getPlist(name string) (string, error) {
 	return content.Data, nil
 }
 
+// getLogClearStatus returns the resolved log path, its existence, and
+// whether the current process can write it. Shared by SystemManager and
+// AppleSystemManager — apple-system surfaces the same status struct so the
+// frontend can display matching tooltips even though the Clear control is
+// hidden in that domain.
+func (m *readOnlyManager) getLogClearStatus(name string, logType string) (LogClearStatus, error) {
+	service, err := m.get(name)
+	if err != nil {
+		return LogClearStatus{}, err
+	}
+	logPath := selectLogPath(service, logType)
+	if logPath == "" {
+		return LogClearStatus{}, nil
+	}
+	return logClearStatusFor(logPath), nil
+}
+
 // getLogs returns stdout or stderr log content
 func (m *readOnlyManager) getLogs(name string, logType string) (string, error) {
 	service, err := m.get(name)
 	if err != nil {
 		return "", err
 	}
-
-	var logPath string
-	switch logType {
-	case LogTypeStdout:
-		logPath = service.StdoutPath
-	case LogTypeStderr:
-		logPath = service.StderrPath
-	default:
-		return "", fmt.Errorf("invalid log type: %s (use 'stdout' or 'stderr')", logType)
+	logPath, err := resolveLogPath(service, name, logType)
+	if err != nil {
+		return "", err
 	}
-
-	if logPath == "" {
-		return "", fmt.Errorf("no %s log path configured for service %s", logType, name)
-	}
-
 	return readLogTail(logPath)
 }

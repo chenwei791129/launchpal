@@ -2,7 +2,10 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
+
+	"launchpal/internal/launchctl"
 )
 
 func TestGetVersion_Default(t *testing.T) {
@@ -53,6 +56,43 @@ func TestRevealInFinder_NonexistentPath(t *testing.T) {
 	err := app.RevealInFinder("/nonexistent/launchpal-test-path.plist")
 	if err == nil {
 		t.Error("RevealInFinder with nonexistent path should return an error")
+	}
+}
+
+func TestClearSystemLogs_InvalidServiceType(t *testing.T) {
+	app := NewApp()
+	err := app.ClearSystemLogs("com.x", "bogus", launchctl.LogTypeStdout)
+	if err == nil {
+		t.Fatal("expected error for invalid serviceType")
+	}
+	if !strings.Contains(err.Error(), "invalid service type") {
+		t.Errorf("err = %q", err.Error())
+	}
+}
+
+func TestClearSystemLogs_AppleSystemRejected(t *testing.T) {
+	app := NewApp()
+	err := app.ClearSystemLogs("com.apple.x", launchctl.ServiceTypeAppleSystem, launchctl.LogTypeStdout)
+	if err == nil {
+		t.Fatal("expected error for apple-system")
+	}
+	if !strings.Contains(err.Error(), "apple-system") && !strings.Contains(err.Error(), "read-only") {
+		t.Errorf("err = %q, want apple-system/read-only mention", err.Error())
+	}
+}
+
+func TestGetLogClearStatus_InvalidServiceType(t *testing.T) {
+	app := NewApp()
+	_, err := app.GetLogClearStatus("com.x", "bogus", launchctl.LogTypeStdout)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestClearLogs_UserDispatchPropagatesError(t *testing.T) {
+	app := NewApp()
+	if err := app.ClearLogs("com.test.never-exists-launchpal", launchctl.LogTypeStdout); err == nil {
+		t.Error("expected error for missing service via ClearLogs binding")
 	}
 }
 

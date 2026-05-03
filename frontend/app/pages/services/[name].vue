@@ -290,6 +290,7 @@
           v-else-if="activeTab === 'logs'"
           :service-name="name"
           :service-type="serviceType"
+          :admin-enabled="admin.isEnabled.value"
           class="h-full"
         />
 

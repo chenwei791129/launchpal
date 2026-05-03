@@ -18,6 +18,7 @@ const (
 	MethodWritePlist        = "WritePlist"
 	MethodDeletePlist       = "DeletePlist"
 	MethodEnsureLogAccess   = "EnsureLogAccess"
+	MethodTruncateLog       = "TruncateLog"
 	MethodShutdown          = "Shutdown"
 )
 
@@ -33,6 +34,7 @@ var AllMethods = []string{
 	MethodWritePlist,
 	MethodDeletePlist,
 	MethodEnsureLogAccess,
+	MethodTruncateLog,
 	MethodShutdown,
 }
 
@@ -126,6 +128,14 @@ type DeletePlistParams struct {
 // without Full Disk Access.
 type EnsureLogAccessParams struct {
 	Paths []string `json:"paths"`
+}
+
+// TruncateLogParams are the parameters for MethodTruncateLog. Path must be an
+// absolute log file path under the same allowlist used by EnsureLogAccess.
+// The helper truncates the existing file to 0 bytes preserving inode, owner,
+// group, and mode; it does NOT create a missing file.
+type TruncateLogParams struct {
+	Path string `json:"path"`
 }
 
 // GetSystemDaemonParams are the parameters for MethodGetSystemDaemon.

@@ -64,6 +64,22 @@ export namespace launchctl {
 	        this.month = source["month"];
 	    }
 	}
+	export class LogClearStatus {
+	    logPath: string;
+	    exists: boolean;
+	    userWritable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogClearStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.logPath = source["logPath"];
+	        this.exists = source["exists"];
+	        this.userWritable = source["userWritable"];
+	    }
+	}
 	export class ScheduleConfig {
 	    schedules?: CalendarEntry[];
 	    interval?: number;

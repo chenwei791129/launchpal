@@ -31,4 +31,16 @@ type Manager interface {
 
 	// GetLogs returns stdout or stderr log content
 	GetLogs(name string, logType string) (string, error)
+
+	// ClearLogs truncates the configured stdout or stderr log file for the
+	// given service to 0 bytes. The file's inode, owner, group, and mode
+	// are preserved. Returns an error if logType is invalid, no log path
+	// is configured, the file does not exist, or the truncate fails.
+	ClearLogs(name string, logType string) error
+
+	// GetLogClearStatus returns information for the UI to decide whether
+	// the Clear Logs control should be enabled. The structure is returned
+	// even for empty log paths or missing files; an error is only returned
+	// when the service itself does not exist.
+	GetLogClearStatus(name string, logType string) (LogClearStatus, error)
 }

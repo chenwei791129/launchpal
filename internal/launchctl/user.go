@@ -520,25 +520,40 @@ func (m *UserManager) GetLogs(name string, logType string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	var logPath string
-	switch logType {
-	case LogTypeStdout:
-		logPath = service.StdoutPath
-	case LogTypeStderr:
-		logPath = service.StderrPath
-	default:
-		return "", fmt.Errorf("invalid log type: %s (use 'stdout' or 'stderr')", logType)
+	logPath, err := resolveLogPath(service, name, logType)
+	if err != nil {
+		return "", err
 	}
+	return readLogTail(expandTilde(logPath))
+}
 
+// ClearLogs truncates the configured stdout or stderr log file for the
+// service to 0 bytes. The file's inode, owner, and mode are preserved; the
+// file is not deleted. Errno mapping comes from the OpenFile call itself
+// rather than a separate Lstat — the kernel's answer is the only one
+// without a TOCTOU window.
+func (m *UserManager) ClearLogs(name string, logType string) error {
+	logPath, err := validateClearLogsArgs(m.Get, name, logType, true)
+	if err != nil {
+		return err
+	}
+	return truncateLogFile(logPath)
+}
+
+// GetLogClearStatus returns the resolved log path, its existence, and
+// whether the current process can write it without following symlinks.
+// Errors are only returned for missing services; other states are encoded
+// in the returned LogClearStatus.
+func (m *UserManager) GetLogClearStatus(name string, logType string) (LogClearStatus, error) {
+	service, err := m.Get(name)
+	if err != nil {
+		return LogClearStatus{}, err
+	}
+	logPath := selectLogPath(service, logType)
 	if logPath == "" {
-		return "", fmt.Errorf("no %s log path configured for service %s", logType, name)
+		return LogClearStatus{}, nil
 	}
-
-	// Expand ~ in path
-	logPath = expandTilde(logPath)
-
-	return readLogTail(logPath)
+	return logClearStatusFor(expandTilde(logPath)), nil
 }
 
 // expandTilde expands ~ to the user's home directory

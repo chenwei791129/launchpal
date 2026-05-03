@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"howett.net/plist"
 
@@ -25,6 +27,7 @@ type AdminClient interface {
 	WritePlist(ctx context.Context, plistPath string, data []byte) error
 	DeletePlist(ctx context.Context, plistPath string) error
 	EnsureLogAccess(ctx context.Context, paths []string) error
+	TruncateLog(ctx context.Context, path string) error
 }
 
 // SystemManager manages system LaunchDaemons in /Library/LaunchDaemons.
@@ -79,6 +82,40 @@ func (m *SystemManager) GetPlistContent(name string) (*plistutil.Content, error)
 }
 func (m *SystemManager) GetLogs(name string, logType string) (string, error) {
 	return m.getLogs(name, logType)
+}
+func (m *SystemManager) GetLogClearStatus(name string, logType string) (LogClearStatus, error) {
+	return m.getLogClearStatus(name, logType)
+}
+
+// ClearLogs truncates the configured stdout or stderr log for a system
+// daemon. The dispatch is per-file: a direct OpenFile is tried first, and
+// only EACCES falls back to the privileged helper. Any other errno
+// (ENOENT, ELOOP, EISDIR, …) surfaces unchanged so the caller can
+// distinguish a missing file from a permission gap. The errno comes from
+// the OpenFile itself — pre-stat-then-open would race.
+func (m *SystemManager) ClearLogs(name string, logType string) error {
+	logPath, err := validateClearLogsArgs(m.Get, name, logType, false)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(logPath, os.O_WRONLY|os.O_TRUNC|nofollowFlag, 0)
+	if err == nil {
+		return f.Close()
+	}
+	if os.IsNotExist(err) {
+		return fmt.Errorf("log file does not exist: %s", logPath)
+	}
+	if !errors.Is(err, syscall.EACCES) {
+		return err
+	}
+	// Re-fetch the client right before the helper call so a mid-flight
+	// Admin-Mode toggle (e.g. idle timeout between status and clear) is
+	// observed instead of using a stale handle.
+	c := m.client()
+	if c == nil {
+		return ErrReadOnlyManager
+	}
+	return c.TruncateLog(context.Background(), logPath)
 }
 
 // RestorePlist writes raw plist bytes to plistPath via the privileged helper.

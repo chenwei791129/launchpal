@@ -66,6 +66,50 @@ func TestClient_CallResponseCorrelation(t *testing.T) {
 	}
 }
 
+func TestClient_TruncateLog_RoundTrip(t *testing.T) {
+	var seenPath string
+	client, cleanup := pairedClientServer(t, func(req Request) Response {
+		id := req.ID
+		if req.Method != MethodTruncateLog {
+			return Response{ID: &id, Error: &RPCError{Code: ErrCodeUnknownMethod, Message: req.Method}}
+		}
+		var p TruncateLogParams
+		_ = json.Unmarshal(req.Params, &p)
+		seenPath = p.Path
+		raw, _ := json.Marshal(OKResult{OK: true})
+		return Response{ID: &id, Result: raw}
+	})
+	defer cleanup()
+
+	const want = "/var/log/myapp/out.log"
+	if err := client.TruncateLog(context.Background(), want); err != nil {
+		t.Fatalf("TruncateLog: %v", err)
+	}
+	if seenPath != want {
+		t.Errorf("path on the wire = %q, want %q", seenPath, want)
+	}
+}
+
+func TestClient_TruncateLog_PropagatesErrorCode(t *testing.T) {
+	client, cleanup := pairedClientServer(t, func(req Request) Response {
+		id := req.ID
+		return Response{ID: &id, Error: &RPCError{Code: ErrCodeNotFound, Message: "missing"}}
+	})
+	defer cleanup()
+
+	err := client.TruncateLog(context.Background(), "/var/log/x/out.log")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var rpcErr *RPCError
+	if !errors.As(err, &rpcErr) {
+		t.Fatalf("err type = %T", err)
+	}
+	if rpcErr.Code != ErrCodeNotFound {
+		t.Errorf("code = %q, want not_found", rpcErr.Code)
+	}
+}
+
 func TestClient_ErrorResponse(t *testing.T) {
 	client, cleanup := pairedClientServer(t, func(req Request) Response {
 		id := req.ID

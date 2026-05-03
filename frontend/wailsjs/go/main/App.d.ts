@@ -7,6 +7,10 @@ import {backup} from '../models';
 
 export function CheckPermissions():Promise<Record<string, boolean>>;
 
+export function ClearLogs(arg1:string,arg2:string):Promise<void>;
+
+export function ClearSystemLogs(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function CreateService(arg1:launchctl.ServiceConfig):Promise<void>;
 
 export function CreateSystemService(arg1:launchctl.ServiceConfig):Promise<void>;
@@ -26,6 +30,8 @@ export function GetBackupContent(arg1:string,arg2:string):Promise<plistutil.Cont
 export function GetCurrentPlist(arg1:string):Promise<plistutil.Content>;
 
 export function GetCurrentSystemPlist(arg1:string):Promise<plistutil.Content>;
+
+export function GetLogClearStatus(arg1:string,arg2:string,arg3:string):Promise<launchctl.LogClearStatus>;
 
 export function GetLogs(arg1:string,arg2:string):Promise<string>;
 

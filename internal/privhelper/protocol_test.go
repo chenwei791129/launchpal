@@ -114,6 +114,34 @@ func TestRPCError_ErrorInterface(t *testing.T) {
 	}
 }
 
+func TestTruncateLogParams_RoundTrip(t *testing.T) {
+	original := Request{
+		ID:     99,
+		Method: MethodTruncateLog,
+		Params: json.RawMessage(`{"path":"/var/log/myapp/out.log"}`),
+	}
+
+	data, err := json.Marshal(original)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var decoded Request
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.Method != MethodTruncateLog {
+		t.Errorf("Method = %q, want %q", decoded.Method, MethodTruncateLog)
+	}
+	var params TruncateLogParams
+	if err := json.Unmarshal(decoded.Params, &params); err != nil {
+		t.Fatalf("unmarshal params: %v", err)
+	}
+	if params.Path != "/var/log/myapp/out.log" {
+		t.Errorf("Path = %q", params.Path)
+	}
+}
+
 func TestAllMethods_Coverage(t *testing.T) {
 	want := []string{
 		MethodPing,
@@ -125,6 +153,7 @@ func TestAllMethods_Coverage(t *testing.T) {
 		MethodWritePlist,
 		MethodDeletePlist,
 		MethodEnsureLogAccess,
+		MethodTruncateLog,
 		MethodShutdown,
 	}
 	if len(AllMethods) != len(want) {

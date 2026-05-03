@@ -91,6 +91,18 @@ const (
 	LogTypeStderr = "stderr"
 )
 
+// LogClearStatus describes whether a service's log file can be truncated.
+// LogPath is the resolved (post-tilde-expansion) path or "" when the service
+// has no log path configured for the requested type. Exists is whether
+// LogPath exists on disk; UserWritable is whether the current process can
+// open LogPath for writing without following symlinks. Both Exists and
+// UserWritable are false when LogPath is empty.
+type LogClearStatus struct {
+	LogPath      string `json:"logPath"`
+	Exists       bool   `json:"exists"`
+	UserWritable bool   `json:"userWritable"`
+}
+
 // ErrReadOnlyManager is returned when attempting write operations on read-only managers
 var ErrReadOnlyManager = errors.New("this manager is read-only")
 
@@ -103,6 +115,115 @@ func parseKeepAlive(v any) bool {
 		return true
 	}
 	return false
+}
+
+// selectLogPath returns the StandardOutPath or StandardErrorPath of service
+// based on logType. Returns "" for an unrecognized logType so callers can
+// treat "missing path" and "unknown type" uniformly via the empty-string
+// check; the validation against {stdout, stderr} happens earlier in the
+// public API surface.
+func selectLogPath(service *Service, logType string) string {
+	switch logType {
+	case LogTypeStdout:
+		return service.StdoutPath
+	case LogTypeStderr:
+		return service.StderrPath
+	}
+	return ""
+}
+
+// resolveLogPath validates logType and returns the configured path on
+// service. Returns the same "invalid log type" and "no log path configured"
+// errors used by every Get/Clear caller, so error wording stays in one place.
+func resolveLogPath(service *Service, serviceName, logType string) (string, error) {
+	if logType != LogTypeStdout && logType != LogTypeStderr {
+		return "", fmt.Errorf("invalid log type: %s (use 'stdout' or 'stderr')", logType)
+	}
+	p := selectLogPath(service, logType)
+	if p == "" {
+		return "", fmt.Errorf("no %s log path configured for service %s", logType, serviceName)
+	}
+	return p, nil
+}
+
+// validateClearLogsArgs is the Get-then-resolveLogPath scaffolding shared by
+// UserManager.ClearLogs and SystemManager.ClearLogs. The caller performs
+// the OpenFile itself because each domain maps errnos differently.
+func validateClearLogsArgs(get func(string) (*Service, error), name, logType string, expand bool) (string, error) {
+	service, err := get(name)
+	if err != nil {
+		return "", err
+	}
+	logPath, err := resolveLogPath(service, name, logType)
+	if err != nil {
+		return "", err
+	}
+	if expand {
+		logPath = expandTilde(logPath)
+	}
+	return logPath, nil
+}
+
+// canWriteLogFile reports whether the calling process can open path for
+// writing without following symlinks. The check uses an actual OpenFile
+// attempt (immediately closed) rather than a stat + mode-bit comparison,
+// so ACLs, group membership, and SIP all flow through the kernel's
+// authoritative answer instead of being re-implemented in user space.
+//
+// Returns false for missing files and symlinks (O_NOFOLLOW makes the latter
+// fail with ELOOP).
+func canWriteLogFile(path string) bool {
+	if path == "" {
+		return false
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|nofollowFlag, 0)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
+}
+
+// truncateLogFile opens path with O_WRONLY|O_TRUNC|O_NOFOLLOW and closes it
+// immediately. Combining O_TRUNC with O_NOFOLLOW (instead of os.Truncate)
+// is what makes a symlink planted at path fail with ELOOP rather than be
+// dereferenced. Without O_CREATE, ENOENT surfaces unchanged so callers can
+// distinguish "missing" from "permission denied" without an extra Lstat.
+func truncateLogFile(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|nofollowFlag, 0)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("log file does not exist: %s", path)
+		}
+		return fmt.Errorf("failed to truncate log file: %w", err)
+	}
+	return f.Close()
+}
+
+// logClearStatusFor builds a LogClearStatus from a resolved (post-tilde)
+// path using a single OpenFile attempt. Stat-then-open would race; the
+// kernel's response to one OpenFile is the only authoritative answer.
+//
+//   - success → exists=true, writable=true
+//   - ENOENT → exists=false, writable=false
+//   - any other error (EACCES, ELOOP, EISDIR, …) → exists=true, writable=false
+func logClearStatusFor(resolvedPath string) LogClearStatus {
+	status := LogClearStatus{LogPath: resolvedPath}
+	if resolvedPath == "" {
+		return status
+	}
+	f, err := os.OpenFile(resolvedPath, os.O_WRONLY|nofollowFlag, 0)
+	if err == nil {
+		_ = f.Close()
+		status.Exists = true
+		status.UserWritable = true
+		return status
+	}
+	if os.IsNotExist(err) {
+		return status
+	}
+	status.Exists = true
+	return status
 }
 
 // maxLogSize is the maximum number of bytes to read from the tail of a log file (1MB)

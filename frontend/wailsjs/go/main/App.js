@@ -6,6 +6,14 @@ export function CheckPermissions() {
   return window['go']['main']['App']['CheckPermissions']();
 }
 
+export function ClearLogs(arg1, arg2) {
+  return window['go']['main']['App']['ClearLogs'](arg1, arg2);
+}
+
+export function ClearSystemLogs(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ClearSystemLogs'](arg1, arg2, arg3);
+}
+
 export function CreateService(arg1) {
   return window['go']['main']['App']['CreateService'](arg1);
 }
@@ -44,6 +52,10 @@ export function GetCurrentPlist(arg1) {
 
 export function GetCurrentSystemPlist(arg1) {
   return window['go']['main']['App']['GetCurrentSystemPlist'](arg1);
+}
+
+export function GetLogClearStatus(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetLogClearStatus'](arg1, arg2, arg3);
 }
 
 export function GetLogs(arg1, arg2) {
