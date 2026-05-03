@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.0](https://github.com/chenwei791129/launchpal/compare/v1.13.1...v1.14.0) (2026-05-03)
+
+
+### Features
+
+* **logs:** add Clear Logs control with per-file permission dispatch ([#29](https://github.com/chenwei791129/launchpal/issues/29)) ([9f0f900](https://github.com/chenwei791129/launchpal/commit/9f0f90068ff62a1e2725160dc8a89c2f18916c01))
+
 ## [1.13.1](https://github.com/chenwei791129/launchpal/compare/v1.13.0...v1.13.1) (2026-05-02)
 
 
