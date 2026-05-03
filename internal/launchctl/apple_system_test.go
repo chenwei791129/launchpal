@@ -165,6 +165,46 @@ func TestAppleSystemManager_List_TempDir(t *testing.T) {
 	})
 }
 
+func TestAppleSystemManager_ClearLogs(t *testing.T) {
+	m := NewAppleSystemManager()
+	err := m.ClearLogs("com.apple.anything", "stdout")
+	if err == nil {
+		t.Fatal("ClearLogs should return error for apple-system services")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "apple-system") && !strings.Contains(msg, "read-only") {
+		t.Errorf("err = %q, want it to mention apple-system or read-only", msg)
+	}
+}
+
+func TestAppleSystemManager_GetLogClearStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	logFile := filepath.Join(tmpDir, "log.log")
+	if err := os.WriteFile(logFile, []byte("x"), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	plistContent := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.apple.x</string>
+	<key>Program</key><string>/usr/libexec/x</string>
+	<key>StandardOutPath</key><string>` + logFile + `</string>
+</dict>
+</plist>`
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.apple.x.plist"), []byte(plistContent), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	m := &AppleSystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "apple-system"}}
+	got, err := m.GetLogClearStatus("com.apple.x", "stdout")
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if got.LogPath != logFile {
+		t.Errorf("LogPath = %q, want %q", got.LogPath, logFile)
+	}
+}
+
 func TestAppleSystemManager_GetLogs(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -240,4 +280,3 @@ func TestAppleSystemManager_GetLogs(t *testing.T) {
 		}
 	})
 }
-

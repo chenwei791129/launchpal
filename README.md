@@ -9,6 +9,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 📊 View service status in real-time
 - ▶️ Start/Stop user services with one click
 - 📋 View service logs (stdout/stderr)
+- 🧹 Clear stdout / stderr logs from the Logs tab (one-click in-place truncate; system daemons fall back to the privileged helper only when the file is not user-writable)
 - ➕ Create and configure new services
 - ⏰ Schedule services with Calendar Interval or Fixed Interval
 - 📅 Cron-style range (`9-17`) and enumeration (`1,3,5`) syntax with automatic expansion

@@ -561,6 +561,273 @@ func TestUserManager_GetLogs(t *testing.T) {
 	}
 }
 
+func TestUserManager_ClearLogs(t *testing.T) {
+	tmpDir := t.TempDir()
+	logDir := t.TempDir()
+
+	stdoutLog := filepath.Join(logDir, "stdout.log")
+	stderrLog := filepath.Join(logDir, "stderr.log")
+	if err := os.WriteFile(stdoutLog, []byte("stdout content\n"), 0644); err != nil {
+		t.Fatalf("seed stdout: %v", err)
+	}
+	if err := os.WriteFile(stderrLog, []byte("stderr content\n"), 0644); err != nil {
+		t.Fatalf("seed stderr: %v", err)
+	}
+
+	plistContent := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.test.clear</string>
+	<key>Program</key>
+	<string>/usr/bin/true</string>
+	<key>StandardOutPath</key>
+	<string>` + stdoutLog + `</string>
+	<key>StandardErrorPath</key>
+	<string>` + stderrLog + `</string>
+</dict>
+</plist>`
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.clear.plist"), []byte(plistContent), 0644); err != nil {
+		t.Fatalf("write plist: %v", err)
+	}
+
+	noLogPlist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.test.clear.nopath</string>
+	<key>Program</key>
+	<string>/usr/bin/true</string>
+</dict>
+</plist>`
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.clear.nopath.plist"), []byte(noLogPlist), 0644); err != nil {
+		t.Fatalf("write plist: %v", err)
+	}
+
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	t.Run("truncates stdout to 0 bytes", func(t *testing.T) {
+		if err := m.ClearLogs("com.test.clear", "stdout"); err != nil {
+			t.Fatalf("ClearLogs(stdout) error = %v", err)
+		}
+		info, err := os.Stat(stdoutLog)
+		if err != nil {
+			t.Fatalf("stat: %v", err)
+		}
+		if info.Size() != 0 {
+			t.Errorf("size = %d, want 0", info.Size())
+		}
+	})
+
+	t.Run("invalid log type returns error", func(t *testing.T) {
+		err := m.ClearLogs("com.test.clear", "trace")
+		if err == nil {
+			t.Fatal("expected error for invalid log type")
+		}
+		if !strings.Contains(err.Error(), "invalid log type") {
+			t.Errorf("err = %q, want it to mention invalid log type", err.Error())
+		}
+	})
+
+	t.Run("no log path configured returns error", func(t *testing.T) {
+		err := m.ClearLogs("com.test.clear.nopath", "stdout")
+		if err == nil {
+			t.Fatal("expected error when no log path configured")
+		}
+		if !strings.Contains(err.Error(), "no stdout log path") {
+			t.Errorf("err = %q, want it to mention 'no stdout log path'", err.Error())
+		}
+	})
+
+	t.Run("missing log file is an error not a no-op", func(t *testing.T) {
+		// Plist points at a path that has never been created — ClearLogs
+		// must NOT create the file (matching the spec's "no log file
+		// does not exist" requirement).
+		missing := filepath.Join(logDir, "never-created.log")
+		missingPlist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.test.clear.missing</string>
+	<key>Program</key><string>/usr/bin/true</string>
+	<key>StandardErrorPath</key><string>` + missing + `</string>
+</dict>
+</plist>`
+		if err := os.WriteFile(filepath.Join(tmpDir, "com.test.clear.missing.plist"), []byte(missingPlist), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		err := m.ClearLogs("com.test.clear.missing", "stderr")
+		if err == nil {
+			t.Fatal("expected error for missing log file")
+		}
+		if !strings.Contains(err.Error(), "log file does not exist") {
+			t.Errorf("err = %q", err.Error())
+		}
+		if _, statErr := os.Stat(missing); !os.IsNotExist(statErr) {
+			t.Error("ClearLogs must not create the file")
+		}
+	})
+
+	t.Run("symlink at log path is rejected on darwin", func(t *testing.T) {
+		// O_NOFOLLOW is darwin-only; on portable CI nofollowFlag == 0 and
+		// the truncate succeeds. Keep the assertion conditional so CI
+		// on Linux stays green.
+		if nofollowFlag == 0 {
+			t.Skip("O_NOFOLLOW unavailable on this build; symlink rejection only enforced on darwin")
+		}
+		target := filepath.Join(logDir, "victim.log")
+		if err := os.WriteFile(target, []byte("real content\n"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		link := filepath.Join(logDir, "link.log")
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		linkPlist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.test.clear.link</string>
+	<key>Program</key><string>/usr/bin/true</string>
+	<key>StandardOutPath</key><string>` + link + `</string>
+</dict>
+</plist>`
+		if err := os.WriteFile(filepath.Join(tmpDir, "com.test.clear.link.plist"), []byte(linkPlist), 0644); err != nil {
+			t.Fatalf("seed plist: %v", err)
+		}
+
+		if err := m.ClearLogs("com.test.clear.link", "stdout"); err == nil {
+			t.Fatal("expected error truncating a symlink")
+		}
+		// The symlink target must still hold its content.
+		got, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read target: %v", err)
+		}
+		if len(got) == 0 {
+			t.Error("symlink target was truncated; O_NOFOLLOW failed")
+		}
+	})
+}
+
+func TestUserManager_GetLogClearStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	logDir := t.TempDir()
+
+	writableLog := filepath.Join(logDir, "writable.log")
+	if err := os.WriteFile(writableLog, []byte("x"), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	missingLog := filepath.Join(logDir, "missing.log")
+
+	plistContent := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.test.status</string>
+	<key>Program</key><string>/usr/bin/true</string>
+	<key>StandardOutPath</key><string>` + writableLog + `</string>
+	<key>StandardErrorPath</key><string>` + missingLog + `</string>
+</dict>
+</plist>`
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.status.plist"), []byte(plistContent), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	noLogPlist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.test.status.nopath</string>
+	<key>Program</key><string>/usr/bin/true</string>
+</dict>
+</plist>`
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.status.nopath.plist"), []byte(noLogPlist), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	t.Run("path exists and writable", func(t *testing.T) {
+		got, err := m.GetLogClearStatus("com.test.status", "stdout")
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if got.LogPath != writableLog {
+			t.Errorf("LogPath = %q, want %q", got.LogPath, writableLog)
+		}
+		if !got.Exists || !got.UserWritable {
+			t.Errorf("got = %+v, want exists=true writable=true", got)
+		}
+	})
+
+	t.Run("path configured but missing", func(t *testing.T) {
+		got, err := m.GetLogClearStatus("com.test.status", "stderr")
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if got.LogPath != missingLog {
+			t.Errorf("LogPath = %q, want %q", got.LogPath, missingLog)
+		}
+		if got.Exists || got.UserWritable {
+			t.Errorf("got = %+v, want exists=false writable=false", got)
+		}
+	})
+
+	t.Run("no log path in plist", func(t *testing.T) {
+		got, err := m.GetLogClearStatus("com.test.status.nopath", "stdout")
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if got.LogPath != "" || got.Exists || got.UserWritable {
+			t.Errorf("got = %+v, want all zero", got)
+		}
+	})
+
+	t.Run("service not found returns error", func(t *testing.T) {
+		_, err := m.GetLogClearStatus("com.test.status.never", "stdout")
+		if err == nil {
+			t.Error("expected error for missing service")
+		}
+	})
+
+	t.Run("read-only file: exists=true, writable=false", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root bypasses mode bits")
+		}
+		ro := filepath.Join(logDir, "readonly.log")
+		if err := os.WriteFile(ro, []byte("x"), 0444); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		ropl := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.test.status.ro</string>
+	<key>Program</key><string>/usr/bin/true</string>
+	<key>StandardOutPath</key><string>` + ro + `</string>
+</dict>
+</plist>`
+		if err := os.WriteFile(filepath.Join(tmpDir, "com.test.status.ro.plist"), []byte(ropl), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		got, err := m.GetLogClearStatus("com.test.status.ro", "stdout")
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if !got.Exists {
+			t.Error("expected exists=true")
+		}
+		if got.UserWritable {
+			t.Error("expected writable=false for 0444 file")
+		}
+	})
+}
+
 func TestUserManager_CRUD(t *testing.T) {
 	tmpDir := t.TempDir()
 	m := &UserManager{launchAgentsPath: tmpDir}

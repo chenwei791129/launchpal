@@ -51,7 +51,35 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
         </button>
+
+        <!-- Clear Logs button (hidden entirely for apple-system) -->
+        <button
+          v-if="clearControlState.visible"
+          data-testid="clear-logs-button"
+          class="p-1.5 rounded text-gray-400 transition-colors"
+          :class="clearControlState.enabled
+            ? 'hover:bg-surface-200 hover:text-white'
+            : 'opacity-50 cursor-not-allowed'"
+          :title="clearControlState.tooltip ?? 'Clear current log'"
+          :disabled="!clearControlState.enabled"
+          @click="openClearDialog"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+          >
+            <path d="M19.36 2.72l1.42 1.42-5.72 5.71c1.07 1.54 1.22 3.39.32 4.59L9.06 8.12c1.2-.9 3.05-.75 4.59.32l5.71-5.72M5.93 17.57c-2.01-2.01-3.24-4.41-3.58-6.65l4.88-2.09 7.44 7.44-2.09 4.88c-2.24-.34-4.64-1.57-6.65-3.58z"/>
+          </svg>
+        </button>
       </div>
+    </div>
+
+    <!-- Transient feedback row -->
+    <div v-if="clearError || clearSuccess" class="px-4 py-2 border-b border-surface-100 text-sm">
+      <span v-if="clearError" class="text-red-400">{{ clearError }}</span>
+      <span v-else-if="clearSuccess" class="text-green-400">Log cleared</span>
     </div>
 
     <!-- Log content -->
@@ -84,15 +112,54 @@
 
       <pre v-else class="text-gray-300 whitespace-pre-wrap break-all">{{ logs }}</pre>
     </div>
+
+    <!-- Clear Logs confirmation dialog. Reuses the surface from [name].vue's
+         Run Now modal but uses red coloring to signal a destructive action. -->
+    <Teleport to="body">
+      <div
+        v-if="showClearDialog"
+        data-testid="clear-logs-dialog"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+        @click.self="cancelClearDialog"
+      >
+        <div class="bg-surface-400 rounded-xl shadow-xl p-6 w-96">
+          <h3 class="text-lg font-semibold text-white mb-2">Clear Logs</h3>
+          <p class="text-gray-400 mb-6">
+            This will permanently truncate the {{ logType }} log file for {{ serviceName }}. The file is reset to 0 bytes; existing entries cannot be recovered. Continue?
+          </p>
+          <div class="flex justify-end gap-3">
+            <button
+              data-testid="clear-logs-cancel"
+              class="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+              @click="cancelClearDialog"
+            >
+              Cancel
+            </button>
+            <button
+              data-testid="clear-logs-confirm"
+              class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              :disabled="clearing"
+              @click="confirmClear"
+            >
+              {{ clearing ? 'Clearing...' : 'Clear Logs' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { LogClearStatus } from '~/types/wails'
+
 const props = withDefaults(defineProps<{
   serviceName: string
   serviceType?: string
+  adminEnabled?: boolean
 }>(), {
   serviceType: 'user',
+  adminEnabled: false,
 })
 
 const logType = ref<'stdout' | 'stderr'>('stdout')
@@ -101,6 +168,16 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const autoScroll = ref(true)
 const logContainer = ref<HTMLElement | null>(null)
+
+// logClearStatus is null until the first GetLogClearStatus resolves; the
+// matrix below treats null as "pending" so the button stays disabled
+// rather than flicker through enabled states.
+const logClearStatus = ref<LogClearStatus | null>(null)
+const showClearDialog = ref(false)
+const clearing = ref(false)
+const clearError = ref<string | null>(null)
+const clearSuccess = ref(false)
+let clearSuccessTimeout: ReturnType<typeof setTimeout> | null = null
 
 async function loadLogs() {
   loading.value = true
@@ -132,17 +209,119 @@ async function loadLogs() {
   }
 }
 
+async function loadLogClearStatus() {
+  // Apple-system has no Clear button, so the status query is wasted. Skip
+  // entirely to keep List/detail loads fast.
+  if (props.serviceType === 'apple-system') {
+    logClearStatus.value = null
+    return
+  }
+  const app = window.go?.main?.App
+  if (!app?.GetLogClearStatus) return
+  try {
+    logClearStatus.value = await app.GetLogClearStatus(
+      props.serviceName,
+      props.serviceType,
+      logType.value,
+    )
+  } catch {
+    // Silent fail: the disabled button + "Loading status..." tooltip is
+    // the user-visible feedback. Writing to clearError here would mix
+    // with confirm-clear failures (and clobber a recent success indicator)
+    // even though the user took no clear action.
+    logClearStatus.value = null
+  }
+}
+
 function scrollToBottom() {
   if (logContainer.value) {
     logContainer.value.scrollTop = logContainer.value.scrollHeight
   }
 }
 
+interface ClearControlState {
+  visible: boolean
+  enabled: boolean
+  tooltip: string | null
+}
+
+// Single computed so the template binds one object instead of three
+// independent refs. Tooltip = null means "use the default Clear current
+// log title". Reads props.adminEnabled directly so a mid-session Admin
+// Mode toggle re-evaluates without an extra status query.
+const clearControlState = computed<ClearControlState>(() => {
+  if (props.serviceType === 'apple-system') {
+    return { visible: false, enabled: false, tooltip: null }
+  }
+  if (!logClearStatus.value) {
+    return { visible: true, enabled: false, tooltip: 'Loading status...' }
+  }
+  const status = logClearStatus.value
+  if (!status.logPath) {
+    return { visible: true, enabled: false, tooltip: 'No log path configured' }
+  }
+  if (!status.exists) {
+    return { visible: true, enabled: false, tooltip: 'Log file does not exist' }
+  }
+  if (props.serviceType === 'user') {
+    return { visible: true, enabled: true, tooltip: null }
+  }
+  if (status.userWritable || props.adminEnabled) {
+    return { visible: true, enabled: true, tooltip: null }
+  }
+  return { visible: true, enabled: false, tooltip: 'Enable Admin Mode to clear' }
+})
+
+function openClearDialog() {
+  clearError.value = null
+  clearSuccess.value = false
+  showClearDialog.value = true
+}
+
+function cancelClearDialog() {
+  showClearDialog.value = false
+}
+
+async function confirmClear() {
+  const app = window.go?.main?.App
+  if (!app) return
+  clearing.value = true
+  clearError.value = null
+  try {
+    if (props.serviceType === 'user') {
+      await app.ClearLogs(props.serviceName, logType.value)
+    } else {
+      await app.ClearSystemLogs(props.serviceName, props.serviceType, logType.value)
+    }
+    showClearDialog.value = false
+    // Spec requires reloading via GetLogs / GetSystemLogs so the buffer
+    // reflects the now-empty file from the same path the rest of the tab
+    // reads from. Status query runs in parallel because writability may
+    // have flipped if mode changed.
+    await Promise.all([loadLogs(), loadLogClearStatus()])
+    clearSuccess.value = true
+    if (clearSuccessTimeout) clearTimeout(clearSuccessTimeout)
+    clearSuccessTimeout = setTimeout(() => {
+      clearSuccess.value = false
+    }, 2000)
+  } catch (e) {
+    clearError.value = e instanceof Error ? e.message : 'Failed to clear logs'
+  } finally {
+    clearing.value = false
+  }
+}
+
 watch(logType, () => {
   loadLogs()
+  loadLogClearStatus()
 })
 
 onMounted(() => {
   loadLogs()
+  loadLogClearStatus()
+})
+
+onBeforeUnmount(() => {
+  if (clearSuccessTimeout) clearTimeout(clearSuccessTimeout)
 })
 </script>

@@ -24,9 +24,11 @@ type fakeAdminClient struct {
 	writePlistErr      error
 	deletePlistErr     error
 	ensureLogAccessErr error
+	truncateLogErr     error
 
-	lastWriteData []byte
-	lastLogPaths  []string
+	lastWriteData     []byte
+	lastLogPaths      []string
+	lastTruncatedPath string
 }
 
 func (f *fakeAdminClient) record(s string) {
@@ -73,6 +75,14 @@ func (f *fakeAdminClient) EnsureLogAccess(_ context.Context, paths []string) err
 	f.lastLogPaths = append([]string(nil), paths...)
 	f.mu.Unlock()
 	return f.ensureLogAccessErr
+}
+
+func (f *fakeAdminClient) TruncateLog(_ context.Context, path string) error {
+	f.record("TruncateLog:" + path)
+	f.mu.Lock()
+	f.lastTruncatedPath = path
+	f.mu.Unlock()
+	return f.truncateLogErr
 }
 
 func TestSystemManager_List(t *testing.T) {
@@ -606,6 +616,219 @@ func TestSystemManager_GetPlistContent(t *testing.T) {
 		}
 		if got == nil || got.Data != "" {
 			t.Errorf("missing plist = %+v, want empty Content", got)
+		}
+	})
+}
+
+func TestSystemManager_ClearLogs(t *testing.T) {
+	tmpDir := t.TempDir()
+	logDir := t.TempDir()
+
+	writableLog := filepath.Join(logDir, "stdout.log")
+	if err := os.WriteFile(writableLog, []byte("noisy stdout\n"), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	unwritableLog := filepath.Join(logDir, "root-owned.log")
+	if err := os.WriteFile(unwritableLog, []byte("guarded\n"), 0400); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Three plists: a writable-stdout daemon, an unwritable-stderr daemon,
+	// and a daemon whose logs are a symlink (covers ELOOP escalation).
+	plistTmpl := func(label, stdoutPath, stderrPath string) string {
+		return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>` + label + `</string>
+  <key>Program</key><string>/usr/sbin/testd</string>
+  <key>StandardOutPath</key><string>` + stdoutPath + `</string>
+  <key>StandardErrorPath</key><string>` + stderrPath + `</string>
+</dict></plist>`
+	}
+
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.writable.plist"), []byte(plistTmpl("com.test.writable", writableLog, unwritableLog)), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "system"}}
+
+	t.Run("user-writable file truncates directly without helper", func(t *testing.T) {
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		if err := os.WriteFile(writableLog, []byte("noisy stdout\n"), 0644); err != nil {
+			t.Fatalf("re-seed: %v", err)
+		}
+		if err := m.ClearLogs("com.test.writable", "stdout"); err != nil {
+			t.Fatalf("ClearLogs: %v", err)
+		}
+		info, err := os.Stat(writableLog)
+		if err != nil {
+			t.Fatalf("stat: %v", err)
+		}
+		if info.Size() != 0 {
+			t.Errorf("size = %d, want 0", info.Size())
+		}
+		for _, c := range fake.calls() {
+			if strings.HasPrefix(c, "TruncateLog") {
+				t.Errorf("helper was contacted for a user-writable file: %v", fake.calls())
+				break
+			}
+		}
+	})
+
+	t.Run("EACCES escalates to helper when admin mode is enabled", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root bypasses mode bits")
+		}
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		if err := m.ClearLogs("com.test.writable", "stderr"); err != nil {
+			t.Fatalf("ClearLogs: %v", err)
+		}
+		got := fake.calls()
+		if len(got) != 1 || got[0] != "TruncateLog:"+unwritableLog {
+			t.Errorf("calls = %v, want [TruncateLog:%s]", got, unwritableLog)
+		}
+	})
+
+	t.Run("EACCES without admin mode returns ErrReadOnlyManager", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root bypasses mode bits")
+		}
+		m.ClearAdminClient()
+		err := m.ClearLogs("com.test.writable", "stderr")
+		if !errors.Is(err, ErrReadOnlyManager) {
+			t.Errorf("err = %v, want ErrReadOnlyManager", err)
+		}
+	})
+
+	t.Run("ELOOP from symlink does not escalate", func(t *testing.T) {
+		// O_NOFOLLOW only takes effect on darwin; on portable CI the
+		// symlink would be followed and the truncate would succeed,
+		// invalidating the assertion. Skip in that case.
+		if nofollowFlag == 0 {
+			t.Skip("O_NOFOLLOW unavailable on this build")
+		}
+		target := filepath.Join(logDir, "real-target.log")
+		if err := os.WriteFile(target, []byte("real\n"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		linkPath := filepath.Join(logDir, "link.log")
+		if err := os.Symlink(target, linkPath); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		linkPlist := plistTmpl("com.test.link", linkPath, "")
+		if err := os.WriteFile(filepath.Join(tmpDir, "com.test.link.plist"), []byte(linkPlist), 0644); err != nil {
+			t.Fatalf("seed plist: %v", err)
+		}
+
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		err := m.ClearLogs("com.test.link", "stdout")
+		if err == nil {
+			t.Fatal("expected error for symlink")
+		}
+		// Helper must not have been contacted — ELOOP is not the same as
+		// "needs root", and asking root to truncate would re-introduce the
+		// follow-symlink hazard.
+		for _, c := range fake.calls() {
+			if strings.HasPrefix(c, "TruncateLog") {
+				t.Errorf("helper contacted on ELOOP: %v", fake.calls())
+				break
+			}
+		}
+		// The link target must still hold its content.
+		got, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read target: %v", err)
+		}
+		if len(got) == 0 {
+			t.Error("symlink target was truncated; O_NOFOLLOW failed")
+		}
+	})
+
+	t.Run("invalid log type returns error", func(t *testing.T) {
+		err := m.ClearLogs("com.test.writable", "trace")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "invalid log type") {
+			t.Errorf("err = %q", err.Error())
+		}
+	})
+
+	t.Run("missing log file returns error", func(t *testing.T) {
+		missingPlist := plistTmpl("com.test.missing", filepath.Join(logDir, "never.log"), "")
+		if err := os.WriteFile(filepath.Join(tmpDir, "com.test.missing.plist"), []byte(missingPlist), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		err := m.ClearLogs("com.test.missing", "stdout")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if !strings.Contains(err.Error(), "log file does not exist") {
+			t.Errorf("err = %q", err.Error())
+		}
+	})
+}
+
+func TestSystemManager_GetLogClearStatus(t *testing.T) {
+	tmpDir := t.TempDir()
+	logDir := t.TempDir()
+
+	logPath := filepath.Join(logDir, "out.log")
+	if err := os.WriteFile(logPath, []byte("x"), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	plist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.test.status</string>
+  <key>Program</key><string>/usr/sbin/x</string>
+  <key>StandardOutPath</key><string>` + logPath + `</string>
+</dict></plist>`
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.status.plist"), []byte(plist), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	noPathPlist := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.test.nopath</string>
+  <key>Program</key><string>/usr/sbin/x</string>
+</dict></plist>`
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.nopath.plist"), []byte(noPathPlist), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "system"}}
+
+	t.Run("path exists and writable", func(t *testing.T) {
+		got, err := m.GetLogClearStatus("com.test.status", LogTypeStdout)
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if got.LogPath != logPath {
+			t.Errorf("LogPath = %q, want %q", got.LogPath, logPath)
+		}
+		if !got.Exists || !got.UserWritable {
+			t.Errorf("got = %+v, want exists=true writable=true", got)
+		}
+	})
+
+	t.Run("no log path configured", func(t *testing.T) {
+		got, err := m.GetLogClearStatus("com.test.nopath", LogTypeStdout)
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if got.LogPath != "" || got.Exists || got.UserWritable {
+			t.Errorf("got = %+v, want all zero", got)
 		}
 	})
 }

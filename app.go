@@ -265,6 +265,45 @@ func (a *App) GetSystemLogs(name string, serviceType string, logType string) (st
 	}
 }
 
+// ClearLogs truncates the configured stdout or stderr log file for a user
+// service to 0 bytes. The file's inode and mode are preserved.
+func (a *App) ClearLogs(name string, logType string) error {
+	return a.manager.ClearLogs(name, logType)
+}
+
+// ClearSystemLogs truncates a system daemon's configured log file via
+// SystemManager. apple-system is rejected at the binding gate — SIP would
+// block the truncate even with Admin Mode on, and we want the destructive
+// surface to fail before reaching any manager.
+func (a *App) ClearSystemLogs(name string, serviceType string, logType string) error {
+	switch serviceType {
+	case launchctl.ServiceTypeSystem:
+		return a.systemManager.ClearLogs(name, logType)
+	case launchctl.ServiceTypeAppleSystem:
+		return fmt.Errorf("apple-system services are read-only: cannot clear logs (%w)", launchctl.ErrReadOnlyManager)
+	default:
+		return fmt.Errorf("invalid service type: %s", serviceType)
+	}
+}
+
+// GetLogClearStatus returns the resolved log path, its existence, and
+// whether the calling process can write the file. The frontend uses this to
+// decide whether the Clear Logs button is enabled and which tooltip to show.
+// apple-system services return the same status struct for consistency, but
+// the UI hides the Clear Logs button regardless.
+func (a *App) GetLogClearStatus(name string, serviceType string, logType string) (launchctl.LogClearStatus, error) {
+	switch serviceType {
+	case launchctl.ServiceTypeUser:
+		return a.manager.GetLogClearStatus(name, logType)
+	case launchctl.ServiceTypeSystem:
+		return a.systemManager.GetLogClearStatus(name, logType)
+	case launchctl.ServiceTypeAppleSystem:
+		return a.appleSystemMgr.GetLogClearStatus(name, logType)
+	default:
+		return launchctl.LogClearStatus{}, fmt.Errorf("invalid service type: %s", serviceType)
+	}
+}
+
 // StartSystemService starts a system daemon via the privileged helper.
 // Requires Admin Mode enabled; returns launchctl.ErrReadOnlyManager otherwise.
 func (a *App) StartSystemService(name string) error {

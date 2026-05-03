@@ -150,6 +150,8 @@ func (h *Handlers) Handle(ctx context.Context, req *Request) (any, *RPCError) {
 		return h.deletePlist(ctx, req.Params)
 	case MethodEnsureLogAccess:
 		return h.ensureLogAccess(ctx, req.Params)
+	case MethodTruncateLog:
+		return h.truncateLog(ctx, req.Params)
 	case MethodShutdown:
 		if h.opts.ShutdownFn != nil {
 			h.opts.ShutdownFn()
@@ -368,6 +370,34 @@ func (h *Handlers) ensureLogAccess(_ context.Context, raw json.RawMessage) (any,
 		} else if err != nil {
 			return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
 		}
+	}
+	return OKResult{OK: true}, nil
+}
+
+// truncateLog opens an existing log file with O_WRONLY|O_TRUNC|O_NOFOLLOW
+// and immediately closes it. Without O_CREATE the call surfaces ENOENT for
+// missing files unchanged, so the helper cannot be coerced into materializing
+// a 0-byte root-owned file in /tmp/. The errno comes from OpenFile itself —
+// a pre-stat-then-open would re-introduce the symlink-substitution race the
+// allowlist + O_NOFOLLOW combination is designed to close.
+func (h *Handlers) truncateLog(_ context.Context, raw json.RawMessage) (any, *RPCError) {
+	p, errR := unmarshalParams[TruncateLogParams](raw)
+	if errR != nil {
+		return nil, errR
+	}
+	clean, errR := validateLogPath(p.Path)
+	if errR != nil {
+		return nil, errR
+	}
+	f, err := os.OpenFile(clean, os.O_WRONLY|os.O_TRUNC|syscallNoFollow, 0)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, &RPCError{Code: ErrCodeNotFound, Message: clean}
+		}
+		return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
+	}
+	if err := f.Close(); err != nil {
+		return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
 	}
 	return OKResult{OK: true}, nil
 }

@@ -97,17 +97,20 @@ LaunchPal supports three service categories:
    - Supports scheduling (`StartCalendarInterval` / `StartInterval`).
    - Cron syntax accepts ranges (`a-b`) and enumerations (`a,b,c`) and is expanded into the Cartesian product of `StartCalendarInterval` entries (capped at 50 entries).
    - Supports environment variables (`EnvironmentVariables`).
+   - Logs tab supports a one-click Clear Logs control: truncates the active stdout/stderr file in place via `O_WRONLY|O_TRUNC|O_NOFOLLOW` (preserves inode and mode, rejects symlinks).
 
 2. **System Services** (`/Library/LaunchDaemons`)
    - Read-only by default. Write access (Start/Stop/Restart/Create/Update/Delete) requires Admin Mode to be enabled (see below).
    - Can view service information, status, plist contents, and logs without Admin Mode.
    - Third-party system-level services.
+   - Logs tab Clear Logs control dispatches per-file: a direct `OpenFile` is tried first; only `EACCES` falls back to the helper's `TruncateLog` RPC. `ENOENT`, `ELOOP`, `EISDIR` surface to the caller and never escalate. Homebrew-style daemons whose log files are user-writable can be cleared without enabling Admin Mode.
 
 3. **Apple System Services** (`/System/Library/LaunchDaemons`)
    - Always read-only, even with Admin Mode enabled (SIP would block writes anyway).
    - Can view service information, status, plist contents, and logs.
    - macOS built-in services.
    - Many of these use the binary plist format and are automatically converted to XML for display.
+   - The Clear Logs control is hidden entirely on apple-system pages.
 
 ## Admin Mode (session-scoped privileged helper)
 
@@ -116,7 +119,7 @@ Because LaunchPal is unsigned and cannot register a persistent `SMAppService` da
 - **Binary**: `launchpal-privhelper`, shipped inside the app bundle at `LaunchPal.app/Contents/MacOS/launchpal-privhelper`. Built by `make build-helper`, installed into the bundle by `make install-helper` (both run automatically from `make build`).
 - **Launch**: triggered by the `EnableAdminMode` Wails binding. LaunchPal runs `osascript -e 'do shell script "... with administrator privileges"'`, prompting the user for their password or Touch ID once per session.
 - **IPC**: Unix domain socket at `$TMPDIR/launchpal-<uid>-<16-hex-random>.sock`, `chmod 0600`, peer UID verified via `LOCAL_PEERCRED` before any RPC is processed. Messages are newline-delimited JSON.
-- **Scope**: the helper can only Bootstrap/Bootout/Kickstart and WritePlist/DeletePlist under `/Library/LaunchDaemons/`. Paths outside this directory and labels with shell metacharacters are rejected before any `launchctl` invocation.
+- **Scope**: the helper can only Bootstrap/Bootout/Kickstart and WritePlist/DeletePlist under `/Library/LaunchDaemons/`, plus EnsureLogAccess/`TruncateLog` under the log allowlist (`/var/log/`, `/private/var/log/`, `/Library/Logs/`, `/tmp/`, `/private/tmp/`, sub-directory required). Paths outside these prefixes and labels with shell metacharacters are rejected before any `launchctl` invocation. `TruncateLog` opens with `O_WRONLY|O_TRUNC|O_NOFOLLOW` and refuses to create a missing file, so the helper cannot be coerced into materializing a 0-byte root-owned file in `/tmp/`.
 - **Log access**: after a successful Create/Update, `SystemManager` sends an `EnsureLogAccess` RPC with the plist's `StandardOutPath` / `StandardErrorPath`. The helper `MkdirAll`s the parent directory as `0755`, `Chmod`s it to `0755` if it already existed with a stricter mode (common launchd default is `0744` which blocks user traversal), and touches the log file as `0644` with `O_NOFOLLOW` if missing. Paths are restricted to the allowlist `/var/log/`, `/private/var/log/`, `/Library/Logs/`, `/tmp/`, `/private/tmp/` and must live at least one sub-directory deep — `/var/log/foo.log` is rejected to prevent re-moding a system log root.
 - **Lifecycle**:
   - Parent watchdog polls LaunchPal's PID once per second via `syscall.Kill(pid, 0)`; when the parent is gone the helper removes the socket and exits within 2 seconds.

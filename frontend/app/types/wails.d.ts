@@ -39,6 +39,12 @@ export interface PlistContent {
   convertFailed: boolean
 }
 
+export interface LogClearStatus {
+  logPath: string
+  exists: boolean
+  userWritable: boolean
+}
+
 export interface Backup {
   id: string
   service: string
@@ -81,6 +87,9 @@ declare global {
           KickstartService(name: string): Promise<void>
           GetPlist(name: string): Promise<string>
           GetLogs(name: string, logType: string): Promise<string>
+          ClearLogs(name: string, logType: string): Promise<void>
+          ClearSystemLogs(name: string, serviceType: string, logType: string): Promise<void>
+          GetLogClearStatus(name: string, serviceType: string, logType: string): Promise<LogClearStatus>
           CreateService(config: ServiceConfig): Promise<void>
           UpdateService(name: string, config: ServiceConfig): Promise<void>
           DeleteService(name: string): Promise<void>

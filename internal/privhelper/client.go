@@ -170,6 +170,15 @@ func (c *Client) EnsureLogAccess(ctx context.Context, paths []string) error {
 	return err
 }
 
+// TruncateLog asks the helper to truncate an existing log file at path to 0
+// bytes. Path validation, O_NOFOLLOW, and the missing-file rejection happen
+// helper-side; this wrapper just forwards the request and surfaces the
+// helper's error code unchanged.
+func (c *Client) TruncateLog(ctx context.Context, path string) error {
+	_, err := c.Call(ctx, MethodTruncateLog, TruncateLogParams{Path: path})
+	return err
+}
+
 // ListSystemDaemons sends a ListSystemDaemons RPC and returns the parsed
 // list of daemons known to launchd.
 func (c *Client) ListSystemDaemons(ctx context.Context) ([]DaemonInfo, error) {
