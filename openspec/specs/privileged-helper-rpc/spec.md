@@ -200,60 +200,56 @@ tests:
 ---
 ### Requirement: Supported RPC methods
 
-The helper SHALL implement the following methods: `Ping`, `ListSystemDaemons`, `GetSystemDaemon`, `Bootstrap`, `Bootout`, `Kickstart`, `WritePlist`, `DeletePlist`, `Shutdown`. Unknown methods SHALL return `{"error": {"code": "unknown_method", "message": "..."}}`.
+The helper SHALL implement the following methods: `Ping`, `ListSystemDaemons`, `GetSystemDaemon`, `Bootstrap`, `Bootout`, `Kickstart`, `WritePlist`, `DeletePlist`, `EnsureLogAccess`, `TruncateLog`, `Shutdown`. Unknown methods SHALL return `{"error": {"code": "unknown_method", "message": "..."}}`.
 
 #### Scenario: Unknown method
 
 - **WHEN** a client sends `{"id": 1, "method": "DoesNotExist"}`
 - **THEN** the helper returns `{"id": 1, "error": {"code": "unknown_method", "message": "..."}}`
 
+#### Scenario: TruncateLog is reachable
+
+- **WHEN** a client sends a valid `{"id": N, "method": "TruncateLog", "params": {"path": "<allowed path>"}}`
+- **THEN** the helper dispatches to the TruncateLog handler and returns either `OKResult` or an error response, but never `unknown_method`
+
 
 <!-- @trace
-source: session-privileged-helper
-updated: 2026-04-22
+source: clear-service-logs
+updated: 2026-05-03
 code:
-  - frontend/app/pages/services/[name].vue
-  - frontend/app/components/ServiceLogs.vue
-  - internal/launchctl/readonly.go
   - internal/launchctl/system.go
-  - internal/privhelper/peer_darwin.go
-  - frontend/wailsjs/go/main/App.d.ts
-  - launchpal-privhelper
-  - Makefile
-  - cmd/launchpal-privhelper/main.go
-  - go.mod
-  - internal/launchctl/user.go
-  - frontend/app/components/ServiceRow.vue
-  - app.go
+  - internal/launchctl/manager.go
   - frontend/wailsjs/go/models.ts
-  - internal/launchctl/plist_encode.go
-  - frontend/app/components/BackupDiffDialog.vue
-  - frontend/app/components/CreateServiceModal.vue
-  - frontend/app/types/wails.d.ts
-  - internal/privhelper/nofollow_other.go
-  - internal/privhelper/protocol.go
-  - internal/privhelper/server.go
-  - frontend/app/composables/useAdminMode.ts
-  - frontend/app/pages/system.vue
-  - frontend/app/pages/settings.vue
-  - internal/privhelper/nofollow_darwin.go
-  - frontend/wailsjs/go/main/App.js
-  - README.md
-  - internal/privhelper/peer_other.go
-  - internal/privhelper/handlers.go
-  - admin_mode.go
   - internal/privhelper/client.go
+  - frontend/wailsjs/go/main/App.js
+  - internal/launchctl/user.go
+  - frontend/vitest.setup.ts
+  - frontend/app/types/wails.d.ts
+  - internal/launchctl/apple_system.go
+  - internal/launchctl/nofollow_other.go
+  - README.md
+  - app.go
+  - frontend/package.json.md5
+  - frontend/app/components/ServiceLogs.vue
+  - internal/launchctl/nofollow_darwin.go
+  - internal/launchctl/readonly.go
+  - .github/workflows/build.yml
+  - frontend/app/pages/services/[name].vue
+  - internal/launchctl/types.go
+  - internal/privhelper/protocol.go
+  - frontend/wailsjs/go/main/App.d.ts
+  - internal/privhelper/handlers.go
+  - CHANGELOG.md
 tests:
-  - internal/privhelper/handlers_test.go
-  - internal/privhelper/server_test.go
-  - internal/launchctl/plist_encode_test.go
-  - internal/privhelper/protocol_test.go
-  - internal/privhelper/client_test.go
-  - cmd/launchpal-privhelper/helper_test.go
-  - app_test.go
-  - admin_mode_test.go
-  - admin_mode_testhelpers_test.go
+  - internal/launchctl/apple_system_test.go
   - internal/launchctl/system_test.go
+  - internal/launchctl/types_test.go
+  - internal/privhelper/handlers_test.go
+  - internal/privhelper/client_test.go
+  - internal/privhelper/protocol_test.go
+  - app_test.go
+  - internal/launchctl/user_test.go
+  - frontend/app/components/__tests__/ServiceLogs.test.ts
 -->
 
 ---
@@ -371,4 +367,89 @@ tests:
   - admin_mode_test.go
   - admin_mode_testhelpers_test.go
   - internal/launchctl/system_test.go
+-->
+
+---
+### Requirement: TruncateLog RPC method
+
+The helper SHALL implement a `TruncateLog(path)` RPC that truncates an existing log file to 0 bytes while preserving its inode, owner, group, and mode.
+
+The handler SHALL:
+1. Validate `path` against the same allowlist used by `EnsureLogAccess` (`/var/log/`, `/private/var/log/`, `/Library/Logs/`, `/tmp/`, `/private/tmp/`).
+2. Reject paths that are not absolute.
+3. Reject paths that, after `filepath.Clean`, do not start with one of the allowed prefixes.
+4. Reject paths whose immediate parent equals an allowlist root (e.g. `/var/log/system.log` is rejected because it would target a system log root directly).
+5. Verify the file exists; if not, return `not_found`.
+6. Open the file with `O_WRONLY | O_TRUNC | syscallNoFollow` and immediately close it on success.
+7. Return `OKResult{OK: true}` on success.
+
+The handler SHALL NOT create a missing file. The handler SHALL NOT change owner, group, or mode. The handler SHALL NOT follow symbolic links at any step; an `ELOOP` from the OpenFile call SHALL be surfaced as `io_error`.
+
+The error code mapping SHALL be:
+- Path validation failure → `invalid_params`
+- File does not exist → `not_found`
+- OpenFile failure with `EACCES`, `ELOOP`, or other I/O errors → `io_error`
+
+#### Scenario: Truncate root-owned log
+
+- **WHEN** `TruncateLog("/var/log/com.example.log")` is called for an existing root:wheel 0644 file
+- **THEN** the helper opens it with O_TRUNC, the file size becomes 0, and the result is `{ok: true}`. Owner and mode are unchanged.
+
+#### Scenario: Path outside allowlist
+
+- **WHEN** `TruncateLog("/etc/passwd")` is called
+- **THEN** the helper returns `{error: {code: "invalid_params", message: "log path not under an allowed prefix"}}` and the file is not opened
+
+#### Scenario: Path immediate-parent equals allowlist root
+
+- **WHEN** `TruncateLog("/var/log/system.log")` is called
+- **THEN** the helper returns `{error: {code: "invalid_params", message: "log path must live in a sub-directory of /var/log"}}` and the file is not opened
+
+#### Scenario: Missing file is not_found
+
+- **WHEN** `TruncateLog("/var/log/myapp/never-created.log")` is called and the file does not exist
+- **THEN** the helper returns `{error: {code: "not_found", message: "<path>"}}` and no file is created on disk
+
+#### Scenario: Symlink at log path
+
+- **WHEN** the path resolves to a symbolic link
+- **THEN** the helper returns `{error: {code: "io_error", ...}}` and the link target is not truncated
+
+<!-- @trace
+source: clear-service-logs
+updated: 2026-05-03
+code:
+  - internal/launchctl/system.go
+  - internal/launchctl/manager.go
+  - frontend/wailsjs/go/models.ts
+  - internal/privhelper/client.go
+  - frontend/wailsjs/go/main/App.js
+  - internal/launchctl/user.go
+  - frontend/vitest.setup.ts
+  - frontend/app/types/wails.d.ts
+  - internal/launchctl/apple_system.go
+  - internal/launchctl/nofollow_other.go
+  - README.md
+  - app.go
+  - frontend/package.json.md5
+  - frontend/app/components/ServiceLogs.vue
+  - internal/launchctl/nofollow_darwin.go
+  - internal/launchctl/readonly.go
+  - .github/workflows/build.yml
+  - frontend/app/pages/services/[name].vue
+  - internal/launchctl/types.go
+  - internal/privhelper/protocol.go
+  - frontend/wailsjs/go/main/App.d.ts
+  - internal/privhelper/handlers.go
+  - CHANGELOG.md
+tests:
+  - internal/launchctl/apple_system_test.go
+  - internal/launchctl/system_test.go
+  - internal/launchctl/types_test.go
+  - internal/privhelper/handlers_test.go
+  - internal/privhelper/client_test.go
+  - internal/privhelper/protocol_test.go
+  - app_test.go
+  - internal/launchctl/user_test.go
+  - frontend/app/components/__tests__/ServiceLogs.test.ts
 -->
