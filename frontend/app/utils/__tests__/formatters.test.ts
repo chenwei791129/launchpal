@@ -8,9 +8,7 @@ describe('formatTimestamp', () => {
     expect(formatTimestamp(sample)).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
   })
 
-  it('does not include Asian-style year/month/day markers or Chinese characters', () => {
-    const out = formatTimestamp(sample)
-    expect(out).not.toMatch(/[一-鿿]/)
-    expect(out).not.toMatch(/[年月日]/)
+  it('does not include CJK characters regardless of host locale', () => {
+    expect(formatTimestamp(sample)).not.toMatch(/[一-鿿]/)
   })
 })
