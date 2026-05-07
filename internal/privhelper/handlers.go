@@ -5,14 +5,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -61,13 +58,6 @@ func (execRunner) Run(ctx context.Context, name string, args ...string) ([]byte,
 	return stdout.Bytes(), stderr.Bytes(), err
 }
 
-// DaemonLister is the subset of launchctl-list behavior the helper exposes.
-// Injectable for tests.
-type DaemonLister interface {
-	ListDaemons(ctx context.Context) ([]DaemonInfo, error)
-	GetDaemon(ctx context.Context, label string) (DaemonInfo, error)
-}
-
 // Chowner sets filesystem ownership. Injectable so tests don't need CAP_CHOWN.
 type Chowner func(path string, uid, gid int) error
 
@@ -75,10 +65,6 @@ type Chowner func(path string, uid, gid int) error
 type HandlerOptions struct {
 	// Runner executes launchctl commands.
 	Runner Runner
-
-	// Lister fetches daemon status/pid. Defaults to launchctlLister which
-	// parses `launchctl print system`.
-	Lister DaemonLister
 
 	// UserHome is the launching user's home directory; backups are placed
 	// under UserHome/.launchpal/backups. Required for WritePlist/DeletePlist.
@@ -122,9 +108,6 @@ func NewHandlers(opts HandlerOptions) *Handlers {
 	if opts.NowFn == nil {
 		opts.NowFn = time.Now
 	}
-	if opts.Lister == nil {
-		opts.Lister = &launchctlLister{runner: opts.Runner}
-	}
 	return &Handlers{opts: opts}
 }
 
@@ -134,10 +117,6 @@ func (h *Handlers) Handle(ctx context.Context, req *Request) (any, *RPCError) {
 	switch req.Method {
 	case MethodPing:
 		return PingResult{Pong: true}, nil
-	case MethodListSystemDaemons:
-		return h.listDaemons(ctx)
-	case MethodGetSystemDaemon:
-		return h.getDaemon(ctx, req.Params)
 	case MethodBootstrap:
 		return h.bootstrap(ctx, req.Params)
 	case MethodBootout:
@@ -428,32 +407,6 @@ func (h *Handlers) deletePlist(ctx context.Context, raw json.RawMessage) (any, *
 	return OKResult{OK: true}, nil
 }
 
-func (h *Handlers) listDaemons(ctx context.Context) (any, *RPCError) {
-	daemons, err := h.opts.Lister.ListDaemons(ctx)
-	if err != nil {
-		return nil, &RPCError{Code: ErrCodeLaunchctlFailed, Message: err.Error()}
-	}
-	return ListSystemDaemonsResult{Daemons: daemons}, nil
-}
-
-func (h *Handlers) getDaemon(ctx context.Context, raw json.RawMessage) (any, *RPCError) {
-	p, errR := unmarshalParams[GetSystemDaemonParams](raw)
-	if errR != nil {
-		return nil, errR
-	}
-	if errR := validateLabel(p.Label); errR != nil {
-		return nil, errR
-	}
-	info, err := h.opts.Lister.GetDaemon(ctx, p.Label)
-	if err != nil {
-		if errors.Is(err, errDaemonNotFound) {
-			return nil, &RPCError{Code: ErrCodeNotFound, Message: p.Label}
-		}
-		return nil, &RPCError{Code: ErrCodeLaunchctlFailed, Message: err.Error()}
-	}
-	return info, nil
-}
-
 // readIfExists reads path; returns (data, true, nil) if the file is present,
 // (nil, false, nil) if it doesn't exist, or (nil, false, err) on other I/O
 // errors. Used to decide whether to run the backup path before a write.
@@ -593,117 +546,4 @@ func errMsg(err error, stderr []byte) string {
 		return err.Error()
 	}
 	return ""
-}
-
-// errDaemonNotFound is returned by DaemonLister implementations when a label
-// is not found, so handlers can map it to ErrCodeNotFound.
-var errDaemonNotFound = errors.New("daemon not found")
-
-// launchctlLister implements DaemonLister by parsing `launchctl print system`
-// (list) and `launchctl print system/<label>` (single).
-type launchctlLister struct {
-	runner Runner
-}
-
-// ListDaemons returns the bootstrapped daemons under system/ by parsing the
-// "services" block of `launchctl print system`.
-func (l *launchctlLister) ListDaemons(ctx context.Context) ([]DaemonInfo, error) {
-	stdout, stderr, err := l.runner.Run(ctx, "launchctl", "print", "system")
-	if err != nil {
-		return nil, fmt.Errorf("launchctl print system: %s", errMsg(err, stderr))
-	}
-	return parsePrintSystem(stdout), nil
-}
-
-// GetDaemon returns the single daemon entry for label by parsing
-// `launchctl print system/<label>`.
-func (l *launchctlLister) GetDaemon(ctx context.Context, label string) (DaemonInfo, error) {
-	stdout, stderr, err := l.runner.Run(ctx, "launchctl", "print", "system/"+label)
-	if err != nil {
-		s := strings.ToLower(strings.TrimSpace(string(stderr)))
-		if strings.Contains(s, "could not find service") || strings.Contains(s, "no such") {
-			return DaemonInfo{}, errDaemonNotFound
-		}
-		return DaemonInfo{}, fmt.Errorf("launchctl print system/%s: %s", label, errMsg(err, stderr))
-	}
-	return parsePrintService(label, stdout), nil
-}
-
-// parsePrintSystem extracts labels/status/pid from the "services" block of
-// `launchctl print system`. Format (roughly):
-//
-//	services = {
-//		12345  -  com.example.running
-//		-      0 com.example.stopped
-//		...
-//	}
-//
-// We look for the `services = {` opening, read until the closing `}`, and
-// parse each line within.
-func parsePrintSystem(output []byte) []DaemonInfo {
-	lines := strings.Split(string(output), "\n")
-	inBlock := false
-	out := []DaemonInfo{}
-	for _, raw := range lines {
-		line := strings.TrimSpace(raw)
-		if !inBlock {
-			if strings.HasPrefix(line, "services") && strings.Contains(line, "{") {
-				inBlock = true
-			}
-			continue
-		}
-		if strings.HasPrefix(line, "}") {
-			break
-		}
-		if line == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-		info := DaemonInfo{Label: fields[len(fields)-1]}
-		// fields[0] is PID or "-"; fields[1] is exit code ("0" / "-"). A
-		// numeric PID means the daemon is running.
-		if pid, ok := parsePIDField(fields[0]); ok {
-			info.PID = pid
-			info.Status = "running"
-		} else {
-			info.Status = "stopped"
-		}
-		out = append(out, info)
-	}
-	return out
-}
-
-// parsePrintService pulls PID (if any) from `launchctl print system/<label>`
-// output. The output has a top-level `state = <running|not running>` and a
-// `pid = N` line when running.
-func parsePrintService(label string, output []byte) DaemonInfo {
-	info := DaemonInfo{Label: label, Status: "stopped"}
-	for _, raw := range strings.Split(string(output), "\n") {
-		line := strings.TrimSpace(raw)
-		if strings.HasPrefix(line, "state = ") {
-			state := strings.TrimPrefix(line, "state = ")
-			if strings.Contains(state, "running") {
-				info.Status = "running"
-			}
-		}
-		if strings.HasPrefix(line, "pid = ") {
-			if pid, ok := parsePIDField(strings.TrimPrefix(line, "pid = ")); ok {
-				info.PID = pid
-			}
-		}
-	}
-	return info
-}
-
-// parsePIDField returns (pid, true) for a positive numeric field, (0, false)
-// for "-" or any unparseable value.
-func parsePIDField(s string) (int, bool) {
-	n, err := strconv.Atoi(strings.TrimSpace(s))
-	if err != nil || n <= 0 {
-		return 0, false
-	}
-	return n, true
 }

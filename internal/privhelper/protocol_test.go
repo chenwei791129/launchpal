@@ -145,8 +145,6 @@ func TestTruncateLogParams_RoundTrip(t *testing.T) {
 func TestAllMethods_Coverage(t *testing.T) {
 	want := []string{
 		MethodPing,
-		MethodListSystemDaemons,
-		MethodGetSystemDaemon,
 		MethodBootstrap,
 		MethodBootout,
 		MethodKickstart,

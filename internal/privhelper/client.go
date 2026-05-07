@@ -179,33 +179,6 @@ func (c *Client) TruncateLog(ctx context.Context, path string) error {
 	return err
 }
 
-// ListSystemDaemons sends a ListSystemDaemons RPC and returns the parsed
-// list of daemons known to launchd.
-func (c *Client) ListSystemDaemons(ctx context.Context) ([]DaemonInfo, error) {
-	raw, err := c.Call(ctx, MethodListSystemDaemons, nil)
-	if err != nil {
-		return nil, err
-	}
-	var res ListSystemDaemonsResult
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, fmt.Errorf("decode list: %w", err)
-	}
-	return res.Daemons, nil
-}
-
-// GetSystemDaemon sends a GetSystemDaemon RPC for the given label.
-func (c *Client) GetSystemDaemon(ctx context.Context, label string) (DaemonInfo, error) {
-	raw, err := c.Call(ctx, MethodGetSystemDaemon, GetSystemDaemonParams{Label: label})
-	if err != nil {
-		return DaemonInfo{}, err
-	}
-	var info DaemonInfo
-	if err := json.Unmarshal(raw, &info); err != nil {
-		return DaemonInfo{}, fmt.Errorf("decode daemon: %w", err)
-	}
-	return info, nil
-}
-
 // Shutdown sends a Shutdown RPC; the helper is expected to reply with OK
 // and close the connection shortly after. Errors that look like the helper
 // already closing the connection are not returned to callers.

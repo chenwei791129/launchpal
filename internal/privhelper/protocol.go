@@ -9,25 +9,21 @@ import "encoding/json"
 // Supported RPC methods. These are the exhaustive set of method names the
 // helper accepts; anything outside this list returns ErrCodeUnknownMethod.
 const (
-	MethodPing              = "Ping"
-	MethodListSystemDaemons = "ListSystemDaemons"
-	MethodGetSystemDaemon   = "GetSystemDaemon"
-	MethodBootstrap         = "Bootstrap"
-	MethodBootout           = "Bootout"
-	MethodKickstart         = "Kickstart"
-	MethodWritePlist        = "WritePlist"
-	MethodDeletePlist       = "DeletePlist"
-	MethodEnsureLogAccess   = "EnsureLogAccess"
-	MethodTruncateLog       = "TruncateLog"
-	MethodShutdown          = "Shutdown"
+	MethodPing            = "Ping"
+	MethodBootstrap       = "Bootstrap"
+	MethodBootout         = "Bootout"
+	MethodKickstart       = "Kickstart"
+	MethodWritePlist      = "WritePlist"
+	MethodDeletePlist     = "DeletePlist"
+	MethodEnsureLogAccess = "EnsureLogAccess"
+	MethodTruncateLog     = "TruncateLog"
+	MethodShutdown        = "Shutdown"
 )
 
 // AllMethods is the complete set of supported methods, useful for validation
 // and documentation.
 var AllMethods = []string{
 	MethodPing,
-	MethodListSystemDaemons,
-	MethodGetSystemDaemon,
 	MethodBootstrap,
 	MethodBootout,
 	MethodKickstart,
@@ -86,13 +82,6 @@ type PingResult struct {
 	Pong bool `json:"pong"`
 }
 
-// DaemonInfo describes a single system daemon as observed by the helper.
-type DaemonInfo struct {
-	Label  string `json:"label"`
-	Status string `json:"status"`
-	PID    int    `json:"pid"`
-}
-
 // BootstrapParams are the parameters for MethodBootstrap.
 type BootstrapParams struct {
 	PlistPath string `json:"plistPath"`
@@ -136,16 +125,6 @@ type EnsureLogAccessParams struct {
 // group, and mode; it does NOT create a missing file.
 type TruncateLogParams struct {
 	Path string `json:"path"`
-}
-
-// GetSystemDaemonParams are the parameters for MethodGetSystemDaemon.
-type GetSystemDaemonParams struct {
-	Label string `json:"label"`
-}
-
-// ListSystemDaemonsResult is the payload of a successful ListSystemDaemons.
-type ListSystemDaemonsResult struct {
-	Daemons []DaemonInfo `json:"daemons"`
 }
 
 // OKResult is the empty success payload used by methods that have no return

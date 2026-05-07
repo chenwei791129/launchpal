@@ -37,22 +37,6 @@ func (r *fakeRunner) Run(_ context.Context, name string, args ...string) ([]byte
 	return r.stdout, r.stderr, r.err
 }
 
-// fakeLister serves canned daemon info and recorded calls.
-type fakeLister struct {
-	list      []DaemonInfo
-	listErr   error
-	single    DaemonInfo
-	singleErr error
-}
-
-func (f *fakeLister) ListDaemons(_ context.Context) ([]DaemonInfo, error) {
-	return f.list, f.listErr
-}
-
-func (f *fakeLister) GetDaemon(_ context.Context, _ string) (DaemonInfo, error) {
-	return f.single, f.singleErr
-}
-
 // newChownRecorder returns a Chowner that records chown calls instead of
 // invoking them on the filesystem.
 func newChownRecorder() (Chowner, *[]chownCall) {
@@ -349,44 +333,6 @@ func TestHandlers_Shutdown_TriggersShutdownFn(t *testing.T) {
 	}
 }
 
-func TestHandlers_List_UsesLister(t *testing.T) {
-	lister := &fakeLister{list: []DaemonInfo{
-		{Label: "com.example.one", Status: "running", PID: 42},
-		{Label: "com.example.two", Status: "stopped", PID: 0},
-	}}
-	h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}, Lister: lister})
-	out, err := h.Handle(context.Background(), &Request{Method: MethodListSystemDaemons})
-	if err != nil {
-		t.Fatalf("err: %s", errMsgFromRPC(err))
-	}
-	res, ok := out.(ListSystemDaemonsResult)
-	if !ok {
-		t.Fatalf("result type = %T", out)
-	}
-	if len(res.Daemons) != 2 {
-		t.Errorf("daemons = %d", len(res.Daemons))
-	}
-}
-
-func TestHandlers_Get_NotFound(t *testing.T) {
-	lister := &fakeLister{singleErr: errDaemonNotFound}
-	h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}, Lister: lister})
-	params, _ := json.Marshal(GetSystemDaemonParams{Label: "com.example.missing"})
-	_, err := h.Handle(context.Background(), &Request{Method: MethodGetSystemDaemon, Params: params})
-	if err == nil || err.Code != ErrCodeNotFound {
-		t.Errorf("err = %+v, want not_found", err)
-	}
-}
-
-func TestHandlers_Get_InvalidLabel(t *testing.T) {
-	h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}})
-	params, _ := json.Marshal(GetSystemDaemonParams{Label: "bad label!"})
-	_, err := h.Handle(context.Background(), &Request{Method: MethodGetSystemDaemon, Params: params})
-	if err == nil || err.Code != ErrCodeInvalidParams {
-		t.Errorf("err = %+v, want invalid_params", err)
-	}
-}
-
 func TestValidateSystemDaemonPath_TableDriven(t *testing.T) {
 	cases := []struct {
 		in       string
@@ -417,50 +363,6 @@ func TestValidateSystemDaemonPath_TableDriven(t *testing.T) {
 		if !strings.Contains(err.Message, tc.contains) {
 			t.Errorf("path %q: msg = %q, want contains %q", tc.in, err.Message, tc.contains)
 		}
-	}
-}
-
-func TestParsePrintSystem(t *testing.T) {
-	output := []byte(`com.apple.xpc.launchd.domain.system = {
-	type = system
-	handle = 0
-	active count = 123
-	services = {
-		12345  -  com.example.running
-		-      0 com.example.stopped
-		67890  -  com.example.another
-	}
-}`)
-	got := parsePrintSystem(output)
-	if len(got) != 3 {
-		t.Fatalf("len = %d, want 3", len(got))
-	}
-	if got[0].Label != "com.example.running" || got[0].PID != 12345 || got[0].Status != "running" {
-		t.Errorf("entry 0 = %+v", got[0])
-	}
-	if got[1].Label != "com.example.stopped" || got[1].PID != 0 || got[1].Status != "stopped" {
-		t.Errorf("entry 1 = %+v", got[1])
-	}
-	if got[2].Label != "com.example.another" || got[2].PID != 67890 {
-		t.Errorf("entry 2 = %+v", got[2])
-	}
-}
-
-func TestParsePrintService(t *testing.T) {
-	output := []byte(`com.example.daemon = {
-	state = running
-	pid = 5432
-	...
-}`)
-	got := parsePrintService("com.example.daemon", output)
-	if got.Label != "com.example.daemon" {
-		t.Errorf("Label = %q", got.Label)
-	}
-	if got.Status != "running" {
-		t.Errorf("Status = %q", got.Status)
-	}
-	if got.PID != 5432 {
-		t.Errorf("PID = %d", got.PID)
 	}
 }
 
