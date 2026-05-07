@@ -8,6 +8,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 👁️ View user-level and system-level services
 - 📊 View service status in real-time
 - ▶️ Start/Stop user services with one click
+- ⚡ Run Now (Kickstart) — start a service immediately with one click (`launchctl kickstart -k`)
 - 📋 View service logs (stdout/stderr)
 - 🧹 Clear stdout / stderr logs from the Logs tab (one-click in-place truncate; system daemons fall back to the privileged helper only when the file is not user-writable)
 - ➕ Create and configure new services
