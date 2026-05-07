@@ -1,3 +1,9 @@
+# kickstart-service Specification
+
+## Purpose
+
+User services expose a Run Now action that immediately executes the loaded plist by invoking `launchctl kickstart -k gui/{UID}/{label}`. The action is wired through the `App.KickstartService` Wails binding, surfaced as a button on the user service detail page, and prompts for confirmation when the service is already running so users understand the existing process will be terminated.
+
 ## ADDED Requirements
 
 ### Requirement: Kickstart a user service
