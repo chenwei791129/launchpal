@@ -1,4 +1,4 @@
-.PHONY: setup test lint build build-debug build-helper install-helper dev dmg clean help
+.PHONY: setup test lint build build-debug build-helper install-helper dev dmg clean cloc help
 
 # Show available commands
 help:
@@ -14,6 +14,7 @@ help:
 	@echo "  dev          Build and run app"
 	@echo "  dmg          Build and package as DMG"
 	@echo "  clean        Clean build artifacts"
+	@echo "  cloc         Count lines of code (respects .gitignore)"
 	@echo "  help         Show this help message"
 
 # Install dependencies
@@ -88,3 +89,8 @@ clean:
 	rm -rf build/bin
 	rm -rf frontend/.output
 	rm -rf frontend/.nuxt
+
+# Count lines of code, respecting .gitignore via git
+cloc:
+	@command -v cloc >/dev/null 2>&1 || { echo "Error: cloc is required. Install with: brew install cloc"; exit 1; }
+	cloc --vcs=git
