@@ -1464,6 +1464,71 @@ func TestUserManager_Delete_EmptyLabelPlist(t *testing.T) {
 	}
 }
 
+// TestUserManager_Stop_NoPgrepKillFallback enforces the contract that Stop
+// relies on `launchctl bootout` alone — the previous pgrep+kill fallback
+// could terminate any process whose argv contained service.Program, so it
+// was removed. The test shims launchctl/pgrep/kill onto PATH and asserts
+// that pgrep and kill are never invoked.
+func TestUserManager_Stop_NoPgrepKillFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	logFile := filepath.Join(tmpDir, "calls.log")
+
+	for _, name := range []string{"launchctl", "pgrep", "kill"} {
+		shimPath := filepath.Join(tmpDir, name)
+		// pgrep -f returns 1 when no process matches; the shim mimics that
+		// so the (now-removed) fallback wouldn't have skipped silently.
+		exitCode := "0"
+		stdout := ""
+		if name == "pgrep" {
+			exitCode = "0"
+			stdout = "echo 99999"
+		}
+		script := fmt.Sprintf("#!/bin/bash\necho \"%s $*\" >> %q\n%s\nexit %s\n",
+			name, logFile, stdout, exitCode)
+		if err := os.WriteFile(shimPath, []byte(script), 0755); err != nil {
+			t.Fatalf("write shim %s: %v", name, err)
+		}
+	}
+
+	plistPath := filepath.Join(tmpDir, "com.test.stop.plist")
+	plistContent := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>com.test.stop</string>
+	<key>Program</key><string>/usr/local/bin/test-binary</string>
+</dict>
+</plist>`
+	if err := os.WriteFile(plistPath, []byte(plistContent), 0644); err != nil {
+		t.Fatalf("write plist: %v", err)
+	}
+
+	t.Setenv("PATH", tmpDir)
+
+	m := &UserManager{launchAgentsPath: tmpDir}
+	if err := m.Stop("com.test.stop"); err != nil {
+		t.Fatalf("Stop error = %v", err)
+	}
+
+	logged, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("read call log: %v", err)
+	}
+	calls := string(logged)
+
+	if !strings.Contains(calls, "launchctl bootout") {
+		t.Errorf("expected launchctl bootout invocation; got calls=%q", calls)
+	}
+	if strings.Contains(calls, "pgrep") {
+		t.Errorf("pgrep was invoked; Stop must not retain the pgrep fallback. calls=%q", calls)
+	}
+	// Match "kill " (with trailing space from the shim's argv echo) so we
+	// don't false-positive on substrings like "launchctl ..kill..".
+	if strings.Contains(calls, "kill ") {
+		t.Errorf("kill was invoked; Stop must not retain the kill fallback. calls=%q", calls)
+	}
+}
+
 func TestUserManager_Kickstart_EmptyLabelReturnsError(t *testing.T) {
 	tmpDir := t.TempDir()
 	m := &UserManager{launchAgentsPath: tmpDir}

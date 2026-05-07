@@ -336,22 +336,8 @@ func (m *UserManager) Stop(name string) error {
 		return nil
 	}
 
-	// Try launchctl bootout first
 	cmd := exec.Command("launchctl", "bootout", target)
 	_, _ = cmd.CombinedOutput() // Ignore error, service may not be loaded
-
-	// Check if process is still running and kill it
-	if service.Program != "" {
-		pgrepCmd := exec.Command("pgrep", "-f", service.Program)
-		if output, err := pgrepCmd.Output(); err == nil {
-			pidStr := strings.TrimSpace(strings.Split(string(output), "\n")[0])
-			if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
-				// Try to kill the process
-				killCmd := exec.Command("kill", pidStr)
-				_ = killCmd.Run()
-			}
-		}
-	}
 
 	return nil
 }
