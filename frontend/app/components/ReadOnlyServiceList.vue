@@ -22,20 +22,8 @@
       </div>
     </div>
 
-    <!-- Inline action message (instructional notices). Replaces alert()
-         so users see feedback without losing focus from the page. -->
-    <div
-      v-if="actionError"
-      class="mx-4 mt-4 p-3 bg-surface-400 border border-surface-100 rounded-lg flex items-start gap-3"
-    >
-      <p class="flex-1 text-sm text-gray-300">{{ actionError }}</p>
-      <button
-        class="text-sm text-gray-400 hover:text-white transition-colors"
-        @click="actionError = null"
-      >
-        Dismiss
-      </button>
-    </div>
+    <!-- Replaces alert() so users see feedback without losing page focus. -->
+    <InlineBanner :message="actionMessage" @dismiss="actionMessage = null" />
 
     <!-- Header with search -->
     <header class="flex items-center justify-between px-4 py-3 border-b border-surface-100">
@@ -145,7 +133,7 @@ const error = ref<string | null>(null)
 const searchQuery = ref('')
 const selectedService = ref<Service | null>(null)
 const hasPermission = ref(true)
-const actionError = ref<string | null>(null)
+const actionMessage = ref<string | null>(null)
 
 const updateCounts = inject<(total: number, running: number) => void>('updateCounts')
 
@@ -190,7 +178,7 @@ function handleSelect(service: Service) {
 }
 
 function openSystemSettings() {
-  actionError.value = 'Please open System Settings > Privacy & Security > Full Disk Access and enable access for LaunchPal'
+  actionMessage.value = 'Please open System Settings > Privacy & Security > Full Disk Access and enable access for LaunchPal'
 }
 
 onMounted(() => {

@@ -42,20 +42,8 @@
       </div>
     </div>
 
-    <!-- Inline action message (errors / instructional notices). Replaces
-         alert() so users see feedback without losing focus from the page. -->
-    <div
-      v-if="actionError"
-      class="mx-4 mt-4 p-3 bg-surface-400 border border-surface-100 rounded-lg flex items-start gap-3"
-    >
-      <p class="flex-1 text-sm text-gray-300">{{ actionError }}</p>
-      <button
-        class="text-sm text-gray-400 hover:text-white transition-colors"
-        @click="actionError = null"
-      >
-        Dismiss
-      </button>
-    </div>
+    <!-- Replaces alert() so users see feedback without losing page focus. -->
+    <InlineBanner :message="actionMessage" @dismiss="actionMessage = null" />
 
     <!-- Header with search + (Admin Mode) New Service button -->
     <header class="flex items-center justify-between px-4 py-3 border-b border-surface-100">
@@ -208,7 +196,7 @@ const hasPermission = ref(true)
 const showCreateModal = ref(false)
 const showDeleteDialog = ref(false)
 const serviceToDelete = ref<Service | null>(null)
-const actionError = ref<string | null>(null)
+const actionMessage = ref<string | null>(null)
 
 const updateCounts = inject<(total: number, running: number) => void>('updateCounts')
 
@@ -260,7 +248,7 @@ async function confirmDelete() {
     await loadServices()
   } catch (e) {
     console.error('Failed to delete system service:', e)
-    actionError.value = 'Failed to delete: ' + (e instanceof Error ? e.message : String(e))
+    actionMessage.value = 'Failed to delete: ' + (e instanceof Error ? e.message : String(e))
   } finally {
     showDeleteDialog.value = false
     serviceToDelete.value = null
@@ -268,7 +256,7 @@ async function confirmDelete() {
 }
 
 function openSystemSettings() {
-  actionError.value = 'Please open System Settings > Privacy & Security > Full Disk Access and enable access for LaunchPal'
+  actionMessage.value = 'Please open System Settings > Privacy & Security > Full Disk Access and enable access for LaunchPal'
 }
 
 onMounted(() => {
