@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The RPC contract between LaunchPal and the helper is newline-delimited JSON over a per-session Unix domain socket whose peer is verified via `LOCAL_PEERCRED`. Requests carry a monotonic id, a method name, and optional params; responses carry the matching id and exactly one of `result` or `error`. The narrow, fixed set of methods (Ping, Bootstrap, Bootout, Kickstart, WritePlist, DeletePlist, EnsureLogAccess, TruncateLog, Shutdown) is the entire root-privileged surface the GUI can invoke.
+The RPC contract between LaunchPal and the helper is newline-delimited JSON over a per-session Unix domain socket whose peer is verified via `LOCAL_PEERCRED`. Requests carry a monotonic id, a method name, and optional params; responses carry the matching id and exactly one of `result` or `error`. The supported methods (defined exhaustively in `protocol.go` `AllMethods`) are the entire root-privileged surface the GUI can invoke.
 
 ## Requirements
 

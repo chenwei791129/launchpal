@@ -1475,16 +1475,14 @@ func TestUserManager_Stop_NoPgrepKillFallback(t *testing.T) {
 
 	for _, name := range []string{"launchctl", "pgrep", "kill"} {
 		shimPath := filepath.Join(tmpDir, name)
-		// pgrep -f returns 1 when no process matches; the shim mimics that
-		// so the (now-removed) fallback wouldn't have skipped silently.
-		exitCode := "0"
+		// pgrep prints a fake PID so the (now-removed) fallback would have
+		// proceeded to invoke kill — the test fails loudly if either reappears.
 		stdout := ""
 		if name == "pgrep" {
-			exitCode = "0"
 			stdout = "echo 99999"
 		}
-		script := fmt.Sprintf("#!/bin/bash\necho \"%s $*\" >> %q\n%s\nexit %s\n",
-			name, logFile, stdout, exitCode)
+		script := fmt.Sprintf("#!/bin/bash\necho \"%s $*\" >> %q\n%s\nexit 0\n",
+			name, logFile, stdout)
 		if err := os.WriteFile(shimPath, []byte(script), 0755); err != nil {
 			t.Fatalf("write shim %s: %v", name, err)
 		}

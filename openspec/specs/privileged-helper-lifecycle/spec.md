@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines how the `launchpal-privhelper` binary is built, packaged inside `LaunchPal.app/Contents/MacOS/`, located at runtime, launched with administrator privileges via osascript, and torn down on idle timeout, parent exit, or explicit Disable. Lifecycle correctness is what keeps Admin Mode session-scoped: no privileged process survives LaunchPal's own process.
+Defines how the `launchpal-privhelper` binary is built, packaged inside `LaunchPal.app/Contents/MacOS/`, located at runtime, launched with administrator privileges via osascript, and torn down on idle timeout, parent exit, or explicit Disable so no privileged process survives LaunchPal's own process.
 
 ## Requirements
 
