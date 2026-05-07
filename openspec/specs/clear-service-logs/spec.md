@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'clear-service-logs'. Update Purpose after archive.
+User and system service Logs tabs include a Clear Logs control that truncates the active stdout/stderr log to 0 bytes in place, preserving inode/owner/mode and rejecting symlinks via `O_NOFOLLOW`. The control is hidden on apple-system services (always read-only) and dispatches per-file: a direct truncate is tried first and only `EACCES` falls back to the helper's `TruncateLog` RPC, so Homebrew-style daemons whose logs are user-writable can be cleared without enabling Admin Mode.
 
 ## Requirements
 

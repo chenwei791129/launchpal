@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'session-privileged-helper'. Update Purpose after archive.
+Defines how the `launchpal-privhelper` binary is built, packaged inside `LaunchPal.app/Contents/MacOS/`, located at runtime, launched with administrator privileges via osascript, and torn down on idle timeout, parent exit, or explicit Disable. Lifecycle correctness is what keeps Admin Mode session-scoped: no privileged process survives LaunchPal's own process.
 
 ## Requirements
 

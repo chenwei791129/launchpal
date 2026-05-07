@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'add-env-vars-ui'. Update Purpose after archive.
+The Create Service modal and the service Edit form expose an Environment Variables section so users can manage a service's `EnvironmentVariables` plist dictionary as a key-value list. Users can add, remove, and toggle visibility on individual entries; the section sits between the run-options checkboxes and the Schedule section so it is discoverable without scrolling.
 
 ## Requirements
 

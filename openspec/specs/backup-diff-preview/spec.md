@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'add-backup-diff-view'. Update Purpose after archive.
+The Settings → Backup History list exposes a Diff button next to each Restore button so users can preview what a backup would change before committing to a restore. The preview renders a side-by-side diff (current on the left, backup on the right, red/green coloring) capped at 10,000 lines, with the backend converting binary plists to XML so both sides remain human-readable.
 
 ## Requirements
 

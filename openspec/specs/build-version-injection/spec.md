@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'auto-version-injection'. Update Purpose after archive.
+LaunchPal injects the release tag into the binary at build time so the running app can display its own version without hardcoding a string. A package-level `version` variable defaults to `"dev"` for local builds and is overridden via Go linker flags (`-ldflags "-X main.version=<tag>"`) during CI release builds; the `App.GetVersion` Wails binding surfaces the value to the StatusBar and Settings pages.
 
 ## Requirements
 

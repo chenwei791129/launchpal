@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'homebrew-distribution'. Update Purpose after archive.
+Each GitHub Release of LaunchPal automatically updates the Homebrew Cask formula at `chenwei791129/homebrew-apps` with the new version, DMG download URL, and SHA256 checksum. A fine-grained PAT scoped to the `homebrew-apps` repository authorizes the cross-repo commit so the cask always tracks the latest release without a manual step.
 
 ## Requirements
 

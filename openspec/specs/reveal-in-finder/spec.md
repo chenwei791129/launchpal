@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'reveal-in-finder'. Update Purpose after archive.
+Every service detail page exposes a Reveal in Finder action that opens macOS Finder with the service's plist file highlighted. The backend `RevealInFinder(path)` binding executes `open -R <path>` via `os/exec`, and the action is available across User, System, and Apple System service types.
 
 ## Requirements
 

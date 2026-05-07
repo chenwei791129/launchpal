@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'fix-arguments-parsing'. Update Purpose after archive.
+Plist `ProgramArguments` editing accepts a single space-separated text input that the frontend parses into an argv array, treating single-quoted (`'...'`) and double-quoted (`"..."`) segments as one argument each with the quotes stripped. Round-tripping through `serializeShellArgs` reproduces the original text so editing existing services is non-destructive.
 
 ## Requirements
 

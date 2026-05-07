@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'add-wake-system-support'. Update Purpose after archive.
+Scheduled user services can opt into waking the Mac from sleep at run time by setting the plist `WakeSystem` boolean. The field round-trips through `Service`, `ServiceConfig`, and `plistData`, and the create/edit form exposes it as a checkbox alongside the schedule.
 
 ## Requirements
 

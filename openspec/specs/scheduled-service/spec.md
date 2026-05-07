@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'add-scheduled-service-type'. Update Purpose after archive.
+User services can express their run schedule as either a fixed interval (`StartInterval`) or one-or-more `StartCalendarInterval` entries. `ScheduleConfig.Interval` and `ScheduleConfig.Schedules []CalendarEntry` are mutually exclusive at write time, and the parser round-trips both forms so existing plists keep working unchanged.
 
 ## Requirements
 

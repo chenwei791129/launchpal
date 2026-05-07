@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'homebrew-distribution'. Update Purpose after archive.
+The `Casks/launchpal.rb` formula in `chenwei791129/homebrew-apps` is the canonical Homebrew installation source for LaunchPal. It pins to the latest GitHub Release DMG and lets users install via `brew install --cask chenwei791129/apps/launchpal` (or via the two-step `brew tap` + `brew install` flow).
 
 ## Requirements
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'cron-range-scheduling'. Update Purpose after archive.
+The cron expression parser accepts range syntax (`a-b`) in any of the five fields (minute, hour, day, month, weekday) and expands a range into the Cartesian product of `StartCalendarInterval` entries. Bounds are validated against each field's permissible range, and a reversed range (`a > b`) is rejected at parse time.
 
 ## Requirements
 

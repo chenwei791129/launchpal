@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'session-privileged-helper'. Update Purpose after archive.
+Defines the helper's write surface for `/Library/LaunchDaemons`: bootstrap/bootout/kickstart and atomic plist write/delete, all gated by strict path validation (must live under `/Library/LaunchDaemons/`) and label validation (reverse-DNS character class only). Pre-write backups are placed under the launching user's `~/.launchpal/backups/<label>/` and chowned back so the unprivileged GUI can read them.
 
 ## Requirements
 

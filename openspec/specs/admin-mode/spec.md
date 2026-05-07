@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'session-privileged-helper'. Update Purpose after archive.
+Admin Mode is the session-scoped state machine LaunchPal uses to gate writes against `/Library/LaunchDaemons`. It tracks transitions between `Disabled`, `Requesting`, `Enabled`, and `ShuttingDown` driven by user actions, helper handshake outcomes, and helper crashes, surfacing the current state and any error to the frontend so the UI enables system-daemon write controls only while authorization is actually in effect.
 
 ## Requirements
 

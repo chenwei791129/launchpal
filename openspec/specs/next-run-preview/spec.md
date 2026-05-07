@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change 'preview-next-run-time'. Update Purpose after archive.
+The `useNextOccurrences` frontend composable previews the next N execution times for a `StartCalendarInterval` schedule by iterating minute-by-minute from `now+1` and matching each candidate against the schedule's fields (unset fields act as wildcards). The result is a chronologically-sorted array of `Date` objects the schedule UI renders so users can validate a cron-style schedule without waiting for the first real run.
 
 ## Requirements
 
