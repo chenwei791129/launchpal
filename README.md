@@ -118,3 +118,13 @@ LaunchPal can manage system services under `/Library/LaunchDaemons` via an optio
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=chenwei791129%2Flaunchpal&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=chenwei791129/launchpal&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=chenwei791129/launchpal&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=chenwei791129/launchpal&type=date&legend=top-left" />
+ </picture>
+</a>
