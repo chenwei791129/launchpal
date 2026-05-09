@@ -3,6 +3,7 @@
 import {launchctl} from '../models';
 import {main} from '../models';
 import {plistutil} from '../models';
+import {settings} from '../models';
 import {backup} from '../models';
 
 export function CheckPermissions():Promise<Record<string, boolean>>;
@@ -38,6 +39,8 @@ export function GetLogs(arg1:string,arg2:string):Promise<string>;
 export function GetPlist(arg1:string):Promise<string>;
 
 export function GetService(arg1:string):Promise<launchctl.Service>;
+
+export function GetSettings():Promise<settings.Settings>;
 
 export function GetSystemLogs(arg1:string,arg2:string,arg3:string):Promise<string>;
 
@@ -76,5 +79,7 @@ export function StopService(arg1:string):Promise<void>;
 export function StopSystemService(arg1:string):Promise<void>;
 
 export function UpdateService(arg1:string,arg2:launchctl.ServiceConfig):Promise<void>;
+
+export function UpdateSettings(arg1:settings.Settings):Promise<void>;
 
 export function UpdateSystemService(arg1:string,arg2:launchctl.ServiceConfig):Promise<void>;

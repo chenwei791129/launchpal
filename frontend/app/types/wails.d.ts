@@ -74,6 +74,11 @@ export interface AdminModeStatus {
   error: string | null
 }
 
+export interface Settings {
+  userLogDir: string
+  systemLogDir: string
+}
+
 declare global {
   interface Window {
     go: {
@@ -115,6 +120,8 @@ declare global {
           CreateSystemService(config: ServiceConfig): Promise<void>
           UpdateSystemService(name: string, config: ServiceConfig): Promise<void>
           DeleteSystemService(name: string): Promise<void>
+          GetSettings(): Promise<Settings>
+          UpdateSettings(s: Settings): Promise<void>
         }
       }
     }

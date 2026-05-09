@@ -2,10 +2,12 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"launchpal/internal/launchctl"
+	"launchpal/internal/settings"
 )
 
 func TestGetVersion_Default(t *testing.T) {
@@ -93,6 +95,52 @@ func TestClearLogs_UserDispatchPropagatesError(t *testing.T) {
 	app := NewApp()
 	if err := app.ClearLogs("com.test.never-exists-launchpal", launchctl.LogTypeStdout); err == nil {
 		t.Error("expected error for missing service via ClearLogs binding")
+	}
+}
+
+func TestGetSettings_FirstRunReturnsDefaults(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	app := NewApp()
+	got, err := app.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if got != settings.Default() {
+		t.Errorf("GetSettings = %+v, want Default %+v", got, settings.Default())
+	}
+}
+
+func TestUpdateSettings_ValidationFailureDoesNotWrite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	app := NewApp()
+	bad := settings.Settings{UserLogDir: "~/Library/Logs", SystemLogDir: "/etc/foo"}
+	err := app.UpdateSettings(bad)
+	if err == nil {
+		t.Fatal("UpdateSettings: expected validation error, got nil")
+	}
+	if !strings.Contains(err.Error(), "systemLogDir") {
+		t.Errorf("error %q does not mention systemLogDir", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".launchpal", "settings.json")); !os.IsNotExist(statErr) {
+		t.Errorf("settings.json created despite validation failure: err=%v", statErr)
+	}
+}
+
+func TestUpdateSettings_SuccessPersists(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	app := NewApp()
+	want := settings.Settings{UserLogDir: "/tmp/userlogs", SystemLogDir: "/Library/Logs/launchpal"}
+	if err := app.UpdateSettings(want); err != nil {
+		t.Fatalf("UpdateSettings: %v", err)
+	}
+	got, err := app.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings: %v", err)
+	}
+	if got != want {
+		t.Errorf("after UpdateSettings: GetSettings = %+v, want %+v", got, want)
 	}
 }
 

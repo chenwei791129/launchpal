@@ -70,6 +70,10 @@ export function GetService(arg1) {
   return window['go']['main']['App']['GetService'](arg1);
 }
 
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
+}
+
 export function GetSystemLogs(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetSystemLogs'](arg1, arg2, arg3);
 }
@@ -144,6 +148,10 @@ export function StopSystemService(arg1) {
 
 export function UpdateService(arg1, arg2) {
   return window['go']['main']['App']['UpdateService'](arg1, arg2);
+}
+
+export function UpdateSettings(arg1) {
+  return window['go']['main']['App']['UpdateSettings'](arg1);
 }
 
 export function UpdateSystemService(arg1, arg2) {

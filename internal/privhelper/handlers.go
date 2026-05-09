@@ -20,12 +20,16 @@ import (
 // anyway) so only this directory is ever a valid target.
 const SystemDaemonDir = "/Library/LaunchDaemons"
 
-// allowedLogPathPrefixes bounds EnsureLogAccess to locations where creating
-// a world-readable file is harmless. macOS resolves /var and /tmp through
-// /private, so both aliases are listed — filepath.Clean doesn't cross
-// symlinks, so a path given as /var/log/x.log will still have that prefix
-// when validated.
-var allowedLogPathPrefixes = []string{
+// SystemLogPathPrefixes bounds EnsureLogAccess (and the settings validator
+// for systemLogDir) to locations where creating a world-readable file is
+// harmless. macOS resolves /var and /tmp through /private, so both aliases
+// are listed — filepath.Clean doesn't cross symlinks, so a path given as
+// /var/log/x.log will still have that prefix when validated.
+//
+// Exported so internal/settings can consume the same constant. Both call
+// sites SHALL reference this symbol by name; do not duplicate the literal
+// slice elsewhere.
+var SystemLogPathPrefixes = []string{
 	"/var/log/",
 	"/private/var/log/",
 	"/Library/Logs/",
@@ -285,7 +289,7 @@ func validateLogPath(path string) (string, *RPCError) {
 	// start with "/tmp/") and look-alike siblings ("/var/logX" won't start
 	// with "/var/log/").
 	var matchedPrefix string
-	for _, prefix := range allowedLogPathPrefixes {
+	for _, prefix := range SystemLogPathPrefixes {
 		if strings.HasPrefix(clean, prefix) {
 			matchedPrefix = prefix
 			break

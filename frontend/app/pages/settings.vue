@@ -188,6 +188,9 @@
         </div>
       </section>
 
+      <!-- Log Storage Section -->
+      <LogStorageSection />
+
       <!-- Diff Preview Dialog -->
       <BackupDiffDialog
         :visible="showDiffDialog"
@@ -297,6 +300,7 @@
 import { useAppVersion } from '~/composables/useAppVersion'
 import { useAdminMode } from '~/composables/useAdminMode'
 import BackupDiffDialog from '~/components/BackupDiffDialog.vue'
+import LogStorageSection from '~/components/LogStorageSection.vue'
 import { formatTimestamp } from '~/utils/formatters'
 import type { AdminModeState, Backup } from '~/types/wails'
 

@@ -171,8 +171,11 @@
 </template>
 
 <script setup lang="ts">
+import { computed, reactive, ref, watch } from 'vue'
 import type { ServiceConfig, ScheduleConfig } from '~/types/wails.d'
 import { parseShellArgs } from '~/utils/shell-args'
+import { composeLogPaths } from '~/utils/logPaths'
+import { useSettings } from '~/composables/useSettings'
 
 const props = withDefaults(defineProps<{
   isOpen: boolean
@@ -223,20 +226,26 @@ function removeEnvVar(index: number) {
   for (const i of next) envVisibility.add(i)
 }
 
-// System daemons run as root and cannot expand `~`, so route their logs
-// under /var/log — the conventional system log directory — keyed by label.
-const logPaths = computed(() => {
-  if (props.serviceType === 'system') {
-    return {
-      stdout: `/var/log/${form.label}/stdout.log`,
-      stderr: `/var/log/${form.label}/stderr.log`,
+// Settings live as a module-level singleton via useSettings; we re-read them
+// every time the modal opens (Decision 8) so changes saved on the Settings
+// page take effect on the next New Service interaction without a restart.
+const { settings, load: loadSettings } = useSettings()
+
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open) {
+      loadSettings().catch(() => {
+        // Defaults remain in place; the user can still create a service.
+      })
     }
-  }
-  return {
-    stdout: `~/Library/Logs/${form.label}/stdout.log`,
-    stderr: `~/Library/Logs/${form.label}/stderr.log`,
-  }
-})
+  },
+  { immediate: true },
+)
+
+const logPaths = computed(() =>
+  composeLogPaths(props.serviceType, settings.value, form.label),
+)
 
 async function handleSubmit() {
   if (!form.label || !form.program) return

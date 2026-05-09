@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
 import { reactive, defineComponent, nextTick  } from 'vue'
+import { composeLogPaths } from '~/utils/logPaths'
+import { useSettings } from '~/composables/useSettings'
+import type { Settings } from '~/types/wails'
 
 
 const EnvVarSection = defineComponent({
@@ -211,3 +214,164 @@ describe('CreateServiceModal – env var visibility masking', () => {
     expect(valueInputs[1]!.attributes('type')).toBe('password')
   })
 })
+
+// Path composition table mirrors the example block in
+// specs/log-path-customization/spec.md. Each row is one parameterized case.
+describe('CreateServiceModal — log path composition', () => {
+  const cases: Array<{
+    serviceType: 'user' | 'system'
+    settings: Settings
+    label: string
+    stdout: string
+  }> = [
+    {
+      serviceType: 'user',
+      settings: { userLogDir: '~/Library/Logs', systemLogDir: '/Library/Logs' },
+      label: 'com.user.x',
+      stdout: '~/Library/Logs/com.user.x/stdout.log',
+    },
+    {
+      serviceType: 'user',
+      settings: { userLogDir: '/tmp/u', systemLogDir: '/Library/Logs' },
+      label: 'com.user.x',
+      stdout: '/tmp/u/com.user.x/stdout.log',
+    },
+    {
+      serviceType: 'system',
+      settings: { userLogDir: '~/Library/Logs', systemLogDir: '/Library/Logs' },
+      label: 'com.sys.x',
+      stdout: '/Library/Logs/com.sys.x/stdout.log',
+    },
+    {
+      serviceType: 'system',
+      settings: { userLogDir: '~/Library/Logs', systemLogDir: '/var/log/lp' },
+      label: 'com.sys.x',
+      stdout: '/var/log/lp/com.sys.x/stdout.log',
+    },
+  ]
+
+  for (const tc of cases) {
+    it(`composes ${tc.serviceType} stdout for label "${tc.label}" with dir "${tc.serviceType === 'system' ? tc.settings.systemLogDir : tc.settings.userLogDir}"`, () => {
+      const got = composeLogPaths(tc.serviceType, tc.settings, tc.label)
+      expect(got.stdout).toBe(tc.stdout)
+      expect(got.stderr).toBe(tc.stdout.replace('stdout.log', 'stderr.log'))
+    })
+  }
+
+  it('strips trailing slash on the directory so paths never double up', () => {
+    const got = composeLogPaths(
+      'system',
+      { userLogDir: '~/Library/Logs', systemLogDir: '/Library/Logs/' },
+      'com.x',
+    )
+    expect(got.stdout).toBe('/Library/Logs/com.x/stdout.log')
+  })
+})
+
+// Mounts the actual modal to verify it re-reads settings each time it is
+// opened (Decision 8) and that saving Settings does NOT issue any helper or
+// CreateService RPC (Existing services are not migrated).
+describe('CreateServiceModal — settings integration', () => {
+  let GetSettings: ReturnType<typeof vi.fn>
+  let UpdateSettings: ReturnType<typeof vi.fn>
+  let CreateService: ReturnType<typeof vi.fn>
+  let CreateSystemService: ReturnType<typeof vi.fn>
+  let currentSettings: Settings
+
+  beforeEach(() => {
+    currentSettings = { userLogDir: '~/Library/Logs', systemLogDir: '/Library/Logs' }
+    GetSettings = vi.fn(async () => currentSettings)
+    UpdateSettings = vi.fn(async (s: Settings) => {
+      currentSettings = s
+    })
+    CreateService = vi.fn(async () => {})
+    CreateSystemService = vi.fn(async () => {})
+    ;(window as unknown as { go: { main: { App: Record<string, unknown> } } }).go = {
+      main: {
+        App: {
+          GetSettings,
+          UpdateSettings,
+          CreateService,
+          CreateSystemService,
+        },
+      },
+    }
+    // Reset the cached useSettings ref between tests.
+    const { settings, defaults } = useSettings()
+    settings.value = { ...defaults }
+  })
+
+  afterEach(() => {
+    delete (window as unknown as { go?: unknown }).go
+  })
+
+  async function mountModal(serviceType: 'user' | 'system') {
+    const mod = await import('../CreateServiceModal.vue')
+    return mount(mod.default, {
+      props: { isOpen: true, serviceType },
+      global: { stubs: { ScheduleForm: true } },
+    })
+  }
+
+  it('re-reads settings each time the modal opens (Decision 8)', async () => {
+    const wrapper = await mountModal('user')
+    await flushPromises()
+    expect(GetSettings).toHaveBeenCalled()
+    const initialCalls = GetSettings.mock.calls.length
+
+    // Simulate user changing settings while the modal is closed.
+    await wrapper.setProps({ isOpen: false })
+    await flushPromises()
+    currentSettings = { userLogDir: '/tmp/userlogs', systemLogDir: '/Library/Logs' }
+    await wrapper.setProps({ isOpen: true })
+    await flushPromises()
+
+    expect(GetSettings.mock.calls.length).toBeGreaterThan(initialCalls)
+  })
+
+  it('user serviceType uses settings.userLogDir for log preview', async () => {
+    currentSettings = { userLogDir: '/tmp/userlogs', systemLogDir: '/Library/Logs' }
+    const wrapper = await mountModal('user')
+    await flushPromises()
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.user.demo')
+    await flushPromises()
+    const html = wrapper.html()
+    expect(html).toContain('/tmp/userlogs/com.user.demo/stdout.log')
+    expect(html).toContain('/tmp/userlogs/com.user.demo/stderr.log')
+  })
+
+  it('system serviceType uses settings.systemLogDir for log preview', async () => {
+    currentSettings = { userLogDir: '~/Library/Logs', systemLogDir: '/var/log/lp' }
+    const wrapper = await mountModal('system')
+    await flushPromises()
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.sys.demo')
+    await flushPromises()
+    const html = wrapper.html()
+    expect(html).toContain('/var/log/lp/com.sys.demo/stdout.log')
+    expect(html).toContain('/var/log/lp/com.sys.demo/stderr.log')
+  })
+
+  it('saving Settings does not modify existing plists or invoke helper RPCs', async () => {
+    // Render the modal once so any subscriptions exist, then "save settings"
+    // by calling UpdateSettings directly. The modal must not respond by
+    // calling any service-mutating binding.
+    await mountModal('user')
+    await flushPromises()
+    const callsBefore = {
+      CreateService: CreateService.mock.calls.length,
+      CreateSystemService: CreateSystemService.mock.calls.length,
+    }
+
+    await (UpdateSettings as unknown as (s: Settings) => Promise<void>)({
+      userLogDir: '/tmp/u',
+      systemLogDir: '/Library/Logs/lp',
+    })
+    await flushPromises()
+
+    expect(CreateService.mock.calls.length).toBe(callsBefore.CreateService)
+    expect(CreateSystemService.mock.calls.length).toBe(callsBefore.CreateSystemService)
+  })
+})
+

@@ -11,6 +11,7 @@ import (
 	"launchpal/internal/backup"
 	"launchpal/internal/launchctl"
 	"launchpal/internal/plistutil"
+	"launchpal/internal/settings"
 )
 
 // App struct
@@ -343,6 +344,19 @@ func (a *App) RevealInFinder(path string) error {
 		return fmt.Errorf("path must not be empty")
 	}
 	return exec.Command("open", "-R", path).Run()
+}
+
+// GetSettings reads ~/.launchpal/settings.json (or returns Default() if the
+// file is missing or corrupt) and surfaces it to the frontend.
+func (a *App) GetSettings() (settings.Settings, error) {
+	return settings.Load()
+}
+
+// UpdateSettings validates and atomically persists the supplied Settings.
+// Validation errors are returned verbatim; the on-disk settings file is
+// left untouched if validation fails.
+func (a *App) UpdateSettings(s settings.Settings) error {
+	return settings.Save(s)
 }
 
 // CheckPermissions returns permission status for each service domain

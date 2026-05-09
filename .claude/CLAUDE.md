@@ -45,8 +45,10 @@ A GUI for managing macOS LaunchAgents.
 │   │   └── peer_darwin.go    # LOCAL_PEERCRED implementation (via golang.org/x/sys/unix)
 │   ├── backup/               # Backup management
 │   │   └── backup.go         # BackupManager implementation
-│   └── plistutil/            # plist format detection and binary→XML normalization (shared by backup, launchctl)
-│       └── plistutil.go      # DetectFormat, NormalizeFromPath
+│   ├── plistutil/            # plist format detection and binary→XML normalization (shared by backup, launchctl)
+│   │   └── plistutil.go      # DetectFormat, NormalizeFromPath
+│   └── settings/             # User preferences persisted as JSON
+│       └── settings.go       # Settings struct, Default/Load/Save/Validate (~/.launchpal/settings.json)
 ├── frontend/                 # Nuxt 4 frontend project
 │   ├── app/
 │   │   ├── app.vue           # Root component
@@ -85,6 +87,14 @@ make clean       # Remove build artifacts
 - Automatic backups are taken before `Update` and `Delete`.
 - Retention: the 10 most recent backups.
 - Settings → Backup History exposes a Diff button on each entry that opens a **side-by-side diff preview** (current on the left, backup on the right, red/green coloring) before the user decides whether to Restore. Binary plists are auto-converted to XML by the backend; if the service has been deleted, the left column renders as placeholders and the right column appears as pure additions. The diff is capped at 10,000 lines, and a truncation notice is shown beyond that.
+
+## Settings
+
+- Settings file: `~/.launchpal/settings.json` (atomic write via `os.Rename`, missing/corrupt files fall back to `Default()` so first-run never errors).
+- Wails bindings: `GetSettings()` and `UpdateSettings(s)` on `App`. Validation runs in front-end (`utils/settingsValidation.ts`) and back-end (`internal/settings.Validate`) — back-end is the source of truth.
+- Settings page exposes a **Log Storage** section (immediately after Backup Storage) with two independent controls — User Log Directory (default `~/Library/Logs`) and System Log Directory (default `/Library/Logs`). Each has Save and Reset to Default buttons. Save persists via `UpdateSettings`; inline error appears on validation failure; success indicator flashes briefly on success.
+- New Service modal sources the default `stdoutPath` / `stderrPath` from these settings via `composeLogPaths` (`<dir>/<label>/<stream>.log`). Settings are re-read every time the modal opens (Decision 8); existing services are not migrated when settings change (Decision 9).
+- The system-log path allowlist (`/var/log/`, `/private/var/log/`, `/Library/Logs/`, `/tmp/`, `/private/tmp/`) is the single source of truth at `internal/privhelper.SystemLogPathPrefixes`. Both the privileged helper (`EnsureLogAccess`/`TruncateLog`) and the settings validator import from here — never duplicate the slice.
 
 ## Service Types
 

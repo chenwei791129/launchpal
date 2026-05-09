@@ -366,6 +366,31 @@ func TestValidateSystemDaemonPath_TableDriven(t *testing.T) {
 	}
 }
 
+func TestSystemLogPathPrefixes_SharedConstant(t *testing.T) {
+	want := []string{
+		"/var/log/",
+		"/private/var/log/",
+		"/Library/Logs/",
+		"/tmp/",
+		"/private/tmp/",
+	}
+	if len(SystemLogPathPrefixes) != len(want) {
+		t.Fatalf("len(SystemLogPathPrefixes) = %d, want %d (%v)", len(SystemLogPathPrefixes), len(want), SystemLogPathPrefixes)
+	}
+	for i, p := range want {
+		if SystemLogPathPrefixes[i] != p {
+			t.Errorf("SystemLogPathPrefixes[%d] = %q, want %q", i, SystemLogPathPrefixes[i], p)
+		}
+	}
+	// Each prefix must end in "/" so HasPrefix correctly rejects look-alike
+	// siblings (e.g. "/var/logX") and the bare allowlist root itself.
+	for _, p := range SystemLogPathPrefixes {
+		if !strings.HasSuffix(p, "/") {
+			t.Errorf("prefix %q does not end with %q", p, "/")
+		}
+	}
+}
+
 func TestHandlers_EnsureLogAccess(t *testing.T) {
 	// Use a sandbox under /tmp so validateLogPath accepts the paths (macOS
 	// resolves /tmp through /private/tmp, which is in the allowlist).
