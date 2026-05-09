@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.15.0](https://github.com/chenwei791129/launchpal/compare/v1.14.0...v1.15.0) (2026-05-09)
+
+
+### Features
+
+* customize log directory paths via settings ([69ea9f2](https://github.com/chenwei791129/launchpal/commit/69ea9f2235eba34debac5abc7392c72f8d0fad6c))
+
+
+### Bug Fixes
+
+* **frontend:** use ISO-style en-CA locale in formatTimestamp ([9ccb9b3](https://github.com/chenwei791129/launchpal/commit/9ccb9b36cd9cb924d23f54f44e2444d8155c7da3))
+* **launchctl:** drop pgrep+kill fallback from UserManager.Stop ([faacae2](https://github.com/chenwei791129/launchpal/commit/faacae2af46ce657f2a549d9754f10f3fb7ead25))
+
 ## [1.14.0](https://github.com/chenwei791129/launchpal/compare/v1.13.1...v1.14.0) (2026-05-03)
 
 
