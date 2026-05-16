@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -135,6 +136,8 @@ func (h *Handlers) Handle(ctx context.Context, req *Request) (any, *RPCError) {
 		return h.ensureLogAccess(ctx, req.Params)
 	case MethodTruncateLog:
 		return h.truncateLog(ctx, req.Params)
+	case MethodDeleteLogPaths:
+		return h.deleteLogPaths(ctx, req.Params)
 	case MethodShutdown:
 		if h.opts.ShutdownFn != nil {
 			h.opts.ShutdownFn()
@@ -383,6 +386,62 @@ func (h *Handlers) truncateLog(_ context.Context, raw json.RawMessage) (any, *RP
 		return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
 	}
 	return OKResult{OK: true}, nil
+}
+
+// deleteLogPaths removes each path in p.Paths after validating it against
+// the log allowlist and refusing to follow symlinks. Per-path failures are
+// collected in the result's Errors slice rather than bubbled up as an RPC
+// error — a partial success (some paths deleted, others rejected/missing)
+// is a valid response and lets callers like SystemManager.DeleteWithOptions
+// surface a non-fatal warning instead of failing the whole delete.
+//
+// After a successful file removal the handler attempts to remove the parent
+// directory; an error there is swallowed (typically ENOTEMPTY when other
+// log files share the dir, occasionally ENOENT if the parent was already
+// gone). Only one level up is collapsed — never recurse beyond the
+// immediate parent.
+func (h *Handlers) deleteLogPaths(_ context.Context, raw json.RawMessage) (any, *RPCError) {
+	p, errR := unmarshalParams[DeleteLogPathsParams](raw)
+	if errR != nil {
+		return nil, errR
+	}
+	result := DeleteLogPathsResult{Errors: []string{}}
+	for _, path := range p.Paths {
+		if err := deleteOneLogPath(path); err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("%s: %s", path, err.Error()))
+		}
+	}
+	return result, nil
+}
+
+// deleteOneLogPath validates path and removes the file (without following
+// symlinks), then best-effort removes the now-possibly-empty parent dir.
+// Errors are returned as-is from os.Lstat / os.Remove so callers can
+// substring-match the underlying errno (e.g. "no such file or directory").
+func deleteOneLogPath(path string) error {
+	clean, errR := validateLogPath(path)
+	if errR != nil {
+		return fmt.Errorf("%s", errR.Message)
+	}
+	info, err := os.Lstat(clean)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to delete symlink")
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("not a regular file")
+	}
+	if err := os.Remove(clean); err != nil {
+		return err
+	}
+	// Best-effort parent cleanup. os.Remove on a non-empty directory returns
+	// ENOTEMPTY which we deliberately ignore; any other parent-level failure
+	// is also non-fatal because the file delete (the user-visible operation)
+	// already succeeded.
+	_ = os.Remove(filepath.Dir(clean))
+	return nil
 }
 
 func (h *Handlers) deletePlist(ctx context.Context, raw json.RawMessage) (any, *RPCError) {

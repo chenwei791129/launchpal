@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"launchpal/internal/launchctl"
@@ -142,6 +145,125 @@ func TestUpdateSettings_SuccessPersists(t *testing.T) {
 	if got != want {
 		t.Errorf("after UpdateSettings: GetSettings = %+v, want %+v", got, want)
 	}
+}
+
+// stubAdminClient implements launchctl.AdminClient with per-method recording
+// so app-binding tests can assert that options flow through SystemManager
+// without needing a real privhelper process. Behavior matches the helper's
+// success path: every call records its arguments and returns nil.
+//
+// internal/launchctl/system_test.go has a richer fakeAdminClient with per-
+// method *Err injection — kept separate because it lives in the launchctl
+// package and isn't exportable across package boundaries without an
+// export_test alias the codebase doesn't otherwise need.
+type stubAdminClient struct {
+	mu                     sync.Mutex
+	calls                  []string
+	deleteLogPathsArg      []string
+	deleteLogPathsWarnings []string
+}
+
+func (s *stubAdminClient) record(c string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.calls = append(s.calls, c)
+}
+
+func (s *stubAdminClient) Bootstrap(_ context.Context, p string) error {
+	s.record("Bootstrap:" + p)
+	return nil
+}
+func (s *stubAdminClient) Bootout(_ context.Context, l string) error {
+	s.record("Bootout:" + l)
+	return nil
+}
+func (s *stubAdminClient) Kickstart(_ context.Context, l string) error {
+	s.record("Kickstart:" + l)
+	return nil
+}
+func (s *stubAdminClient) WritePlist(_ context.Context, p string, _ []byte) error {
+	s.record("WritePlist:" + p)
+	return nil
+}
+func (s *stubAdminClient) DeletePlist(_ context.Context, p string) error {
+	s.record("DeletePlist:" + p)
+	return nil
+}
+func (s *stubAdminClient) EnsureLogAccess(_ context.Context, paths []string) error {
+	s.record("EnsureLogAccess:" + strings.Join(paths, ","))
+	return nil
+}
+func (s *stubAdminClient) TruncateLog(_ context.Context, p string) error {
+	s.record("TruncateLog:" + p)
+	return nil
+}
+func (s *stubAdminClient) DeleteLogPaths(_ context.Context, paths []string) ([]string, error) {
+	s.record("DeleteLogPaths:" + strings.Join(paths, ","))
+	s.mu.Lock()
+	s.deleteLogPathsArg = append([]string(nil), paths...)
+	warnings := append([]string(nil), s.deleteLogPathsWarnings...)
+	s.mu.Unlock()
+	return warnings, nil
+}
+
+func TestDeleteSystemService_Options(t *testing.T) {
+	t.Run("ErrReadOnlyManager without admin mode regardless of options", func(t *testing.T) {
+		app := NewApp()
+		for _, opts := range []launchctl.DeleteServiceOptions{{DeleteLogs: false}, {DeleteLogs: true}} {
+			warning, err := app.DeleteSystemService("com.test.never-exists", opts)
+			if !errors.Is(err, launchctl.ErrReadOnlyManager) {
+				t.Errorf("DeleteLogs=%v: err = %v, want ErrReadOnlyManager", opts.DeleteLogs, err)
+			}
+			if warning != "" {
+				t.Errorf("DeleteLogs=%v: warning = %q, want empty when error is hard failure", opts.DeleteLogs, warning)
+			}
+		}
+	})
+
+	t.Run("Options forwarded to SystemManager.DeleteWithOptions", func(t *testing.T) {
+		// SystemManager's basePath is hard-wired to /Library/LaunchDaemons,
+		// so Get() can't see a synthetic plist — it fails, no log paths are
+		// captured, no Bootout fires. DeletePlist on the stub still runs,
+		// which is enough to prove the binding reaches DeleteWithOptions.
+		app := NewApp()
+		stub := &stubAdminClient{}
+		app.systemManager.SetAdminClient(stub)
+		defer app.systemManager.ClearAdminClient()
+
+		if _, err := app.DeleteSystemService("com.test.never-exists", launchctl.DeleteServiceOptions{DeleteLogs: true}); err != nil {
+			t.Fatalf("DeleteSystemService: %v", err)
+		}
+		var sawDelete bool
+		for _, c := range stub.calls {
+			if strings.HasPrefix(c, "DeletePlist:") {
+				sawDelete = true
+			}
+		}
+		if !sawDelete {
+			t.Errorf("DeletePlist not invoked through binding; calls = %v", stub.calls)
+		}
+	})
+
+	t.Run("LogDeletionWarning is absorbed into the warning return value", func(t *testing.T) {
+		// SystemManager.Get fails because the synthetic service doesn't
+		// exist under /Library/LaunchDaemons, which under DeleteLogs=true
+		// triggers the auditable "couldn't determine log paths" warning
+		// instead of silently skipping the cleanup. The App binding MUST
+		// surface that as a non-empty warning string with err==nil so the
+		// Wails Promise resolves rather than rejects.
+		app := NewApp()
+		stub := &stubAdminClient{}
+		app.systemManager.SetAdminClient(stub)
+		defer app.systemManager.ClearAdminClient()
+
+		warning, err := app.DeleteSystemService("com.test.never-exists", launchctl.DeleteServiceOptions{DeleteLogs: true})
+		if err != nil {
+			t.Fatalf("err = %v, want nil so the frontend Promise resolves", err)
+		}
+		if !strings.Contains(warning, "Full Disk Access") {
+			t.Errorf("warning = %q, want a FDA-hint message", warning)
+		}
+	})
 }
 
 func TestIsSystemDaemonPath(t *testing.T) {

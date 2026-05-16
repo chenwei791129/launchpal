@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -27,10 +28,13 @@ type fakeAdminClient struct {
 	deletePlistErr     error
 	ensureLogAccessErr error
 	truncateLogErr     error
+	deleteLogPathsErr  error
 
-	lastWriteData     []byte
-	lastLogPaths      []string
-	lastTruncatedPath string
+	lastWriteData          []byte
+	lastLogPaths           []string
+	lastTruncatedPath      string
+	lastDeleteLogPaths     []string
+	deleteLogPathsWarnings []string
 }
 
 func (f *fakeAdminClient) record(s string) {
@@ -85,6 +89,15 @@ func (f *fakeAdminClient) TruncateLog(_ context.Context, path string) error {
 	f.lastTruncatedPath = path
 	f.mu.Unlock()
 	return f.truncateLogErr
+}
+
+func (f *fakeAdminClient) DeleteLogPaths(_ context.Context, paths []string) ([]string, error) {
+	f.record("DeleteLogPaths:" + strings.Join(paths, ","))
+	f.mu.Lock()
+	f.lastDeleteLogPaths = append([]string(nil), paths...)
+	warnings := append([]string(nil), f.deleteLogPathsWarnings...)
+	f.mu.Unlock()
+	return warnings, f.deleteLogPathsErr
 }
 
 func TestSystemManager_List(t *testing.T) {
@@ -380,6 +393,166 @@ func TestSystemManager_WriteOperationsWithAdminModeEnabled(t *testing.T) {
 		m.ClearAdminClient()
 		if err := m.Start("com.example.testdaemon"); !errors.Is(err, ErrReadOnlyManager) {
 			t.Errorf("Start err = %v, want ErrReadOnlyManager", err)
+		}
+	})
+}
+
+func TestSystemManager_DeleteWithOptions(t *testing.T) {
+	tmp := t.TempDir()
+	const label = "com.example.logged"
+	const stdoutLog = "/var/log/logged/out.log"
+	const stderrLog = "/var/log/logged/err.log"
+
+	plistWith := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>` + label + `</string>
+  <key>Program</key><string>/usr/bin/true</string>
+  <key>StandardOutPath</key><string>` + stdoutLog + `</string>
+  <key>StandardErrorPath</key><string>` + stderrLog + `</string>
+</dict></plist>`
+	plistNoLogs := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.example.nopath</string>
+  <key>Program</key><string>/usr/bin/true</string>
+</dict></plist>`
+
+	withPath := filepath.Join(tmp, label+".plist")
+	if err := os.WriteFile(withPath, []byte(plistWith), 0644); err != nil {
+		t.Fatalf("seed with-logs: %v", err)
+	}
+	noLogsPath := filepath.Join(tmp, "com.example.nopath.plist")
+	if err := os.WriteFile(noLogsPath, []byte(plistNoLogs), 0644); err != nil {
+		t.Fatalf("seed no-logs: %v", err)
+	}
+
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+
+	t.Run("ErrReadOnlyManager without admin client", func(t *testing.T) {
+		err := m.DeleteWithOptions(label, DeleteServiceOptions{DeleteLogs: true})
+		if !errors.Is(err, ErrReadOnlyManager) {
+			t.Errorf("err = %v, want ErrReadOnlyManager", err)
+		}
+	})
+
+	t.Run("DeleteLogs=false: no DeleteLogPaths call, same as Delete", func(t *testing.T) {
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		if err := m.DeleteWithOptions(label, DeleteServiceOptions{DeleteLogs: false}); err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		want := []string{"Bootout:" + label, "DeletePlist:" + withPath}
+		got := fake.calls()
+		if strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("calls = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("DeleteLogs=true: both log paths forwarded to DeleteLogPaths", func(t *testing.T) {
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		if err := m.DeleteWithOptions(label, DeleteServiceOptions{DeleteLogs: true}); err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		want := []string{
+			"Bootout:" + label,
+			"DeletePlist:" + withPath,
+			"DeleteLogPaths:" + stdoutLog + "," + stderrLog,
+		}
+		got := fake.calls()
+		if strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("calls = %v, want %v", got, want)
+		}
+		if !slices.Equal(fake.lastDeleteLogPaths, []string{stdoutLog, stderrLog}) {
+			t.Errorf("lastDeleteLogPaths = %v, want %v", fake.lastDeleteLogPaths, []string{stdoutLog, stderrLog})
+		}
+	})
+
+	t.Run("DeleteLogs=true with no plist log paths: skips DeleteLogPaths", func(t *testing.T) {
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		if err := m.DeleteWithOptions("com.example.nopath", DeleteServiceOptions{DeleteLogs: true}); err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		for _, c := range fake.calls() {
+			if strings.HasPrefix(c, "DeleteLogPaths") {
+				t.Errorf("unexpected DeleteLogPaths call when plist has no log paths: %v", fake.calls())
+			}
+		}
+	})
+
+	t.Run("DeleteLogPaths warnings surface as *LogDeletionWarning, overall success", func(t *testing.T) {
+		fake := &fakeAdminClient{
+			deleteLogPathsWarnings: []string{stdoutLog + ": no such file or directory"},
+		}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		err := m.DeleteWithOptions(label, DeleteServiceOptions{DeleteLogs: true})
+		if err == nil {
+			t.Fatal("expected *LogDeletionWarning typed error, got nil")
+		}
+		var warn *LogDeletionWarning
+		if !errors.As(err, &warn) {
+			t.Fatalf("err type = %T, want *LogDeletionWarning", err)
+		}
+		if len(warn.Errors) != 1 || !strings.Contains(warn.Errors[0], "no such file") {
+			t.Errorf("warn.Errors = %v, want one missing-file entry", warn.Errors)
+		}
+	})
+
+	t.Run("DeleteLogPaths transport failure surfaces as *LogDeletionWarning", func(t *testing.T) {
+		fake := &fakeAdminClient{
+			deleteLogPathsErr: errors.New("helper socket closed"),
+		}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		err := m.DeleteWithOptions(label, DeleteServiceOptions{DeleteLogs: true})
+		var warn *LogDeletionWarning
+		if !errors.As(err, &warn) {
+			t.Fatalf("err type = %T, want *LogDeletionWarning", err)
+		}
+		if len(warn.Errors) != 1 || !strings.Contains(warn.Errors[0], "socket closed") {
+			t.Errorf("warn.Errors = %v, want transport error entry", warn.Errors)
+		}
+	})
+
+	t.Run("Get failure with DeleteLogs=true yields auditable warning", func(t *testing.T) {
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		err := m.DeleteWithOptions("com.example.absent", DeleteServiceOptions{DeleteLogs: true})
+		var warn *LogDeletionWarning
+		if !errors.As(err, &warn) {
+			t.Fatalf("err type = %T, want *LogDeletionWarning when Get fails under DeleteLogs", err)
+		}
+		if len(warn.Errors) != 1 || !strings.Contains(warn.Errors[0], "Full Disk Access") {
+			t.Errorf("warn.Errors = %v, want FDA-hint entry", warn.Errors)
+		}
+		for _, c := range fake.calls() {
+			if strings.HasPrefix(c, "DeleteLogPaths") {
+				t.Errorf("unexpected DeleteLogPaths call when Get failed: %v", fake.calls())
+			}
+		}
+	})
+
+	t.Run("Get failure with DeleteLogs=false stays clean", func(t *testing.T) {
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+		defer m.ClearAdminClient()
+
+		// No log cleanup requested → no warning even when Get fails.
+		if err := m.DeleteWithOptions("com.example.absent", DeleteServiceOptions{DeleteLogs: false}); err != nil {
+			t.Errorf("err = %v, want nil when DeleteLogs=false even if Get fails", err)
 		}
 	})
 }

@@ -651,6 +651,175 @@ func TestHandlers_TruncateLog(t *testing.T) {
 	})
 }
 
+func TestHandlers_DeleteLogPaths(t *testing.T) {
+	// /tmp resolves to /private/tmp on darwin; both are in the allowlist,
+	// so a sandbox here is acceptable to validateLogPath.
+	base, err := os.MkdirTemp("/tmp", "launchpal-delete-*")
+	if err != nil {
+		t.Fatalf("mktemp: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(base) }()
+
+	callHandler := func(t *testing.T, paths []string) DeleteLogPathsResult {
+		t.Helper()
+		h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}})
+		params, _ := json.Marshal(DeleteLogPathsParams{Paths: paths})
+		out, errR := h.Handle(context.Background(), &Request{Method: MethodDeleteLogPaths, Params: params})
+		if errR != nil {
+			t.Fatalf("handler err = %+v", errR)
+		}
+		res, ok := out.(DeleteLogPathsResult)
+		if !ok {
+			t.Fatalf("result type = %T, want DeleteLogPathsResult", out)
+		}
+		return res
+	}
+
+	t.Run("deletes a single log file and empty parent dir", func(t *testing.T) {
+		dir := filepath.Join(base, "svc-clean")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		logPath := filepath.Join(dir, "out.log")
+		if err := os.WriteFile(logPath, []byte("noise\n"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		res := callHandler(t, []string{logPath})
+		if len(res.Errors) != 0 {
+			t.Errorf("errors = %v, want none", res.Errors)
+		}
+		if _, statErr := os.Stat(logPath); !os.IsNotExist(statErr) {
+			t.Errorf("log file should be gone, stat err = %v", statErr)
+		}
+		if _, statErr := os.Stat(dir); !os.IsNotExist(statErr) {
+			t.Errorf("empty parent dir should be removed, stat err = %v", statErr)
+		}
+	})
+
+	t.Run("parent dir with other files is left intact", func(t *testing.T) {
+		dir := filepath.Join(base, "svc-keep-parent")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		logPath := filepath.Join(dir, "out.log")
+		sibling := filepath.Join(dir, "stderr.log")
+		if err := os.WriteFile(logPath, []byte("x"), 0644); err != nil {
+			t.Fatalf("seed log: %v", err)
+		}
+		if err := os.WriteFile(sibling, []byte("y"), 0644); err != nil {
+			t.Fatalf("seed sibling: %v", err)
+		}
+		res := callHandler(t, []string{logPath})
+		if len(res.Errors) != 0 {
+			t.Errorf("errors = %v, want none", res.Errors)
+		}
+		if _, statErr := os.Stat(logPath); !os.IsNotExist(statErr) {
+			t.Errorf("log file should be gone, stat err = %v", statErr)
+		}
+		if _, statErr := os.Stat(dir); statErr != nil {
+			t.Errorf("parent dir should remain, stat err = %v", statErr)
+		}
+		if _, statErr := os.Stat(sibling); statErr != nil {
+			t.Errorf("sibling should remain, stat err = %v", statErr)
+		}
+	})
+
+	t.Run("path outside allowlist is rejected", func(t *testing.T) {
+		res := callHandler(t, []string{"/etc/passwd"})
+		if len(res.Errors) != 1 {
+			t.Fatalf("errors = %v, want one entry", res.Errors)
+		}
+		if !strings.Contains(res.Errors[0], "/etc/passwd") {
+			t.Errorf("error %q missing path", res.Errors[0])
+		}
+	})
+
+	t.Run("symlink target is not followed", func(t *testing.T) {
+		if syscallNoFollow == 0 {
+			t.Skip("O_NOFOLLOW unavailable on this build")
+		}
+		dir := filepath.Join(base, "svc-symlink")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		target := filepath.Join(dir, "real.log")
+		if err := os.WriteFile(target, []byte("real content"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		linkPath := filepath.Join(dir, "out.log")
+		if err := os.Symlink(target, linkPath); err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+		res := callHandler(t, []string{linkPath})
+		if len(res.Errors) != 1 {
+			t.Fatalf("errors = %v, want one entry", res.Errors)
+		}
+		if !strings.Contains(strings.ToLower(res.Errors[0]), "symlink") {
+			t.Errorf("error %q should mention symlink", res.Errors[0])
+		}
+		// Target must not have been deleted.
+		if _, statErr := os.Stat(target); statErr != nil {
+			t.Errorf("symlink target was deleted, stat err = %v", statErr)
+		}
+	})
+
+	t.Run("missing file records ErrNotExist", func(t *testing.T) {
+		logPath := filepath.Join(base, "svc-missing", "out.log")
+		res := callHandler(t, []string{logPath})
+		if len(res.Errors) != 1 {
+			t.Fatalf("errors = %v, want one entry", res.Errors)
+		}
+		// The error message bubbles up from os.Lstat which reports "no such
+		// file or directory" — that's what os.ErrNotExist surfaces as on the
+		// wire.
+		if !strings.Contains(res.Errors[0], "no such file") {
+			t.Errorf("error %q should mention missing file", res.Errors[0])
+		}
+	})
+
+	t.Run("partial failure across mixed paths", func(t *testing.T) {
+		dir := filepath.Join(base, "svc-partial")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		good := filepath.Join(dir, "out.log")
+		if err := os.WriteFile(good, []byte("x"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		bad := "/etc/passwd"
+		res := callHandler(t, []string{good, bad})
+		if len(res.Errors) != 1 {
+			t.Fatalf("errors = %v, want exactly one entry for %s", res.Errors, bad)
+		}
+		if !strings.Contains(res.Errors[0], bad) {
+			t.Errorf("error %q should reference rejected path %q", res.Errors[0], bad)
+		}
+		if _, statErr := os.Stat(good); !os.IsNotExist(statErr) {
+			t.Errorf("valid path %q should have been deleted: %v", good, statErr)
+		}
+	})
+
+	t.Run("dispatches via Handle switch", func(t *testing.T) {
+		dir := filepath.Join(base, "svc-dispatch")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		logPath := filepath.Join(dir, "out.log")
+		if err := os.WriteFile(logPath, []byte("x"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}})
+		params, _ := json.Marshal(DeleteLogPathsParams{Paths: []string{logPath}})
+		_, errR := h.Handle(context.Background(), &Request{Method: MethodDeleteLogPaths, Params: params})
+		if errR != nil && errR.Code == ErrCodeUnknownMethod {
+			t.Fatal("MethodDeleteLogPaths not wired into Handle switch")
+		}
+		if errR != nil {
+			t.Fatalf("handler err = %+v", errR)
+		}
+	})
+}
+
 // errCodeOrEmpty extracts the code from an RPCError or returns "" so test
 // failure messages stay readable when the error happens to be nil.
 func errCodeOrEmpty(e *RPCError) string {

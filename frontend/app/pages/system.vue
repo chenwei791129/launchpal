@@ -150,9 +150,20 @@
           <p class="text-gray-400 mb-2">
             Are you sure you want to delete "{{ serviceToDelete?.label }}"?
           </p>
-          <p class="text-yellow-500 text-sm mb-6">
-            The daemon will be booted out and its plist backed up before removal. This action cannot be undone from the GUI.
+          <p class="text-yellow-500 text-sm mb-4">
+            The daemon will be booted out and its plist backed up before removal.
           </p>
+          <label class="flex items-start gap-2 mb-6 cursor-pointer select-none">
+            <input
+              v-model="deleteLogsChecked"
+              type="checkbox"
+              class="mt-1 w-4 h-4 rounded border-surface-100 bg-surface-300 text-primary-600 focus:ring-primary-600 focus:ring-offset-0"
+            >
+            <span class="text-sm text-gray-300">
+              Also delete log files
+              <span class="block text-xs text-gray-500">Log files will be permanently deleted and cannot be recovered.</span>
+            </span>
+          </label>
           <div class="flex justify-end gap-3">
             <button
               class="px-4 py-2 text-gray-400 hover:text-white transition-colors"
@@ -196,6 +207,7 @@ const hasPermission = ref(true)
 const showCreateModal = ref(false)
 const showDeleteDialog = ref(false)
 const serviceToDelete = ref<Service | null>(null)
+const deleteLogsChecked = ref(false)
 const actionMessage = ref<string | null>(null)
 
 const updateCounts = inject<(total: number, running: number) => void>('updateCounts')
@@ -238,13 +250,17 @@ function handleSelect(service: Service) {
 
 function handleDelete(service: Service) {
   serviceToDelete.value = service
+  deleteLogsChecked.value = false
   showDeleteDialog.value = true
 }
 
 async function confirmDelete() {
   if (!serviceToDelete.value) return
   try {
-    await window.go.main.App.DeleteSystemService(serviceToDelete.value.name)
+    const warning = await window.go.main.App.DeleteSystemService(serviceToDelete.value.name, { deleteLogs: deleteLogsChecked.value })
+    if (warning) {
+      actionMessage.value = warning
+    }
     await loadServices()
   } catch (e) {
     console.error('Failed to delete system service:', e)

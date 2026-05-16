@@ -16,17 +16,26 @@ All three SHALL implement the same `Manager` interface.
 
 ### Requirement: Read-only managers reject write operations
 
-SystemManager and AppleSystemManager SHALL return `ErrReadOnlyManager` for all write operations: Start, Stop, Restart, Create, Update, Delete.
+SystemManager SHALL return `ErrReadOnlyManager` for all write operations when Admin Mode is disabled: Start, Stop, Restart, Create, Update, Delete.
+When Admin Mode is enabled, SystemManager SHALL delegate write operations to the privileged helper via RPC instead of returning `ErrReadOnlyManager`.
+AppleSystemManager SHALL return `ErrReadOnlyManager` for all write operations unconditionally.
 
-#### Scenario: SystemManager write operations
+SystemManager SHALL additionally expose `DeleteWithOptions(name string, opts DeleteServiceOptions) error` for callers that need the optional log-cleanup flow. This method SHALL NOT be part of the `Manager` interface.
 
-- **WHEN** Start, Stop, Restart, Create, Update, or Delete is called on SystemManager
+#### Scenario: SystemManager write operations without Admin Mode
+
+- **WHEN** Start, Stop, Restart, Create, Update, or Delete is called on SystemManager and Admin Mode is disabled
 - **THEN** each call returns `ErrReadOnlyManager`
 
 #### Scenario: AppleSystemManager write operations
 
 - **WHEN** Start, Stop, Restart, Create, Update, or Delete is called on AppleSystemManager
 - **THEN** each call returns `ErrReadOnlyManager`
+
+#### Scenario: SystemManager DeleteWithOptions without log cleanup
+
+- **WHEN** `DeleteWithOptions` is called with `DeleteLogs: false`
+- **THEN** the behavior is identical to `Delete`: bootout + DeletePlist RPC, no log files touched
 
 
 <!-- @trace
@@ -75,6 +84,30 @@ tests:
   - admin_mode_test.go
   - admin_mode_testhelpers_test.go
   - internal/launchctl/system_test.go
+-->
+
+
+<!-- @trace
+source: delete-system-daemon-with-logs
+updated: 2026-05-16
+code:
+  - internal/launchctl/system.go
+  - frontend/wailsjs/go/main/App.js
+  - frontend/app/types/wails.d.ts
+  - internal/privhelper/client.go
+  - internal/launchctl/types.go
+  - internal/privhelper/protocol.go
+  - frontend/wailsjs/go/main/App.d.ts
+  - internal/privhelper/handlers.go
+  - frontend/wailsjs/go/models.ts
+  - frontend/app/pages/system.vue
+  - app.go
+tests:
+  - app_test.go
+  - internal/launchctl/system_test.go
+  - internal/privhelper/client_test.go
+  - internal/privhelper/protocol_test.go
+  - internal/privhelper/handlers_test.go
 -->
 
 ### Requirement: List system services

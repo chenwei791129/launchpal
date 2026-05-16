@@ -152,6 +152,7 @@ func TestAllMethods_Coverage(t *testing.T) {
 		MethodDeletePlist,
 		MethodEnsureLogAccess,
 		MethodTruncateLog,
+		MethodDeleteLogPaths,
 		MethodShutdown,
 	}
 	if len(AllMethods) != len(want) {

@@ -28,6 +28,7 @@ type AdminClient interface {
 	DeletePlist(ctx context.Context, plistPath string) error
 	EnsureLogAccess(ctx context.Context, paths []string) error
 	TruncateLog(ctx context.Context, path string) error
+	DeleteLogPaths(ctx context.Context, paths []string) (warnings []string, err error)
 }
 
 // SystemManager manages system LaunchDaemons in /Library/LaunchDaemons.
@@ -308,25 +309,79 @@ func ensureLogPathsBestEffort(ctx context.Context, c AdminClient, config *Servic
 // unreliable because the GUI process often can't read /Library/LaunchDaemons
 // without Full Disk Access.
 func (m *SystemManager) Delete(name string) error {
+	return m.DeleteWithOptions(name, DeleteServiceOptions{})
+}
+
+// DeleteWithOptions extends Delete with optional log-file cleanup. The
+// Manager interface deliberately does NOT include this method: only
+// SystemManager owns paths under the system-domain log allowlist that the
+// helper can safely act on, so widening the interface would force the
+// user-domain and apple-system managers to implement a flow they don't
+// support. Returns ErrReadOnlyManager when Admin Mode is disabled, and a
+// *LogDeletionWarning when the plist was removed cleanly but one or more
+// log paths failed — callers should treat that as overall success and
+// surface the entries as a non-fatal warning.
+func (m *SystemManager) DeleteWithOptions(name string, opts DeleteServiceOptions) error {
 	c := m.client()
 	if c == nil {
 		return ErrReadOnlyManager
 	}
 	plistPath := filepath.Join(m.basePath, name+".plist")
-	// Ignore bootout error if the daemon isn't loaded — the following
-	// DeletePlist is the operation the user actually asked for.
-	if svc, err := m.Get(name); err == nil && svc.Label != "" {
-		_ = c.Bootout(context.Background(), svc.Label)
+	// Capture log paths from the parsed plist BEFORE deletion. After
+	// DeletePlist succeeds the file is gone and a fresh Get would fail; the
+	// helper's backup is also out of reach for the GUI without the helper's
+	// cooperation, so reading them now is the simplest source. If Get fails
+	// (typically Full Disk Access denied) we record getFailed so the
+	// log-cleanup path can surface an auditable warning instead of silently
+	// skipping the user's explicit request.
+	var (
+		logPaths  []string
+		getFailed bool
+	)
+	if svc, err := m.Get(name); err == nil {
+		if svc.Label != "" {
+			_ = c.Bootout(context.Background(), svc.Label)
+		}
+		if opts.DeleteLogs {
+			if svc.StdoutPath != "" {
+				logPaths = append(logPaths, svc.StdoutPath)
+			}
+			if svc.StderrPath != "" {
+				logPaths = append(logPaths, svc.StderrPath)
+			}
+		}
+	} else if opts.DeleteLogs {
+		getFailed = true
 	}
-	err := c.DeletePlist(context.Background(), plistPath)
-	if err == nil {
+
+	if err := c.DeletePlist(context.Background(), plistPath); err != nil {
+		var rpcErr *privhelper.RPCError
+		if !errors.As(err, &rpcErr) || rpcErr.Code != privhelper.ErrCodeNotFound {
+			return err
+		}
+	}
+
+	if !opts.DeleteLogs {
 		return nil
 	}
-	var rpcErr *privhelper.RPCError
-	if errors.As(err, &rpcErr) && rpcErr.Code == privhelper.ErrCodeNotFound {
+	if getFailed {
+		return &LogDeletionWarning{Errors: []string{
+			"could not read plist to determine log paths; log files were not deleted (Full Disk Access may be required)",
+		}}
+	}
+	if len(logPaths) == 0 {
 		return nil
 	}
-	return err
+	warnings, dlErr := c.DeleteLogPaths(context.Background(), logPaths)
+	if dlErr != nil {
+		// Transport / param failure: surface as warning so the daemon delete
+		// (the operation the user actually asked for) still reads as success.
+		return &LogDeletionWarning{Errors: []string{dlErr.Error()}}
+	}
+	if len(warnings) > 0 {
+		return &LogDeletionWarning{Errors: warnings}
+	}
+	return nil
 }
 
 // encodePlist marshals a ServiceConfig into an XML plist suitable for

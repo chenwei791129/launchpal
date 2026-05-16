@@ -64,6 +64,18 @@ export namespace launchctl {
 	        this.month = source["month"];
 	    }
 	}
+	export class DeleteServiceOptions {
+	    deleteLogs: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeleteServiceOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.deleteLogs = source["deleteLogs"];
+	    }
+	}
 	export class LogClearStatus {
 	    logPath: string;
 	    exists: boolean;

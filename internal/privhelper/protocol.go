@@ -17,6 +17,7 @@ const (
 	MethodDeletePlist     = "DeletePlist"
 	MethodEnsureLogAccess = "EnsureLogAccess"
 	MethodTruncateLog     = "TruncateLog"
+	MethodDeleteLogPaths  = "DeleteLogPaths"
 	MethodShutdown        = "Shutdown"
 )
 
@@ -31,6 +32,7 @@ var AllMethods = []string{
 	MethodDeletePlist,
 	MethodEnsureLogAccess,
 	MethodTruncateLog,
+	MethodDeleteLogPaths,
 	MethodShutdown,
 }
 
@@ -125,6 +127,22 @@ type EnsureLogAccessParams struct {
 // group, and mode; it does NOT create a missing file.
 type TruncateLogParams struct {
 	Path string `json:"path"`
+}
+
+// DeleteLogPathsParams are the parameters for MethodDeleteLogPaths. Each
+// path is an absolute log file path under the same allowlist used by
+// EnsureLogAccess. The helper deletes each file and then tries to remove
+// the parent directory if it is empty.
+type DeleteLogPathsParams struct {
+	Paths []string `json:"paths"`
+}
+
+// DeleteLogPathsResult is the success payload for MethodDeleteLogPaths.
+// Errors holds one entry per path the helper could not process; the slice
+// is empty on a fully successful run. A non-empty Errors with no top-level
+// RPCError is a valid partial-success response.
+type DeleteLogPathsResult struct {
+	Errors []string `json:"errors"`
 }
 
 // OKResult is the empty success payload used by methods that have no return

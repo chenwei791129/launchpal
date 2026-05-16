@@ -18,7 +18,7 @@ export function CreateSystemService(arg1:launchctl.ServiceConfig):Promise<void>;
 
 export function DeleteService(arg1:string):Promise<void>;
 
-export function DeleteSystemService(arg1:string):Promise<void>;
+export function DeleteSystemService(arg1:string,arg2:launchctl.DeleteServiceOptions):Promise<string>;
 
 export function DisableAdminMode():Promise<void>;
 

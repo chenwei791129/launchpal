@@ -179,6 +179,25 @@ func (c *Client) TruncateLog(ctx context.Context, path string) error {
 	return err
 }
 
+// DeleteLogPaths asks the helper to delete each log file (and the parent
+// directory if it becomes empty), with the same allowlist + symlink-refusal
+// guards used by EnsureLogAccess / TruncateLog. Per-path failures are
+// returned as warnings — a non-empty warnings slice with a nil error is a
+// valid partial-success response. err is only non-nil when the entire RPC
+// failed (bad params, transport error, …); callers should treat warnings
+// as soft errors and continue.
+func (c *Client) DeleteLogPaths(ctx context.Context, paths []string) (warnings []string, err error) {
+	raw, callErr := c.Call(ctx, MethodDeleteLogPaths, DeleteLogPathsParams{Paths: paths})
+	if callErr != nil {
+		return nil, callErr
+	}
+	var result DeleteLogPathsResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("decode DeleteLogPaths result: %w", err)
+	}
+	return result.Errors, nil
+}
+
 // Shutdown sends a Shutdown RPC; the helper is expected to reply with OK
 // and close the connection shortly after. Errors that look like the helper
 // already closing the connection are not returned to callers.

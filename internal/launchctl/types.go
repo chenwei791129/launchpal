@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"unicode/utf8"
 )
 
@@ -105,6 +106,32 @@ type LogClearStatus struct {
 
 // ErrReadOnlyManager is returned when attempting write operations on read-only managers
 var ErrReadOnlyManager = errors.New("this manager is read-only")
+
+// DeleteServiceOptions tunes SystemManager.DeleteWithOptions. DeleteLogs
+// triggers a best-effort cleanup of the daemon's StandardOutPath /
+// StandardErrorPath after the plist is removed. Defaults are conservative —
+// a zero value preserves the legacy Delete behaviour.
+type DeleteServiceOptions struct {
+	DeleteLogs bool `json:"deleteLogs"`
+}
+
+// LogDeletionWarning signals that DeleteWithOptions removed the daemon's
+// plist successfully but the helper's DeleteLogPaths RPC returned one or
+// more per-path failures. Callers SHOULD treat this as overall success and
+// surface the entries as a non-fatal warning rather than a hard error;
+// detect with errors.As.
+type LogDeletionWarning struct {
+	Errors []string
+}
+
+// Error renders the warning as a single-line message; callers that want
+// per-path detail should read Errors directly.
+func (e *LogDeletionWarning) Error() string {
+	if e == nil || len(e.Errors) == 0 {
+		return "log deletion completed with warnings"
+	}
+	return "log deletion completed with warnings: " + strings.Join(e.Errors, "; ")
+}
 
 // parseKeepAlive converts a plist KeepAlive value (bool or dict) to a bool
 func parseKeepAlive(v any) bool {

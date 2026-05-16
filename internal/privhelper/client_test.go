@@ -110,6 +110,71 @@ func TestClient_TruncateLog_PropagatesErrorCode(t *testing.T) {
 	}
 }
 
+func TestClient_DeleteLogPaths_RoundTrip(t *testing.T) {
+	var seenPaths []string
+	client, cleanup := pairedClientServer(t, func(req Request) Response {
+		id := req.ID
+		if req.Method != MethodDeleteLogPaths {
+			return Response{ID: &id, Error: &RPCError{Code: ErrCodeUnknownMethod, Message: req.Method}}
+		}
+		var p DeleteLogPathsParams
+		_ = json.Unmarshal(req.Params, &p)
+		seenPaths = append([]string(nil), p.Paths...)
+		raw, _ := json.Marshal(DeleteLogPathsResult{Errors: []string{"/var/log/x/missing.log: no such file"}})
+		return Response{ID: &id, Result: raw}
+	})
+	defer cleanup()
+
+	paths := []string{"/var/log/x/out.log", "/var/log/x/missing.log"}
+	warnings, err := client.DeleteLogPaths(context.Background(), paths)
+	if err != nil {
+		t.Fatalf("DeleteLogPaths: %v", err)
+	}
+	if strings.Join(seenPaths, ",") != strings.Join(paths, ",") {
+		t.Errorf("paths on wire = %v, want %v", seenPaths, paths)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "missing") {
+		t.Errorf("warnings = %v, want one missing-file entry", warnings)
+	}
+}
+
+func TestClient_DeleteLogPaths_NoWarnings(t *testing.T) {
+	client, cleanup := pairedClientServer(t, func(req Request) Response {
+		id := req.ID
+		raw, _ := json.Marshal(DeleteLogPathsResult{Errors: []string{}})
+		return Response{ID: &id, Result: raw}
+	})
+	defer cleanup()
+
+	warnings, err := client.DeleteLogPaths(context.Background(), []string{"/var/log/y/out.log"})
+	if err != nil {
+		t.Fatalf("DeleteLogPaths: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %v, want none", warnings)
+	}
+}
+
+func TestClient_DeleteLogPaths_RPCError(t *testing.T) {
+	client, cleanup := pairedClientServer(t, func(req Request) Response {
+		id := req.ID
+		return Response{ID: &id, Error: &RPCError{Code: ErrCodeInvalidParams, Message: "boom"}}
+	})
+	defer cleanup()
+
+	_, err := client.DeleteLogPaths(context.Background(), []string{"/var/log/x/y.log"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var rpcErr *RPCError
+	if !errors.As(err, &rpcErr) {
+		t.Fatalf("err type = %T", err)
+	}
+	if rpcErr.Code != ErrCodeInvalidParams {
+		t.Errorf("code = %q, want invalid_params", rpcErr.Code)
+	}
+}
+
 func TestClient_ErrorResponse(t *testing.T) {
 	client, cleanup := pairedClientServer(t, func(req Request) Response {
 		id := req.ID

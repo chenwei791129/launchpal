@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -332,10 +333,22 @@ func (a *App) CreateSystemService(config launchctl.ServiceConfig) error {
 	return a.systemManager.Create(&config)
 }
 
-// DeleteSystemService boots out and removes a system daemon plist (with a
-// backup) via the helper.
-func (a *App) DeleteSystemService(name string) error {
-	return a.systemManager.Delete(name)
+// DeleteSystemService boots out and removes a system daemon plist via the
+// helper. Returns a non-empty warning string when the plist was deleted
+// successfully but log cleanup partially failed; the daemon delete still
+// counts as success in that case, so the Wails Promise must NOT reject.
+// Hard failures (helper unreachable, Admin Mode off, etc.) come back as
+// the error return.
+func (a *App) DeleteSystemService(name string, options launchctl.DeleteServiceOptions) (string, error) {
+	err := a.systemManager.DeleteWithOptions(name, options)
+	if err == nil {
+		return "", nil
+	}
+	var warn *launchctl.LogDeletionWarning
+	if errors.As(err, &warn) {
+		return warn.Error(), nil
+	}
+	return "", err
 }
 
 // RevealInFinder opens Finder and highlights the file at the given path.

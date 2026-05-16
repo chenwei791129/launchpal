@@ -79,6 +79,10 @@ export interface Settings {
   systemLogDir: string
 }
 
+export interface DeleteServiceOptions {
+  deleteLogs: boolean
+}
+
 declare global {
   interface Window {
     go: {
@@ -119,7 +123,7 @@ declare global {
           RestartSystemService(name: string): Promise<void>
           CreateSystemService(config: ServiceConfig): Promise<void>
           UpdateSystemService(name: string, config: ServiceConfig): Promise<void>
-          DeleteSystemService(name: string): Promise<void>
+          DeleteSystemService(name: string, options: DeleteServiceOptions): Promise<string>
           GetSettings(): Promise<Settings>
           UpdateSettings(s: Settings): Promise<void>
         }

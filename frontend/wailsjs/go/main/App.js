@@ -26,8 +26,8 @@ export function DeleteService(arg1) {
   return window['go']['main']['App']['DeleteService'](arg1);
 }
 
-export function DeleteSystemService(arg1) {
-  return window['go']['main']['App']['DeleteSystemService'](arg1);
+export function DeleteSystemService(arg1, arg2) {
+  return window['go']['main']['App']['DeleteSystemService'](arg1, arg2);
 }
 
 export function DisableAdminMode() {
