@@ -1543,3 +1543,92 @@ func TestUserManager_Kickstart_EmptyLabelReturnsError(t *testing.T) {
 		t.Errorf("Kickstart() error = %q, want it to mention the missing label", err.Error())
 	}
 }
+
+func TestUserManager_Create_RejectsEmptyProgramAndArguments(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	cfg := &ServiceConfig{
+		Label:     "com.test.noprog",
+		Program:   "",
+		Arguments: nil,
+	}
+	err := m.Create(cfg)
+	if err == nil {
+		t.Fatal("Create() with empty Program and empty Arguments should return error")
+	}
+	if !strings.Contains(err.Error(), "either Program or at least one argument") {
+		t.Errorf("Create() error = %q, want it to mention 'either Program or at least one argument'", err.Error())
+	}
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "com.test.noprog.plist")); !os.IsNotExist(statErr) {
+		t.Errorf("plist must not be written when validation fails; stat err = %v", statErr)
+	}
+}
+
+func TestUserManager_Create_AllowsArgumentsOnly(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	cfg := &ServiceConfig{
+		Label:     "com.test.argsonly",
+		Program:   "",
+		Arguments: []string{"/usr/bin/open", "/Applications/Foo.app"},
+	}
+	if err := m.Create(cfg); err != nil {
+		t.Fatalf("Create() error = %v, want success when Arguments is non-empty", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(tmpDir, "com.test.argsonly.plist"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	var pd map[string]any
+	if _, err := plist.Unmarshal(data, &pd); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if _, has := pd["Program"]; has {
+		t.Error("plist should not contain Program key when Program is empty")
+	}
+	if _, has := pd["ProgramArguments"]; !has {
+		t.Error("plist should contain ProgramArguments key")
+	}
+}
+
+func TestUserManager_Update_RejectsEmptyProgramAndArguments(t *testing.T) {
+	tmpDir := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmpDir}
+
+	// Seed an existing service so Update has a target.
+	plistPath := filepath.Join(tmpDir, "com.test.upd.plist")
+	original := &ServiceConfig{
+		Label:   "com.test.upd",
+		Program: "/usr/bin/true",
+	}
+	if err := m.writePlist(plistPath, original); err != nil {
+		t.Fatalf("seed writePlist: %v", err)
+	}
+	originalBytes, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("read seed: %v", err)
+	}
+
+	bad := &ServiceConfig{
+		Label:     "com.test.upd",
+		Program:   "",
+		Arguments: nil,
+	}
+	err = m.Update("com.test.upd", bad)
+	if err == nil {
+		t.Fatal("Update() with empty Program and empty Arguments should return error")
+	}
+	if !strings.Contains(err.Error(), "either Program or at least one argument") {
+		t.Errorf("Update() error = %q, want it to mention 'either Program or at least one argument'", err.Error())
+	}
+	after, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("read after: %v", err)
+	}
+	if string(after) != string(originalBytes) {
+		t.Error("plist content must not change when Update validation fails")
+	}
+}

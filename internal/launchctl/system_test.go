@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"howett.net/plist"
 )
 
 // fakeAdminClient records all RPC invocations so tests can assert SystemManager
@@ -893,4 +895,107 @@ func TestSystemManager_GetLogs(t *testing.T) {
 			t.Errorf("GetLogs(invalid) error = %q, want error about invalid log type", err.Error())
 		}
 	})
+}
+
+func TestSystemManager_CreateRejectsEmptyProgramAndArguments(t *testing.T) {
+	tmp := t.TempDir()
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+	fake := &fakeAdminClient{}
+	m.SetAdminClient(fake)
+
+	cfg := &ServiceConfig{
+		Label:     "com.example.noprog",
+		Program:   "",
+		Arguments: nil,
+	}
+	err := m.Create(cfg)
+	if err == nil {
+		t.Fatal("Create() with empty Program and empty Arguments should return error")
+	}
+	if !strings.Contains(err.Error(), "either Program or at least one argument") {
+		t.Errorf("Create() error = %q, want it to mention 'either Program or at least one argument'", err.Error())
+	}
+	if calls := fake.calls(); len(calls) != 0 {
+		t.Errorf("no helper RPCs should fire when validation fails; got calls = %v", calls)
+	}
+	if _, statErr := os.Stat(filepath.Join(tmp, "com.example.noprog.plist")); !os.IsNotExist(statErr) {
+		t.Errorf("plist must not be written when validation fails; stat err = %v", statErr)
+	}
+}
+
+func TestSystemManager_CreateAllowsArgumentsOnly(t *testing.T) {
+	tmp := t.TempDir()
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+	fake := &fakeAdminClient{}
+	m.SetAdminClient(fake)
+
+	cfg := &ServiceConfig{
+		Label:     "com.example.argsonly",
+		Program:   "",
+		Arguments: []string{"/usr/bin/open", "/Applications/Foo.app"},
+	}
+	if err := m.Create(cfg); err != nil {
+		t.Fatalf("Create() error = %v, want success when Arguments is non-empty", err)
+	}
+
+	if fake.lastWriteData == nil {
+		t.Fatal("WritePlist was not invoked")
+	}
+	var pd map[string]any
+	if _, err := plist.Unmarshal(fake.lastWriteData, &pd); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if _, has := pd["Program"]; has {
+		t.Error("plist should not contain Program key when Program is empty")
+	}
+	if _, has := pd["ProgramArguments"]; !has {
+		t.Error("plist should contain ProgramArguments key")
+	}
+}
+
+func TestSystemManager_UpdateRejectsEmptyProgramAndArguments(t *testing.T) {
+	tmp := t.TempDir()
+	// Seed an existing plist on disk so Get can resolve a label, even though
+	// Update should bail before touching it.
+	seed := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.example.existing</string>
+  <key>Program</key><string>/usr/bin/true</string>
+</dict></plist>`
+	plistPath := filepath.Join(tmp, "com.example.existing.plist")
+	if err := os.WriteFile(plistPath, []byte(seed), 0644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	originalBytes, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("read seed: %v", err)
+	}
+
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+	fake := &fakeAdminClient{}
+	m.SetAdminClient(fake)
+
+	bad := &ServiceConfig{
+		Label:     "com.example.existing",
+		Program:   "",
+		Arguments: nil,
+	}
+	err = m.Update("com.example.existing", bad)
+	if err == nil {
+		t.Fatal("Update() with empty Program and empty Arguments should return error")
+	}
+	if !strings.Contains(err.Error(), "either Program or at least one argument") {
+		t.Errorf("Update() error = %q, want it to mention 'either Program or at least one argument'", err.Error())
+	}
+	if calls := fake.calls(); len(calls) != 0 {
+		t.Errorf("no helper RPCs should fire when validation fails; got calls = %v", calls)
+	}
+	after, err := os.ReadFile(plistPath)
+	if err != nil {
+		t.Fatalf("read after: %v", err)
+	}
+	if string(after) != string(originalBytes) {
+		t.Error("plist content must not change when Update validation fails")
+	}
 }

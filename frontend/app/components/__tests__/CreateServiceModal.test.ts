@@ -353,6 +353,57 @@ describe('CreateServiceModal — settings integration', () => {
     expect(html).toContain('/var/log/lp/com.sys.demo/stderr.log')
   })
 
+  it('Program Path label includes a hint that it is optional when Arguments holds the executable', async () => {
+    const wrapper = await mountModal('user')
+    await flushPromises()
+    const html = wrapper.html()
+    expect(html).toContain('Optional. Leave empty if the executable is provided as the first item in Arguments.')
+  })
+
+  it('Submit button is disabled when label is set but both Program and Arguments are empty', async () => {
+    const wrapper = await mountModal('user')
+    await flushPromises()
+
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.user.bothempty')
+    await flushPromises()
+
+    const submitBtn = wrapper.findAll('button').find(b => b.text().trim().startsWith('Create Service'))
+    expect(submitBtn).toBeDefined()
+    expect(submitBtn!.attributes('disabled')).toBeDefined()
+  })
+
+  it('Submit button is enabled when label and Arguments are set but Program is empty, and CreateService is called', async () => {
+    const wrapper = await mountModal('user')
+    await flushPromises()
+
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.user.argsonly')
+    const argsInput = wrapper.find('input[placeholder="--daemon --port=8080"]')
+    await argsInput.setValue("/usr/bin/open '/Applications/Foo.app'")
+    await flushPromises()
+
+    const submitBtn = wrapper.findAll('button').find(b => b.text().trim().startsWith('Create Service'))
+    expect(submitBtn).toBeDefined()
+    expect(submitBtn!.attributes('disabled')).toBeUndefined()
+
+    await submitBtn!.trigger('click')
+    await flushPromises()
+
+    expect(CreateService).toHaveBeenCalledTimes(1)
+    const sent = CreateService.mock.calls[0]![0] as { program: string; arguments: string[] }
+    expect(sent.program).toBe('')
+    expect(sent.arguments).toEqual(['/usr/bin/open', '/Applications/Foo.app'])
+  })
+
+  it('Program Path input no longer has the required attribute', async () => {
+    const wrapper = await mountModal('user')
+    await flushPromises()
+    const programInput = wrapper.find('input[placeholder="/usr/local/bin/myapp"]')
+    expect(programInput.exists()).toBe(true)
+    expect(programInput.attributes('required')).toBeUndefined()
+  })
+
   it('saving Settings does not modify existing plists or invoke helper RPCs', async () => {
     // Render the modal once so any subscriptions exist, then "save settings"
     // by calling UpdateSettings directly. The modal must not respond by

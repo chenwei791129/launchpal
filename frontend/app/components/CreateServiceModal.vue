@@ -32,14 +32,14 @@
 
         <!-- Program -->
         <div>
-          <label class="block text-sm text-gray-400 mb-1">Program Path *</label>
+          <label class="block text-sm text-gray-400 mb-1">Program Path</label>
           <input
             v-model="form.program"
             type="text"
             placeholder="/usr/local/bin/myapp"
-            required
             class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
           >
+          <p class="text-xs text-gray-500 mt-1">{{ PROGRAM_PATH_HINT }}</p>
         </div>
 
         <!-- Arguments -->
@@ -159,7 +159,7 @@
           Cancel
         </button>
         <button
-          :disabled="loading || !form.label || !form.program"
+          :disabled="loading || !form.label || !hasProgramOrArguments(form.program, argumentsText)"
           class="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
           @click="handleSubmit"
         >
@@ -175,6 +175,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import type { ServiceConfig, ScheduleConfig } from '~/types/wails.d'
 import { parseShellArgs } from '~/utils/shell-args'
 import { composeLogPaths } from '~/utils/logPaths'
+import { hasProgramOrArguments, PROGRAM_PATH_HINT } from '~/utils/serviceValidation'
 import { useSettings } from '~/composables/useSettings'
 
 const props = withDefaults(defineProps<{
@@ -248,7 +249,7 @@ const logPaths = computed(() =>
 )
 
 async function handleSubmit() {
-  if (!form.label || !form.program) return
+  if (!form.label || !hasProgramOrArguments(form.program, argumentsText.value)) return
 
   loading.value = true
   error.value = ''

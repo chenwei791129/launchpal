@@ -226,6 +226,9 @@ func (m *SystemManager) Create(config *ServiceConfig) error {
 	if config == nil || config.Label == "" {
 		return fmt.Errorf("service label is required")
 	}
+	if err := validateProgramOrArguments(config); err != nil {
+		return err
+	}
 	plistPath := filepath.Join(m.basePath, config.Label+".plist")
 	data, err := encodePlist(config)
 	if err != nil {
@@ -254,6 +257,9 @@ func (m *SystemManager) Update(name string, config *ServiceConfig) error {
 	}
 	if config == nil {
 		return fmt.Errorf("config is required")
+	}
+	if err := validateProgramOrArguments(config); err != nil {
+		return err
 	}
 	plistPath := filepath.Join(m.basePath, name+".plist")
 	data, err := encodePlist(config)

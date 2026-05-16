@@ -355,6 +355,9 @@ func (m *UserManager) Create(config *ServiceConfig) error {
 	if config.Label == "" {
 		return fmt.Errorf("service label is required")
 	}
+	if err := validateProgramOrArguments(config); err != nil {
+		return err
+	}
 
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), config.Label+".plist")
 
@@ -391,6 +394,10 @@ func (m *UserManager) Create(config *ServiceConfig) error {
 
 // Update updates an existing service
 func (m *UserManager) Update(name string, config *ServiceConfig) error {
+	if err := validateProgramOrArguments(config); err != nil {
+		return err
+	}
+
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
 
 	// Check if service exists
@@ -410,6 +417,29 @@ func (m *UserManager) Update(name string, config *ServiceConfig) error {
 		return err
 	}
 
+	return nil
+}
+
+// validateProgramOrArguments enforces the launchd invariant that a service
+// plist MUST specify either Program or at least one entry in ProgramArguments.
+// Both empty would write a plist that launchd refuses to load. This is the
+// single source of truth shared by UserManager and SystemManager so any path
+// that bypasses the frontend still trips the same guard.
+//
+// A nil config is treated as a configuration error so callers can rely on the
+// validator as a single chokepoint (UserManager and SystemManager had
+// inconsistent nil handling before this helper existed). A non-empty
+// Arguments slice with whitespace-only entries (e.g. []string{"   "}) is
+// intentionally allowed: parseShellArgs already collapses pure whitespace
+// input to an empty slice, and a legitimate caller may want to pass a single
+// blank string as argv[0] for testing.
+func validateProgramOrArguments(config *ServiceConfig) error {
+	if config == nil {
+		return fmt.Errorf("service config is required")
+	}
+	if config.Program == "" && len(config.Arguments) == 0 {
+		return fmt.Errorf("service must specify either Program or at least one argument in Arguments")
+	}
 	return nil
 }
 

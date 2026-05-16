@@ -180,6 +180,7 @@
                 type="text"
                 class="w-full px-3 py-2 bg-surface-400 border border-surface-100 rounded text-gray-100 placeholder-gray-500 focus:outline-none focus:border-primary-500"
               >
+              <p class="text-xs text-gray-500 mt-1">{{ PROGRAM_PATH_HINT }}</p>
             </div>
 
             <!-- Arguments -->
@@ -273,14 +274,15 @@
             <!-- Save button -->
             <div class="flex items-center gap-3 pt-2">
               <button
-                :disabled="saving"
+                :disabled="saving || !canSaveEdit"
                 class="px-4 py-2 bg-primary-600 hover:bg-primary-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded transition-colors"
                 @click="handleSave"
               >
                 {{ saving ? 'Saving...' : 'Save Changes' }}
               </button>
-              <p v-if="saveError" class="text-red-400 text-sm">{{ saveError }}</p>
-              <p v-if="saveSuccess" class="text-green-400 text-sm">Saved successfully!</p>
+              <p v-if="!canSaveEdit" class="text-red-400 text-sm">Program Path and Arguments cannot both be empty.</p>
+              <p v-else-if="saveError" class="text-red-400 text-sm">{{ saveError }}</p>
+              <p v-else-if="saveSuccess" class="text-green-400 text-sm">Saved successfully!</p>
             </div>
           </div>
         </div>
@@ -355,6 +357,7 @@ import type { Service, ServiceConfig, ScheduleConfig } from '~/types/wails'
 import { highlightCode } from '~/composables/useHighlighter'
 import { useAdminMode } from '~/composables/useAdminMode'
 import { parseShellArgs, serializeShellArgs } from '~/utils/shell-args'
+import { hasProgramOrArguments, PROGRAM_PATH_HINT } from '~/utils/serviceValidation'
 
 const route = useRoute()
 const name = computed(() => route.params.name as string)
@@ -596,6 +599,10 @@ const saving = ref(false)
 const saveError = ref('')
 const saveSuccess = ref(false)
 
+const canSaveEdit = computed(() =>
+  hasProgramOrArguments(editForm.program, editArgumentsText.value),
+)
+
 function populateEditForm() {
   if (!service.value) return
   editEnvVisibility.clear()
@@ -616,6 +623,7 @@ function populateEditForm() {
 
 async function handleSave() {
   if (!service.value) return
+  if (!canSaveEdit.value) return
   saving.value = true
   saveError.value = ''
   saveSuccess.value = false
