@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.16.0](https://github.com/chenwei791129/launchpal/compare/v1.15.0...v1.16.0) (2026-05-16)
+
+
+### Features
+
+* **system-daemon:** optional log file cleanup on delete ([b3d828e](https://github.com/chenwei791129/launchpal/commit/b3d828e170e0944e375bd43a92715b87fc759e54))
+
+
+### Bug Fixes
+
+* **service-form:** allow Program path to be empty when Arguments holds the executable ([b0108d8](https://github.com/chenwei791129/launchpal/commit/b0108d8b38380d078ebffad99f52b4bdba46abb8))
+
 ## [1.15.0](https://github.com/chenwei791129/launchpal/compare/v1.14.0...v1.15.0) (2026-05-09)
 
 
