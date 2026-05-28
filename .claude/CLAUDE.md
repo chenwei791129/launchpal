@@ -108,6 +108,7 @@ LaunchPal supports three service categories:
    - Cron syntax accepts ranges (`a-b`) and enumerations (`a,b,c`) and is expanded into the Cartesian product of `StartCalendarInterval` entries (capped at 50 entries).
    - Supports environment variables (`EnvironmentVariables`).
    - Logs tab supports a one-click Clear Logs control: truncates the active stdout/stderr file in place via `O_WRONLY|O_TRUNC|O_NOFOLLOW` (preserves inode and mode, rejects symlinks).
+   - Supports cloning via a Copy button on the detail page header (next to Run Now). Clicking Copy opens the existing CreateServiceModal pre-filled with the source service's configuration; `RunAtLoad` is forced to `false` in clones (user can re-check it before submit), and the new `Label` must be entered by the user. Duplicate labels are rejected inline by the backend's `service <label> already exists` error. The Copy button is hidden on System Services and Apple System Services detail pages.
 
 2. **System Services** (`/Library/LaunchDaemons`)
    - Read-only by default. Write access (Start/Stop/Restart/Create/Update/Delete) requires Admin Mode to be enabled (see below).
