@@ -3,7 +3,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { reactive, defineComponent, nextTick  } from 'vue'
 import { composeLogPaths } from '~/utils/logPaths'
 import { useSettings } from '~/composables/useSettings'
-import type { Settings } from '~/types/wails'
+import type { Settings, ServiceConfig } from '~/types/wails'
 
 
 const EnvVarSection = defineComponent({
@@ -402,6 +402,222 @@ describe('CreateServiceModal — settings integration', () => {
     const programInput = wrapper.find('input[placeholder="/usr/local/bin/myapp"]')
     expect(programInput.exists()).toBe(true)
     expect(programInput.attributes('required')).toBeUndefined()
+  })
+
+  it('mounts modal with prefill: form fields mirror source except label is empty and runAtLoad is false', async () => {
+    const prefill: ServiceConfig = {
+      label: 'com.example.copy-source',
+      program: '/usr/bin/foo',
+      arguments: ['--port=8080', '--verbose'],
+      runAtLoad: true,
+      keepAlive: true,
+      wakeSystem: true,
+      schedule: { interval: 60 },
+      environment: { LOG_LEVEL: 'debug', API_KEY: 'secret' },
+      workingDirectory: '/Users/dev/project',
+      stdoutPath: '~/Library/Logs/com.example.copy-source/stdout.log',
+      stderrPath: '~/Library/Logs/com.example.copy-source/stderr.log',
+    }
+    const mod = await import('../CreateServiceModal.vue')
+    const wrapper = mount(mod.default, {
+      props: { isOpen: true, serviceType: 'user', prefill },
+      global: { stubs: { ScheduleForm: true } },
+    })
+    await flushPromises()
+
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    expect((labelInput.element as HTMLInputElement).value).toBe('')
+
+    const programInput = wrapper.find('input[placeholder="/usr/local/bin/myapp"]')
+    expect((programInput.element as HTMLInputElement).value).toBe('/usr/bin/foo')
+
+    const argsInput = wrapper.find('input[placeholder="--daemon --port=8080"]')
+    expect((argsInput.element as HTMLInputElement).value).toBe('--port=8080 --verbose')
+
+    const wdInput = wrapper.find('input[placeholder="/Users/yourname/project"]')
+    expect((wdInput.element as HTMLInputElement).value).toBe('/Users/dev/project')
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    const runAtLoadCheckbox = checkboxes[0] as ReturnType<typeof wrapper.find>
+    const keepAliveCheckbox = checkboxes[1] as ReturnType<typeof wrapper.find>
+    expect((runAtLoadCheckbox.element as HTMLInputElement).checked).toBe(false)
+    expect((keepAliveCheckbox.element as HTMLInputElement).checked).toBe(true)
+
+    const envKeys = wrapper.findAll('input[placeholder="KEY"]')
+    expect(envKeys).toHaveLength(2)
+    expect((envKeys[0]!.element as HTMLInputElement).value).toBe('LOG_LEVEL')
+    expect((envKeys[1]!.element as HTMLInputElement).value).toBe('API_KEY')
+  })
+
+  it('reopening modal with a different prefill re-initializes form (no stale values)', async () => {
+    const first: ServiceConfig = {
+      label: 'com.example.alpha',
+      program: '/usr/bin/alpha',
+      arguments: ['--alpha'],
+      runAtLoad: false,
+      keepAlive: false,
+      wakeSystem: false,
+      workingDirectory: '/tmp/alpha',
+    }
+    const second: ServiceConfig = {
+      label: 'com.example.beta',
+      program: '/usr/bin/beta',
+      arguments: ['--beta'],
+      runAtLoad: true,
+      keepAlive: true,
+      wakeSystem: false,
+      workingDirectory: '/tmp/beta',
+    }
+    const mod = await import('../CreateServiceModal.vue')
+    const wrapper = mount(mod.default, {
+      props: { isOpen: true, serviceType: 'user', prefill: first },
+      global: { stubs: { ScheduleForm: true } },
+    })
+    await flushPromises()
+    expect(
+      (wrapper.find('input[placeholder="/usr/local/bin/myapp"]').element as HTMLInputElement)
+        .value,
+    ).toBe('/usr/bin/alpha')
+
+    // Close → swap prefill → reopen.
+    await wrapper.setProps({ isOpen: false })
+    await flushPromises()
+    await wrapper.setProps({ prefill: second })
+    await flushPromises()
+    await wrapper.setProps({ isOpen: true })
+    await flushPromises()
+
+    expect(
+      (wrapper.find('input[placeholder="/usr/local/bin/myapp"]').element as HTMLInputElement)
+        .value,
+    ).toBe('/usr/bin/beta')
+    expect(
+      (wrapper.find('input[placeholder="/Users/yourname/project"]').element as HTMLInputElement)
+        .value,
+    ).toBe('/tmp/beta')
+    // KeepAlive must reflect the second source, not the first.
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    expect((checkboxes[1]!.element as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('emits "created" with the submitted label as payload', async () => {
+    const wrapper = await mountModal('user')
+    await flushPromises()
+
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.user.emit-test')
+    const argsInput = wrapper.find('input[placeholder="--daemon --port=8080"]')
+    await argsInput.setValue('/usr/bin/foo')
+    await flushPromises()
+
+    const submitBtn = wrapper.findAll('button').find(b => b.text().trim().startsWith('Create Service'))
+    await submitBtn!.trigger('click')
+    await flushPromises()
+
+    const events = wrapper.emitted('created')
+    expect(events).toBeTruthy()
+    expect(events![0]).toEqual(['com.user.emit-test'])
+  })
+
+  it('keeps form open with error message and preserves fields when CreateService rejects', async () => {
+    CreateService.mockRejectedValueOnce(
+      new Error('service com.example.dup already exists'),
+    )
+    const wrapper = await mountModal('user')
+    await flushPromises()
+
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.example.dup')
+    const programInput = wrapper.find('input[placeholder="/usr/local/bin/myapp"]')
+    await programInput.setValue('/usr/bin/foo')
+    await flushPromises()
+
+    const submitBtn = wrapper.findAll('button').find(b => b.text().trim().startsWith('Create Service'))
+    await submitBtn!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.html()).toContain('service com.example.dup already exists')
+    // Modal stayed open: backdrop element is rendered when isOpen is true.
+    expect((labelInput.element as HTMLInputElement).value).toBe('com.example.dup')
+    expect((programInput.element as HTMLInputElement).value).toBe('/usr/bin/foo')
+    expect(wrapper.emitted('close')).toBeFalsy()
+    expect(wrapper.emitted('created')).toBeFalsy()
+  })
+
+  it('successful clone (prefill + new label) submits with runAtLoad false', async () => {
+    const prefill: ServiceConfig = {
+      label: 'com.example.copy-source',
+      program: '/usr/bin/foo',
+      arguments: ['--port=8080'],
+      runAtLoad: true,
+      keepAlive: true,
+      wakeSystem: false,
+      schedule: { interval: 60 },
+      environment: { LOG_LEVEL: 'debug' },
+      workingDirectory: '/Users/dev/project',
+    }
+    const mod = await import('../CreateServiceModal.vue')
+    const wrapper = mount(mod.default, {
+      props: { isOpen: true, serviceType: 'user', prefill },
+      global: { stubs: { ScheduleForm: true } },
+    })
+    await flushPromises()
+
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.example.copy-dest')
+    await flushPromises()
+
+    const submitBtn = wrapper.findAll('button').find(b => b.text().trim().startsWith('Create Service'))
+    await submitBtn!.trigger('click')
+    await flushPromises()
+
+    expect(CreateService).toHaveBeenCalledTimes(1)
+    const sent = CreateService.mock.calls[0]![0] as ServiceConfig
+    expect(sent.label).toBe('com.example.copy-dest')
+    expect(sent.program).toBe('/usr/bin/foo')
+    expect(sent.arguments).toEqual(['--port=8080'])
+    expect(sent.runAtLoad).toBe(false)
+    expect(sent.keepAlive).toBe(true)
+    expect(sent.environment).toEqual({ LOG_LEVEL: 'debug' })
+    expect(sent.workingDirectory).toBe('/Users/dev/project')
+
+    const events = wrapper.emitted('created')
+    expect(events![0]).toEqual(['com.example.copy-dest'])
+  })
+
+  it('clone respects user override: re-checking RunAtLoad sends runAtLoad=true', async () => {
+    const prefill: ServiceConfig = {
+      label: 'com.example.copy-source',
+      program: '/usr/bin/foo',
+      arguments: [],
+      runAtLoad: true,
+      keepAlive: false,
+      wakeSystem: false,
+    }
+    const mod = await import('../CreateServiceModal.vue')
+    const wrapper = mount(mod.default, {
+      props: { isOpen: true, serviceType: 'user', prefill },
+      global: { stubs: { ScheduleForm: true } },
+    })
+    await flushPromises()
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    const runAtLoadCheckbox = checkboxes[0]!
+    expect((runAtLoadCheckbox.element as HTMLInputElement).checked).toBe(false)
+    await runAtLoadCheckbox.setValue(true)
+    await flushPromises()
+
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.example.copy-dest')
+    await flushPromises()
+
+    const submitBtn = wrapper.findAll('button').find(b => b.text().trim().startsWith('Create Service'))
+    await submitBtn!.trigger('click')
+    await flushPromises()
+
+    expect(CreateService).toHaveBeenCalledTimes(1)
+    const sent = CreateService.mock.calls[0]![0] as ServiceConfig
+    expect(sent.runAtLoad).toBe(true)
   })
 
   it('saving Settings does not modify existing plists or invoke helper RPCs', async () => {

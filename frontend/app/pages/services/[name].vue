@@ -95,6 +95,19 @@
             </svg>
             Run Now
           </button>
+          <button
+            v-if="serviceType === 'user'"
+            data-testid="copy-service-button"
+            class="flex items-center gap-2 px-3 py-1.5 bg-surface-200 hover:bg-surface-100 text-white text-sm rounded-lg transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!service"
+            title="Copy this service"
+            @click="handleCopy"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            Copy
+          </button>
         </div>
         <!-- Lock hint when the service is read-only because Admin Mode is off. -->
         <div
@@ -349,6 +362,14 @@
         </div>
       </div>
     </Teleport>
+
+    <CreateServiceModal
+      :is-open="showCloneModal"
+      service-type="user"
+      :prefill="cloneSource"
+      @close="closeCloneModal"
+      @created="handleCloneCreated"
+    />
   </div>
 </template>
 
@@ -358,6 +379,7 @@ import { highlightCode } from '~/composables/useHighlighter'
 import { useAdminMode } from '~/composables/useAdminMode'
 import { parseShellArgs, serializeShellArgs } from '~/utils/shell-args'
 import { hasProgramOrArguments, PROGRAM_PATH_HINT } from '~/utils/serviceValidation'
+import { serviceToConfig } from '~/utils/serviceToConfig'
 
 const route = useRoute()
 const name = computed(() => route.params.name as string)
@@ -527,6 +549,26 @@ async function handleRestart() {
 }
 
 const showRunNowDialog = ref(false)
+
+const showCloneModal = ref(false)
+const cloneSource = ref<ServiceConfig | null>(null)
+
+function handleCopy() {
+  if (!service.value) return
+  cloneSource.value = serviceToConfig(service.value)
+  showCloneModal.value = true
+}
+
+function closeCloneModal() {
+  showCloneModal.value = false
+  cloneSource.value = null
+}
+
+async function handleCloneCreated(label: string) {
+  showCloneModal.value = false
+  cloneSource.value = null
+  await navigateTo(`/services/${encodeURIComponent(label)}?type=user`)
+}
 
 function handleRunNow() {
   if (service.value?.status === 'running') {

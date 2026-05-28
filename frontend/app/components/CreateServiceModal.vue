@@ -173,7 +173,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import type { ServiceConfig, ScheduleConfig } from '~/types/wails.d'
-import { parseShellArgs } from '~/utils/shell-args'
+import { parseShellArgs, serializeShellArgs } from '~/utils/shell-args'
 import { composeLogPaths } from '~/utils/logPaths'
 import { hasProgramOrArguments, PROGRAM_PATH_HINT } from '~/utils/serviceValidation'
 import { useSettings } from '~/composables/useSettings'
@@ -181,13 +181,15 @@ import { useSettings } from '~/composables/useSettings'
 const props = withDefaults(defineProps<{
   isOpen: boolean
   serviceType?: 'user' | 'system'
+  prefill?: ServiceConfig | null
 }>(), {
   serviceType: 'user',
+  prefill: null,
 })
 
 const emit = defineEmits<{
   close: []
-  created: []
+  created: [label: string]
 }>()
 
 const form = reactive({
@@ -206,6 +208,29 @@ const schedule = ref<ScheduleConfig | undefined>(undefined)
 const wakeSystem = ref(false)
 const loading = ref(false)
 const error = ref('')
+
+// When `source` is provided, the form mirrors the clone source but forces
+// `label` empty (user must pick a new identifier) and `runAtLoad` off so a
+// cloned service doesn't double-fire on login (design Decision 3).
+function initFormState(source?: ServiceConfig | null) {
+  form.label = ''
+  form.program = source?.program ?? ''
+  form.arguments = source?.arguments ? [...source.arguments] : []
+  form.runAtLoad = source ? false : true
+  form.keepAlive = source?.keepAlive ?? false
+  form.workingDirectory = source?.workingDirectory ?? ''
+  argumentsText.value = source ? serializeShellArgs(source.arguments ?? []) : ''
+  envVars.splice(0)
+  envVisibility.clear()
+  if (source?.environment) {
+    for (const [key, value] of Object.entries(source.environment)) {
+      envVars.push({ key, value })
+    }
+  }
+  schedule.value = source?.schedule ? { ...source.schedule } : undefined
+  wakeSystem.value = source?.wakeSystem ?? false
+  error.value = ''
+}
 
 function toggleEnvVisibility(index: number) {
   if (envVisibility.has(index)) {
@@ -233,12 +258,13 @@ function removeEnvVar(index: number) {
 const { settings, load: loadSettings } = useSettings()
 
 watch(
-  () => props.isOpen,
-  (open) => {
+  [() => props.isOpen, () => props.prefill],
+  ([open]) => {
     if (open) {
       loadSettings().catch(() => {
         // Defaults remain in place; the user can still create a service.
       })
+      initFormState(props.prefill)
     }
   },
   { immediate: true },
@@ -277,20 +303,11 @@ async function handleSubmit() {
     } else {
       await window.go.main.App.CreateService(config)
     }
-    emit('created')
+    const createdLabel = form.label
+    emit('created', createdLabel)
     emit('close')
 
-    // Reset form
-    form.label = ''
-    form.program = ''
-    form.runAtLoad = true
-    form.keepAlive = false
-    form.workingDirectory = ''
-    argumentsText.value = ''
-    envVars.splice(0)
-    envVisibility.clear()
-    schedule.value = undefined
-    wakeSystem.value = false
+    initFormState()
   } catch (err: unknown) {
     error.value = err instanceof Error ? err.message : 'Failed to create service'
   } finally {
