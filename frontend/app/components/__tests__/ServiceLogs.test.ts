@@ -156,6 +156,69 @@ describe('ServiceLogs – disabled tooltips', () => {
   })
 })
 
+describe('ServiceLogs – ANSI color rendering', () => {
+  it('renders ANSI colors as spans and drops the literal escape codes', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockResolvedValue('\x1b[32mOK\x1b[0m booted'),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await flushPromises()
+    const pre = wrapper.find('pre')
+    expect(pre.exists()).toBe(true)
+    expect(pre.html()).toContain('<span style="color:#98c379">OK</span>')
+    expect(pre.text()).toContain('booted')
+    expect(pre.html()).not.toContain('[32m')
+    expect(pre.html()).not.toContain('[0m')
+    wrapper.unmount()
+  })
+
+  it('preserves the placeholder branch for an empty log', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockResolvedValue(''),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.empty', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.text()).toContain('No logs available for stdout')
+    wrapper.unmount()
+  })
+
+  it('keeps the loading branch while GetLogs is pending', async () => {
+    let resolveLogs!: (value: string) => void
+    installAppMock({
+      GetLogs: vi.fn().mockReturnValue(new Promise<string>((resolve) => {
+        resolveLogs = resolve
+      })),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.loading', serviceType: 'user' },
+    })
+    await nextTick()
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.text()).toContain('Loading logs...')
+    resolveLogs('done')
+    await flushPromises()
+    wrapper.unmount()
+  })
+
+  it('keeps the error branch when GetLogs rejects', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockRejectedValue(new Error('boom')),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.err', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.find('.text-red-400').text()).toBe('boom')
+    wrapper.unmount()
+  })
+})
+
 describe('ServiceLogs – confirm dialog', () => {
   it('opens dialog on click and cancels without invoking ClearLogs', async () => {
     const wrapper = mount(ServiceLogs, {

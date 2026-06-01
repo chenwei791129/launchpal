@@ -110,7 +110,11 @@
         </div>
       </div>
 
-      <pre v-else class="text-gray-300 whitespace-pre-wrap break-all">{{ logs }}</pre>
+      <!-- renderedLogs comes only from ansiToHtml, which HTML-escapes all log
+           text and emits only a four-property style whitelist, so this v-html
+           is the single controlled XSS surface. -->
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <pre v-else class="text-gray-300 whitespace-pre-wrap break-all" v-html="renderedLogs" />
     </div>
 
     <!-- Clear Logs confirmation dialog. Reuses the surface from [name].vue's
@@ -151,6 +155,7 @@
 </template>
 
 <script setup lang="ts">
+import { ansiToHtml } from '~/utils/ansiToHtml'
 import type { LogClearStatus } from '~/types/wails'
 
 const props = withDefaults(defineProps<{
@@ -168,6 +173,11 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const autoScroll = ref(true)
 const logContainer = ref<HTMLElement | null>(null)
+
+// renderedLogs converts ANSI SGR escape sequences in the raw log string into
+// styled HTML for v-html. Empty/null logs short-circuit to '' so the existing
+// "No logs available" placeholder branch still owns the empty state.
+const renderedLogs = computed(() => (logs.value ? ansiToHtml(logs.value) : ''))
 
 // logClearStatus is null until the first GetLogClearStatus resolves; the
 // matrix below treats null as "pending" so the button stays disabled
