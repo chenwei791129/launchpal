@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.0](https://github.com/chenwei791129/launchpal/compare/v1.17.0...v1.18.0) (2026-06-01)
+
+
+### Features
+
+* render ANSI SGR colors in service logs ([a646a74](https://github.com/chenwei791129/launchpal/commit/a646a74c49e09a4095412ea58eb1e5ee278af558))
+* structured KeepAlive config with launch-policy radio ([15b5f89](https://github.com/chenwei791129/launchpal/commit/15b5f894440d24e06cac0710dcf76f1ceb70275c))
+
 ## [1.17.0](https://github.com/chenwei791129/launchpal/compare/v1.16.0...v1.17.0) (2026-05-28)
 
 
