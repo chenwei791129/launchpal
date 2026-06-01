@@ -183,6 +183,13 @@ The `Service` struct carries a `StatusConfidence string` (`verified` / `unverifi
 - Binary plists are converted to XML via `plutil` for display.
 - The Summary page shows the original format.
 
+## Log ANSI Color Rendering
+
+- `ServiceLogs.vue` renders log content via `v-html` bound to a `renderedLogs` computed, which runs the raw log string through `frontend/app/utils/ansiToHtml.ts` (a hand-written, dependency-free SGR parser) — this is the single controlled `v-html` XSS surface for all three service types.
+- Supported SGR subset: reset (`0`), bold (`1`), underline (`4`), foreground 30–37 / 90–97, background 40–47 / 100–107. Colors map to an OneDark-derived palette (`SGR_COLOR_MAP`) chosen for contrast on the dark `bg-surface-500`.
+- Everything else — 256-color/truecolor, other SGR codes, non-SGR CSI, OSC/DCS/etc., and malformed sequences — is stripped silently (no throw, no UI error). Plain text is HTML-escaped; emitted `<span>` style attributes are limited to a four-property whitelist (`color`, `background-color`, `font-weight`, `text-decoration`) and never interpolate log text.
+- The loading / error / "No logs available" branches are unchanged; empty or null logs short-circuit to the placeholder.
+
 ## Commit Message Conventions
 
 This project uses [release-please](https://github.com/googleapis/release-please) to automate version bumps and releases (see `.github/workflows/release-please.yml`). A `feat` commit triggers a minor bump; `fix` triggers a patch.
