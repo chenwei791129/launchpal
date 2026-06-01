@@ -40,6 +40,39 @@ The system SHALL handle `KeepAlive` as either a boolean value or a dictionary (d
 - **WHEN** the requested service name has no corresponding plist file
 - **THEN** the system returns an error indicating the file could not be read
 
+
+<!-- @trace
+source: advanced-keepalive-options
+updated: 2026-06-01
+code:
+  - frontend/app/types/wails.d.ts
+  - frontend/app/components/LaunchPolicyForm.vue
+  - frontend/app/pages/services/[name].vue
+  - internal/launchctl/keepalive.go
+  - frontend/app/components/ServiceSummary.vue
+  - frontend/app/components/ServiceRow.vue
+  - internal/launchctl/types.go
+  - frontend/app/components/CreateServiceModal.vue
+  - frontend/app/utils/serviceToConfig.ts
+  - internal/launchctl/plist_encode.go
+  - internal/launchctl/user.go
+  - internal/launchctl/readonly.go
+  - frontend/app/utils/launchPolicy.ts
+  - frontend/wailsjs/go/models.ts
+tests:
+  - frontend/app/components/__tests__/CreateServiceModal.test.ts
+  - frontend/app/utils/__tests__/serviceToConfig.test.ts
+  - internal/launchctl/plist_encode_test.go
+  - frontend/app/components/__tests__/LaunchPolicyForm.test.ts
+  - internal/launchctl/keepalive_test.go
+  - frontend/app/pages/services/__tests__/edit-launch-policy.test.ts
+  - internal/launchctl/user_test.go
+  - frontend/app/components/__tests__/CloneUserService.test.ts
+  - frontend/app/components/__tests__/ServiceSummary.test.ts
+  - frontend/app/components/__tests__/ServiceRow.test.ts
+  - frontend/app/utils/__tests__/launchPolicy.test.ts
+-->
+
 ### Requirement: Parse schedule configuration
 
 The system SHALL parse `StartCalendarInterval` (single dict or array of dicts) and `StartInterval` (integer seconds) from plist data into a `ScheduleConfig`.
@@ -108,6 +141,39 @@ The system SHALL write `StartCalendarInterval` as an empty dict when Schedule is
 
 - **WHEN** a ServiceConfig has Schedule set but with no Interval and no calendar fields
 - **THEN** the written plist contains `StartCalendarInterval` as an empty dict
+
+
+<!-- @trace
+source: advanced-keepalive-options
+updated: 2026-06-01
+code:
+  - frontend/app/types/wails.d.ts
+  - frontend/app/components/LaunchPolicyForm.vue
+  - frontend/app/pages/services/[name].vue
+  - internal/launchctl/keepalive.go
+  - frontend/app/components/ServiceSummary.vue
+  - frontend/app/components/ServiceRow.vue
+  - internal/launchctl/types.go
+  - frontend/app/components/CreateServiceModal.vue
+  - frontend/app/utils/serviceToConfig.ts
+  - internal/launchctl/plist_encode.go
+  - internal/launchctl/user.go
+  - internal/launchctl/readonly.go
+  - frontend/app/utils/launchPolicy.ts
+  - frontend/wailsjs/go/models.ts
+tests:
+  - frontend/app/components/__tests__/CreateServiceModal.test.ts
+  - frontend/app/utils/__tests__/serviceToConfig.test.ts
+  - internal/launchctl/plist_encode_test.go
+  - frontend/app/components/__tests__/LaunchPolicyForm.test.ts
+  - internal/launchctl/keepalive_test.go
+  - frontend/app/pages/services/__tests__/edit-launch-policy.test.ts
+  - internal/launchctl/user_test.go
+  - frontend/app/components/__tests__/CloneUserService.test.ts
+  - frontend/app/components/__tests__/ServiceSummary.test.ts
+  - frontend/app/components/__tests__/ServiceRow.test.ts
+  - frontend/app/utils/__tests__/launchPolicy.test.ts
+-->
 
 ### Requirement: CRUD operations for user services
 
@@ -532,7 +598,7 @@ The system SHALL provide a clone action on every user service detail view that c
 
 The clone action SHALL be available only for services whose `Type` is `"user"`. The system SHALL NOT expose the clone action on system service or apple-system service detail views.
 
-When the clone action is triggered, the system SHALL open the existing service creation form pre-filled with the source service's `Program`, `ProgramArguments`, `WorkingDirectory`, `KeepAlive`, `EnvironmentVariables`, `Schedule`, and `WakeSystem` values. The system SHALL leave the `Label` input empty and SHALL set `RunAtLoad` to `false` regardless of the source service's `RunAtLoad` value.
+When the clone action is triggered, the system SHALL open the existing service creation form pre-filled with the source service's `Program`, `ProgramArguments`, `WorkingDirectory`, `KeepAlive` (including its advanced sub-keys), `ThrottleInterval`, `EnvironmentVariables`, `Schedule`, and `WakeSystem` values. The system SHALL leave the `Label` input empty. The system SHALL set the launch-policy selection so that no `RunAtLoad` is written on submission unless KeepAlive is preserved: when the source's launch policy is `Keep Alive`, the clone SHALL preserve `Keep Alive`; otherwise the clone SHALL default to `On Demand` regardless of the source's `RunAtLoad` value.
 
 The system SHALL require the user to provide a new `Label` before submission. The system SHALL submit the cloned configuration through the existing user-service creation path (`CreateService`), so log paths are re-composed from the new label and the user's configured log directory.
 
@@ -549,23 +615,23 @@ When the clone succeeds, the system SHALL navigate to the new service's detail v
 #### Scenario: Pre-filled creation form on clone
 
 - **WHEN** the user clicks the Copy button on a user service whose configuration is fully populated
-- **THEN** the creation form opens with all of `Program`, `ProgramArguments`, `WorkingDirectory`, `KeepAlive`, `EnvironmentVariables`, `Schedule`, `WakeSystem` set to the source service's values
+- **THEN** the creation form opens with all of `Program`, `ProgramArguments`, `WorkingDirectory`, `KeepAlive`, `ThrottleInterval`, `EnvironmentVariables`, `Schedule`, `WakeSystem` set to the source service's values
 - **AND** the `Label` input is empty
-- **AND** the `RunAtLoad` checkbox is unchecked even if the source service has `RunAtLoad = true`
+- **AND** the launch-policy radio is not set to `Run at Load`: a source with `Keep Alive` stays on `Keep Alive`, and any other source defaults to `On Demand`
 
 ##### Example: Cloning `com.example.ticker`
 
-- **GIVEN** source service `com.example.ticker` has Program=`/usr/bin/foo`, ProgramArguments=`["--port=8080"]`, EnvironmentVariables=`{LOG_LEVEL: "debug"}`, RunAtLoad=`true`, KeepAlive=`true`, Schedule=`StartInterval(60)`
+- **GIVEN** source service `com.example.ticker` has Program=`/usr/bin/foo`, ProgramArguments=`["--port=8080"]`, EnvironmentVariables=`{LOG_LEVEL: "debug"}`, launch policy `Keep Alive` (KeepAlive boolean), Schedule=`StartInterval(60)`
 - **WHEN** the user clicks Copy
-- **THEN** the form opens with Program=`/usr/bin/foo`, Arguments text=`--port=8080`, EnvironmentVariables row `LOG_LEVEL=debug`, KeepAlive=checked, Schedule=`StartInterval(60)`
+- **THEN** the form opens with Program=`/usr/bin/foo`, Arguments text=`--port=8080`, EnvironmentVariables row `LOG_LEVEL=debug`, the launch-policy radio on `Keep Alive`, Schedule=`StartInterval(60)`
 - **AND** the Label input is empty
-- **AND** the RunAtLoad checkbox is unchecked
 
 #### Scenario: Successful clone creates new service and navigates
 
 - **GIVEN** the user has the creation form open with a prefilled clone of `com.example.ticker`
 - **WHEN** the user enters `com.example.ticker-staging` as the label and submits
-- **THEN** the system writes `~/Library/LaunchAgents/com.example.ticker-staging.plist` containing the cloned configuration with `RunAtLoad = false`
+- **THEN** the system writes `~/Library/LaunchAgents/com.example.ticker-staging.plist` containing the cloned configuration
+- **AND** because the clone's launch policy is `Keep Alive`, the written plist contains a `KeepAlive` key and does NOT contain a standalone `RunAtLoad` key (launchd implies it)
 - **AND** the browser navigates to `/services/com.example.ticker-staging?type=user`
 - **AND** the source service `com.example.ticker` and its plist file remain unchanged
 
@@ -578,60 +644,178 @@ When the clone succeeds, the system SHALL navigate to the new service's detail v
 - **AND** no plist file is created or modified
 - **AND** no navigation occurs
 
-#### Scenario: User overrides RunAtLoad before submitting
+#### Scenario: User selects Run at Load before submitting
 
-- **GIVEN** the user has the creation form open with a prefilled clone
-- **WHEN** the user manually re-checks the `Run at Load` checkbox and submits with a new label
+- **GIVEN** the user has the creation form open with a prefilled clone defaulting to `On Demand`
+- **WHEN** the user selects the `Run at Load` launch-policy radio and submits with a new label
 - **THEN** the resulting plist contains `RunAtLoad = true`
-- **AND** the forced default to `false` is only the initial state of the checkbox, not a submission-time constraint
+- **AND** the default `On Demand` selection is only the initial state, not a submission-time constraint
+
 
 <!-- @trace
-source: clear-service-logs
-updated: 2026-05-03
+source: advanced-keepalive-options
+updated: 2026-06-01
 code:
-  - internal/launchctl/system.go
-  - internal/launchctl/manager.go
-  - frontend/wailsjs/go/models.ts
-  - internal/privhelper/client.go
-  - frontend/wailsjs/go/main/App.js
-  - internal/launchctl/user.go
-  - frontend/vitest.setup.ts
   - frontend/app/types/wails.d.ts
-  - internal/launchctl/apple_system.go
-  - internal/launchctl/nofollow_other.go
-  - README.md
-  - app.go
-  - frontend/package.json.md5
-  - frontend/app/components/ServiceLogs.vue
-  - internal/launchctl/nofollow_darwin.go
-  - internal/launchctl/readonly.go
-  - .github/workflows/build.yml
+  - frontend/app/components/LaunchPolicyForm.vue
   - frontend/app/pages/services/[name].vue
+  - internal/launchctl/keepalive.go
+  - frontend/app/components/ServiceSummary.vue
+  - frontend/app/components/ServiceRow.vue
   - internal/launchctl/types.go
-  - internal/privhelper/protocol.go
-  - frontend/wailsjs/go/main/App.d.ts
-  - internal/privhelper/handlers.go
-  - CHANGELOG.md
-tests:
-  - internal/launchctl/apple_system_test.go
-  - internal/launchctl/system_test.go
-  - internal/launchctl/types_test.go
-  - internal/privhelper/handlers_test.go
-  - internal/privhelper/client_test.go
-  - internal/privhelper/protocol_test.go
-  - app_test.go
-  - internal/launchctl/user_test.go
-  - frontend/app/components/__tests__/ServiceLogs.test.ts
--->
-
-<!-- @trace
-source: clone-user-service
-updated: 2026-05-29
-code:
   - frontend/app/components/CreateServiceModal.vue
-  - frontend/app/pages/services/[name].vue
   - frontend/app/utils/serviceToConfig.ts
+  - internal/launchctl/plist_encode.go
+  - internal/launchctl/user.go
+  - internal/launchctl/readonly.go
+  - frontend/app/utils/launchPolicy.ts
+  - frontend/wailsjs/go/models.ts
 tests:
   - frontend/app/components/__tests__/CreateServiceModal.test.ts
+  - frontend/app/utils/__tests__/serviceToConfig.test.ts
+  - internal/launchctl/plist_encode_test.go
+  - frontend/app/components/__tests__/LaunchPolicyForm.test.ts
+  - internal/launchctl/keepalive_test.go
+  - frontend/app/pages/services/__tests__/edit-launch-policy.test.ts
+  - internal/launchctl/user_test.go
   - frontend/app/components/__tests__/CloneUserService.test.ts
+  - frontend/app/components/__tests__/ServiceSummary.test.ts
+  - frontend/app/components/__tests__/ServiceRow.test.ts
+  - frontend/app/utils/__tests__/launchPolicy.test.ts
+-->
+
+---
+### Requirement: Launch policy selection in service creation form
+
+The service creation form and the service edit form SHALL present launch behavior as a single mutually-exclusive radio group named "Launch Policy" with exactly three options: `On Demand`, `Run at Load`, and `Keep Alive`. The forms SHALL NOT present `Run at Load` and `Keep Alive` as two independent checkboxes.
+On submission, the system SHALL map the selected option as follows: `On Demand` writes neither `RunAtLoad` nor `KeepAlive`; `Run at Load` writes `RunAtLoad = true` and no `KeepAlive`; `Keep Alive` writes a `KeepAlive` value and SHALL NOT additionally write `RunAtLoad`, because launchd implies `RunAtLoad` from `KeepAlive`.
+When loading an existing service into either form, the system SHALL map the plist back to a radio selection by KeepAlive precedence: when the parsed `KeepAlive` is enabled the selection SHALL be `Keep Alive` regardless of `RunAtLoad`; otherwise when `RunAtLoad` is true the selection SHALL be `Run at Load`; otherwise the selection SHALL be `On Demand`. A legacy service carrying both `RunAtLoad = true` and a `KeepAlive` value SHALL therefore load as `Keep Alive`, and on the next save SHALL NOT emit a standalone `RunAtLoad` key.
+All launch-policy labels and helper text SHALL be in English.
+
+#### Scenario: Three mutually-exclusive options
+
+- **WHEN** the user opens the service creation form
+- **THEN** a "Launch Policy" radio group is rendered with the options `On Demand`, `Run at Load`, and `Keep Alive`, exactly one of which is selectable at a time
+
+#### Scenario: Launch policy maps to plist keys
+
+- **WHEN** the user selects a launch policy and submits an otherwise minimal config
+- **THEN** the written plist contains `RunAtLoad` and `KeepAlive` keys exactly as specified in the table below
+
+##### Example: launch policy to plist keys
+
+| Selected policy | RunAtLoad written | KeepAlive written |
+| --------------- | ----------------- | ----------------- |
+| On Demand       | no                | no                |
+| Run at Load     | yes (`true`)      | no                |
+| Keep Alive      | no                | yes               |
+
+#### Scenario: Legacy plist with both RunAtLoad and KeepAlive loads as Keep Alive
+
+- **GIVEN** an existing service whose plist contains both `RunAtLoad = true` and `KeepAlive = {SuccessfulExit: false}`
+- **WHEN** the user opens it in the edit form
+- **THEN** the launch-policy radio is set to `Keep Alive`
+- **AND** when the user saves without further changes, the written plist contains the `KeepAlive` dictionary and does NOT contain a standalone `RunAtLoad` key
+
+
+<!-- @trace
+source: advanced-keepalive-options
+updated: 2026-06-01
+code:
+  - frontend/app/types/wails.d.ts
+  - frontend/app/components/LaunchPolicyForm.vue
+  - frontend/app/pages/services/[name].vue
+  - internal/launchctl/keepalive.go
+  - frontend/app/components/ServiceSummary.vue
+  - frontend/app/components/ServiceRow.vue
+  - internal/launchctl/types.go
+  - frontend/app/components/CreateServiceModal.vue
+  - frontend/app/utils/serviceToConfig.ts
+  - internal/launchctl/plist_encode.go
+  - internal/launchctl/user.go
+  - internal/launchctl/readonly.go
+  - frontend/app/utils/launchPolicy.ts
+  - frontend/wailsjs/go/models.ts
+tests:
+  - frontend/app/components/__tests__/CreateServiceModal.test.ts
+  - frontend/app/utils/__tests__/serviceToConfig.test.ts
+  - internal/launchctl/plist_encode_test.go
+  - frontend/app/components/__tests__/LaunchPolicyForm.test.ts
+  - internal/launchctl/keepalive_test.go
+  - frontend/app/pages/services/__tests__/edit-launch-policy.test.ts
+  - internal/launchctl/user_test.go
+  - frontend/app/components/__tests__/CloneUserService.test.ts
+  - frontend/app/components/__tests__/ServiceSummary.test.ts
+  - frontend/app/components/__tests__/ServiceRow.test.ts
+  - frontend/app/utils/__tests__/launchPolicy.test.ts
+-->
+
+---
+### Requirement: KeepAlive advanced options
+
+When the launch-policy selection is `Keep Alive`, the service creation form SHALL reveal an advanced options section. The section SHALL allow the user to choose between a boolean `Keep Alive` and a dictionary form, and SHALL provide editable controls for `SuccessfulExit`, `Crashed`, and `AfterInitialDemand`. The form SHALL provide an editable integer control for `ThrottleInterval` in the same advanced section.
+The advanced section SHALL display informational text stating that multiple dictionary conditions are combined with OR semantics and that `Keep Alive` implies `Run at Load`.
+The form SHALL NOT render editable controls for `NetworkState`, `PathState`, or `OtherJobEnabled`; the system SHALL preserve any such values read from an existing plist and write them back unchanged.
+When the dictionary form is selected but no effective sub-key is set (no editable boolean set and no preserved `NetworkState`/`PathState`/`OtherJobEnabled`), the system SHALL write `KeepAlive = true` (boolean form) rather than an empty dictionary. The system SHALL NOT write an empty `KeepAlive` dictionary.
+When the launch-policy selection is not `Keep Alive`, the advanced options section SHALL be hidden. All advanced-option labels and helper text SHALL be in English.
+
+#### Scenario: Advanced section visibility follows launch policy
+
+- **WHEN** the user selects the `Keep Alive` launch policy
+- **THEN** the advanced KeepAlive options section is shown
+- **AND** when the user selects `On Demand` or `Run at Load`, the advanced section is hidden
+
+#### Scenario: Editing dictionary sub-keys produces a dictionary KeepAlive
+
+- **GIVEN** the user has selected `Keep Alive` and switched to the dictionary form
+- **WHEN** the user sets `SuccessfulExit` to false and submits
+- **THEN** the written plist contains `KeepAlive` as a dictionary with `SuccessfulExit` set to `false`
+
+#### Scenario: ThrottleInterval edited in advanced section
+
+- **WHEN** the user enters `15` in the ThrottleInterval control and submits
+- **THEN** the written plist contains `ThrottleInterval` with value 15
+
+#### Scenario: Non-editable sub-keys are preserved through edit
+
+- **GIVEN** an existing service whose `KeepAlive` dictionary contains `PathState = {"/tmp/flag": true}`
+- **WHEN** the user opens it for editing, changes only `SuccessfulExit`, and submits
+- **THEN** the written plist's `KeepAlive` dictionary still contains `PathState = {"/tmp/flag": true}`
+
+#### Scenario: Dictionary form with no effective sub-key downgrades to boolean
+
+- **GIVEN** the user has selected `Keep Alive` and the dictionary form
+- **WHEN** the user clears every editable sub-key (and no preserved `NetworkState`/`PathState`/`OtherJobEnabled` remains) and submits
+- **THEN** the written plist contains `KeepAlive` with the boolean value `true` and does NOT contain an empty `KeepAlive` dictionary
+
+<!-- @trace
+source: advanced-keepalive-options
+updated: 2026-06-01
+code:
+  - frontend/app/types/wails.d.ts
+  - frontend/app/components/LaunchPolicyForm.vue
+  - frontend/app/pages/services/[name].vue
+  - internal/launchctl/keepalive.go
+  - frontend/app/components/ServiceSummary.vue
+  - frontend/app/components/ServiceRow.vue
+  - internal/launchctl/types.go
+  - frontend/app/components/CreateServiceModal.vue
+  - frontend/app/utils/serviceToConfig.ts
+  - internal/launchctl/plist_encode.go
+  - internal/launchctl/user.go
+  - internal/launchctl/readonly.go
+  - frontend/app/utils/launchPolicy.ts
+  - frontend/wailsjs/go/models.ts
+tests:
+  - frontend/app/components/__tests__/CreateServiceModal.test.ts
+  - frontend/app/utils/__tests__/serviceToConfig.test.ts
+  - internal/launchctl/plist_encode_test.go
+  - frontend/app/components/__tests__/LaunchPolicyForm.test.ts
+  - internal/launchctl/keepalive_test.go
+  - frontend/app/pages/services/__tests__/edit-launch-policy.test.ts
+  - internal/launchctl/user_test.go
+  - frontend/app/components/__tests__/CloneUserService.test.ts
+  - frontend/app/components/__tests__/ServiceSummary.test.ts
+  - frontend/app/components/__tests__/ServiceRow.test.ts
+  - frontend/app/utils/__tests__/launchPolicy.test.ts
 -->
