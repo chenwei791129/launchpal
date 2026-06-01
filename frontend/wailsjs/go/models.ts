@@ -76,6 +76,32 @@ export namespace launchctl {
 	        this.deleteLogs = source["deleteLogs"];
 	    }
 	}
+	export class KeepAliveConfig {
+	    enabled: boolean;
+	    mode: string;
+	    successfulExit?: boolean;
+	    crashed?: boolean;
+	    afterInitialDemand?: boolean;
+	    networkState?: boolean;
+	    pathState?: Record<string, boolean>;
+	    otherJobEnabled?: Record<string, boolean>;
+	
+	    static createFrom(source: any = {}) {
+	        return new KeepAliveConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.mode = source["mode"];
+	        this.successfulExit = source["successfulExit"];
+	        this.crashed = source["crashed"];
+	        this.afterInitialDemand = source["afterInitialDemand"];
+	        this.networkState = source["networkState"];
+	        this.pathState = source["pathState"];
+	        this.otherJobEnabled = source["otherJobEnabled"];
+	    }
+	}
 	export class LogClearStatus {
 	    logPath: string;
 	    exists: boolean;
@@ -133,7 +159,8 @@ export namespace launchctl {
 	    program?: string;
 	    arguments?: string[];
 	    runAtLoad: boolean;
-	    keepAlive: boolean;
+	    keepAlive: KeepAliveConfig;
+	    throttleInterval?: number;
 	    schedule?: ScheduleConfig;
 	    environment?: Record<string, string>;
 	    stdoutPath?: string;
@@ -159,7 +186,8 @@ export namespace launchctl {
 	        this.program = source["program"];
 	        this.arguments = source["arguments"];
 	        this.runAtLoad = source["runAtLoad"];
-	        this.keepAlive = source["keepAlive"];
+	        this.keepAlive = this.convertValues(source["keepAlive"], KeepAliveConfig);
+	        this.throttleInterval = source["throttleInterval"];
 	        this.schedule = this.convertValues(source["schedule"], ScheduleConfig);
 	        this.environment = source["environment"];
 	        this.stdoutPath = source["stdoutPath"];
@@ -195,7 +223,8 @@ export namespace launchctl {
 	    program?: string;
 	    arguments?: string[];
 	    runAtLoad: boolean;
-	    keepAlive: boolean;
+	    keepAlive: KeepAliveConfig;
+	    throttleInterval?: number;
 	    schedule?: ScheduleConfig;
 	    environment?: Record<string, string>;
 	    wakeSystem: boolean;
@@ -213,7 +242,8 @@ export namespace launchctl {
 	        this.program = source["program"];
 	        this.arguments = source["arguments"];
 	        this.runAtLoad = source["runAtLoad"];
-	        this.keepAlive = source["keepAlive"];
+	        this.keepAlive = this.convertValues(source["keepAlive"], KeepAliveConfig);
+	        this.throttleInterval = source["throttleInterval"];
 	        this.schedule = this.convertValues(source["schedule"], ScheduleConfig);
 	        this.environment = source["environment"];
 	        this.wakeSystem = source["wakeSystem"];

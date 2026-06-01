@@ -96,6 +96,7 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 	}
 
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
+	service.ThrottleInterval = pd.ThrottleInterval
 	service.WakeSystem = pd.WakeSystem
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 

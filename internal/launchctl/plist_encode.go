@@ -21,8 +21,11 @@ func BuildPlistDict(config *ServiceConfig, expandPaths bool) map[string]any {
 	if config.RunAtLoad {
 		pd["RunAtLoad"] = true
 	}
-	if config.KeepAlive {
-		pd["KeepAlive"] = true
+	if v, ok := buildKeepAlive(config.KeepAlive); ok {
+		pd["KeepAlive"] = v
+	}
+	if config.ThrottleInterval != nil {
+		pd["ThrottleInterval"] = *config.ThrottleInterval
 	}
 	if config.WorkingDir != "" {
 		pd["WorkingDirectory"] = config.WorkingDir

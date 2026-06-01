@@ -22,7 +22,8 @@ type Service struct {
 	Program          string            `json:"program,omitempty"`
 	Arguments        []string          `json:"arguments,omitempty"`
 	RunAtLoad        bool              `json:"runAtLoad"`
-	KeepAlive        bool              `json:"keepAlive"`
+	KeepAlive        KeepAliveConfig   `json:"keepAlive"`
+	ThrottleInterval *int              `json:"throttleInterval,omitempty"`
 	Schedule         *ScheduleConfig   `json:"schedule,omitempty"`
 	Environment      map[string]string `json:"environment,omitempty"`
 	StdoutPath       string            `json:"stdoutPath,omitempty"`
@@ -52,17 +53,18 @@ type ScheduleConfig struct {
 
 // ServiceConfig is used for creating/updating services
 type ServiceConfig struct {
-	Label       string            `json:"label"`
-	Program     string            `json:"program,omitempty"`
-	Arguments   []string          `json:"arguments,omitempty"`
-	RunAtLoad   bool              `json:"runAtLoad"`
-	KeepAlive   bool              `json:"keepAlive"`
-	Schedule    *ScheduleConfig   `json:"schedule,omitempty"`
-	Environment map[string]string `json:"environment,omitempty"`
-	WakeSystem  bool              `json:"wakeSystem"`
-	StdoutPath  string            `json:"stdoutPath,omitempty"`
-	StderrPath  string            `json:"stderrPath,omitempty"`
-	WorkingDir  string            `json:"workingDirectory,omitempty"`
+	Label            string            `json:"label"`
+	Program          string            `json:"program,omitempty"`
+	Arguments        []string          `json:"arguments,omitempty"`
+	RunAtLoad        bool              `json:"runAtLoad"`
+	KeepAlive        KeepAliveConfig   `json:"keepAlive"`
+	ThrottleInterval *int              `json:"throttleInterval,omitempty"`
+	Schedule         *ScheduleConfig   `json:"schedule,omitempty"`
+	Environment      map[string]string `json:"environment,omitempty"`
+	WakeSystem       bool              `json:"wakeSystem"`
+	StdoutPath       string            `json:"stdoutPath,omitempty"`
+	StderrPath       string            `json:"stderrPath,omitempty"`
+	WorkingDir       string            `json:"workingDirectory,omitempty"`
 }
 
 // Service type constants
@@ -131,17 +133,6 @@ func (e *LogDeletionWarning) Error() string {
 		return "log deletion completed with warnings"
 	}
 	return "log deletion completed with warnings: " + strings.Join(e.Errors, "; ")
-}
-
-// parseKeepAlive converts a plist KeepAlive value (bool or dict) to a bool
-func parseKeepAlive(v any) bool {
-	switch v := v.(type) {
-	case bool:
-		return v
-	case map[string]any:
-		return true
-	}
-	return false
 }
 
 // selectLogPath returns the StandardOutPath or StandardErrorPath of service

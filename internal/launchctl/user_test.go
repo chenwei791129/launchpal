@@ -340,8 +340,8 @@ func TestUserManager_Get(t *testing.T) {
 	if !service.RunAtLoad {
 		t.Error("RunAtLoad should be true")
 	}
-	if !service.KeepAlive {
-		t.Error("KeepAlive should be true")
+	if !service.KeepAlive.Enabled || service.KeepAlive.Mode != KeepAliveModeBoolean {
+		t.Errorf("KeepAlive = %+v, want Enabled=true Mode=boolean", service.KeepAlive)
 	}
 	if service.Type != "user" {
 		t.Errorf("Type = %q, want %q", service.Type, "user")
@@ -410,8 +410,11 @@ func TestUserManager_Get_KeepAliveDict(t *testing.T) {
 		t.Fatalf("Get() error = %v", err)
 	}
 
-	if !service.KeepAlive {
-		t.Error("KeepAlive should be true when KeepAlive is a dict")
+	if !service.KeepAlive.Enabled || service.KeepAlive.Mode != KeepAliveModeDictionary {
+		t.Errorf("KeepAlive = %+v, want Enabled=true Mode=dictionary", service.KeepAlive)
+	}
+	if service.KeepAlive.SuccessfulExit == nil || *service.KeepAlive.SuccessfulExit != false {
+		t.Errorf("KeepAlive.SuccessfulExit = %v, want pointer to false", service.KeepAlive.SuccessfulExit)
 	}
 }
 

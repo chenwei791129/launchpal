@@ -1,3 +1,20 @@
+// KeepAliveConfig mirrors launchd's KeepAlive key, which may be a plain boolean
+// or a dictionary of conditions. `mode` records the original plist form so it
+// round-trips without loss. The optional boolean sub-keys are absent when unset
+// (distinguishing "not configured" from explicit true/false); the map sub-keys
+// carry PathState / OtherJobEnabled entries verbatim even though the UI does not
+// edit them.
+export interface KeepAliveConfig {
+  enabled: boolean
+  mode: '' | 'boolean' | 'dictionary'
+  successfulExit?: boolean
+  crashed?: boolean
+  afterInitialDemand?: boolean
+  networkState?: boolean
+  pathState?: Record<string, boolean>
+  otherJobEnabled?: Record<string, boolean>
+}
+
 export interface Service {
   name: string
   label: string
@@ -7,7 +24,8 @@ export interface Service {
   program?: string
   arguments?: string[]
   runAtLoad: boolean
-  keepAlive: boolean
+  keepAlive: KeepAliveConfig
+  throttleInterval?: number
   wakeSystem: boolean
   schedule?: ScheduleConfig
   environment?: Record<string, string>
@@ -58,7 +76,8 @@ export interface ServiceConfig {
   program?: string
   arguments?: string[]
   runAtLoad: boolean
-  keepAlive: boolean
+  keepAlive: KeepAliveConfig
+  throttleInterval?: number
   wakeSystem: boolean
   schedule?: ScheduleConfig
   environment?: Record<string, string>

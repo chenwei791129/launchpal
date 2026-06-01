@@ -45,8 +45,16 @@
         Scheduled
       </span>
       <span
+        v-else-if="service.keepAlive?.enabled"
+        class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-600/20 text-blue-400"
+        data-testid="launch-policy-badge"
+      >
+        KeepAlive
+      </span>
+      <span
         v-else-if="service.runAtLoad"
         class="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-600/20 text-blue-400"
+        data-testid="launch-policy-badge"
       >
         RunAtLoad
       </span>

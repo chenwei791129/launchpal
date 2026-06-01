@@ -58,6 +58,7 @@ type plistData struct {
 	UserName              string            `plist:"UserName"`
 	RunAtLoad             bool              `plist:"RunAtLoad"`
 	KeepAlive             interface{}       `plist:"KeepAlive"`
+	ThrottleInterval      *int              `plist:"ThrottleInterval"`
 	StartCalendarInterval interface{}       `plist:"StartCalendarInterval"`
 	StartInterval         int               `plist:"StartInterval"`
 	EnvironmentVariables  map[string]string `plist:"EnvironmentVariables"`
@@ -139,6 +140,7 @@ func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceSta
 	}
 
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
+	service.ThrottleInterval = pd.ThrottleInterval
 	service.WakeSystem = pd.WakeSystem
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 

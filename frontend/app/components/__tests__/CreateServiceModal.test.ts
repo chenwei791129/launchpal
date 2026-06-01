@@ -404,13 +404,13 @@ describe('CreateServiceModal — settings integration', () => {
     expect(programInput.attributes('required')).toBeUndefined()
   })
 
-  it('mounts modal with prefill: form fields mirror source except label is empty and runAtLoad is false', async () => {
+  it('mounts modal with prefill: form fields mirror source, label is empty, and a Keep Alive source lands on the Keep Alive radio', async () => {
     const prefill: ServiceConfig = {
       label: 'com.example.copy-source',
       program: '/usr/bin/foo',
       arguments: ['--port=8080', '--verbose'],
       runAtLoad: true,
-      keepAlive: true,
+      keepAlive: { enabled: true, mode: 'boolean' },
       wakeSystem: true,
       schedule: { interval: 60 },
       environment: { LOG_LEVEL: 'debug', API_KEY: 'secret' },
@@ -437,11 +437,11 @@ describe('CreateServiceModal — settings integration', () => {
     const wdInput = wrapper.find('input[placeholder="/Users/yourname/project"]')
     expect((wdInput.element as HTMLInputElement).value).toBe('/Users/dev/project')
 
-    const checkboxes = wrapper.findAll('input[type="checkbox"]')
-    const runAtLoadCheckbox = checkboxes[0] as ReturnType<typeof wrapper.find>
-    const keepAliveCheckbox = checkboxes[1] as ReturnType<typeof wrapper.find>
-    expect((runAtLoadCheckbox.element as HTMLInputElement).checked).toBe(false)
-    expect((keepAliveCheckbox.element as HTMLInputElement).checked).toBe(true)
+    // A Keep Alive source keeps the Keep Alive radio (it implies RunAtLoad).
+    const keepAliveRadio = wrapper.find('[data-testid="launch-policy-keepAlive"]')
+    const runAtLoadRadio = wrapper.find('[data-testid="launch-policy-runAtLoad"]')
+    expect((keepAliveRadio.element as HTMLInputElement).checked).toBe(true)
+    expect((runAtLoadRadio.element as HTMLInputElement).checked).toBe(false)
 
     const envKeys = wrapper.findAll('input[placeholder="KEY"]')
     expect(envKeys).toHaveLength(2)
@@ -455,7 +455,7 @@ describe('CreateServiceModal — settings integration', () => {
       program: '/usr/bin/alpha',
       arguments: ['--alpha'],
       runAtLoad: false,
-      keepAlive: false,
+      keepAlive: { enabled: false, mode: '' },
       wakeSystem: false,
       workingDirectory: '/tmp/alpha',
     }
@@ -464,7 +464,7 @@ describe('CreateServiceModal — settings integration', () => {
       program: '/usr/bin/beta',
       arguments: ['--beta'],
       runAtLoad: true,
-      keepAlive: true,
+      keepAlive: { enabled: true, mode: 'boolean' },
       wakeSystem: false,
       workingDirectory: '/tmp/beta',
     }
@@ -495,9 +495,9 @@ describe('CreateServiceModal — settings integration', () => {
       (wrapper.find('input[placeholder="/Users/yourname/project"]').element as HTMLInputElement)
         .value,
     ).toBe('/tmp/beta')
-    // KeepAlive must reflect the second source, not the first.
-    const checkboxes = wrapper.findAll('input[type="checkbox"]')
-    expect((checkboxes[1]!.element as HTMLInputElement).checked).toBe(true)
+    // Launch policy must reflect the second (Keep Alive) source, not the first.
+    const keepAliveRadio = wrapper.find('[data-testid="launch-policy-keepAlive"]')
+    expect((keepAliveRadio.element as HTMLInputElement).checked).toBe(true)
   })
 
   it('emits "created" with the submitted label as payload', async () => {
@@ -544,13 +544,13 @@ describe('CreateServiceModal — settings integration', () => {
     expect(wrapper.emitted('created')).toBeFalsy()
   })
 
-  it('successful clone (prefill + new label) submits with runAtLoad false', async () => {
+  it('successful clone of a Keep Alive source submits with KeepAlive and no standalone RunAtLoad', async () => {
     const prefill: ServiceConfig = {
       label: 'com.example.copy-source',
       program: '/usr/bin/foo',
       arguments: ['--port=8080'],
       runAtLoad: true,
-      keepAlive: true,
+      keepAlive: { enabled: true, mode: 'boolean' },
       wakeSystem: false,
       schedule: { interval: 60 },
       environment: { LOG_LEVEL: 'debug' },
@@ -576,8 +576,9 @@ describe('CreateServiceModal — settings integration', () => {
     expect(sent.label).toBe('com.example.copy-dest')
     expect(sent.program).toBe('/usr/bin/foo')
     expect(sent.arguments).toEqual(['--port=8080'])
+    // Keep Alive implies Run at Load, so no standalone RunAtLoad is written.
     expect(sent.runAtLoad).toBe(false)
-    expect(sent.keepAlive).toBe(true)
+    expect(sent.keepAlive).toEqual({ enabled: true, mode: 'boolean' })
     expect(sent.environment).toEqual({ LOG_LEVEL: 'debug' })
     expect(sent.workingDirectory).toBe('/Users/dev/project')
 
@@ -585,13 +586,13 @@ describe('CreateServiceModal — settings integration', () => {
     expect(events![0]).toEqual(['com.example.copy-dest'])
   })
 
-  it('clone respects user override: re-checking RunAtLoad sends runAtLoad=true', async () => {
+  it('clone of a Run at Load source defaults to On Demand; selecting Run at Load sends runAtLoad=true', async () => {
     const prefill: ServiceConfig = {
       label: 'com.example.copy-source',
       program: '/usr/bin/foo',
-      arguments: [],
+      arguments: ['/usr/bin/foo'],
       runAtLoad: true,
-      keepAlive: false,
+      keepAlive: { enabled: false, mode: '' },
       wakeSystem: false,
     }
     const mod = await import('../CreateServiceModal.vue')
@@ -601,10 +602,12 @@ describe('CreateServiceModal — settings integration', () => {
     })
     await flushPromises()
 
-    const checkboxes = wrapper.findAll('input[type="checkbox"]')
-    const runAtLoadCheckbox = checkboxes[0]!
-    expect((runAtLoadCheckbox.element as HTMLInputElement).checked).toBe(false)
-    await runAtLoadCheckbox.setValue(true)
+    // A non-Keep-Alive source defaults to On Demand (clone drops RunAtLoad).
+    const onDemandRadio = wrapper.find('[data-testid="launch-policy-onDemand"]')
+    expect((onDemandRadio.element as HTMLInputElement).checked).toBe(true)
+
+    // User overrides to Run at Load.
+    await wrapper.find('[data-testid="launch-policy-runAtLoad"]').setValue(true)
     await flushPromises()
 
     const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
@@ -618,6 +621,49 @@ describe('CreateServiceModal — settings integration', () => {
     expect(CreateService).toHaveBeenCalledTimes(1)
     const sent = CreateService.mock.calls[0]![0] as ServiceConfig
     expect(sent.runAtLoad).toBe(true)
+    expect(sent.keepAlive.enabled).toBe(false)
+  })
+
+  it('preserves non-editable PathState while editing SuccessfulExit in the advanced section', async () => {
+    const prefill: ServiceConfig = {
+      label: 'com.example.copy-source',
+      program: '/usr/bin/foo',
+      arguments: ['/usr/bin/foo'],
+      runAtLoad: false,
+      keepAlive: {
+        enabled: true,
+        mode: 'dictionary',
+        pathState: { '/tmp/flag': true },
+      },
+      wakeSystem: false,
+    }
+    const mod = await import('../CreateServiceModal.vue')
+    const wrapper = mount(mod.default, {
+      props: { isOpen: true, serviceType: 'user', prefill },
+      global: { stubs: { ScheduleForm: true } },
+    })
+    await flushPromises()
+
+    // A dictionary Keep Alive source lands on Keep Alive with the conditions
+    // section shown. Edit only SuccessfulExit.
+    const successfulExit = wrapper.find('[data-testid="keepalive-successfulExit"]')
+    expect(successfulExit.exists()).toBe(true)
+    await successfulExit.setValue('false')
+
+    const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
+    await labelInput.setValue('com.example.copy-dest')
+    await flushPromises()
+
+    const submitBtn = wrapper.findAll('button').find(b => b.text().trim().startsWith('Create Service'))
+    await submitBtn!.trigger('click')
+    await flushPromises()
+
+    expect(CreateService).toHaveBeenCalledTimes(1)
+    const sent = CreateService.mock.calls[0]![0] as ServiceConfig
+    expect(sent.keepAlive.mode).toBe('dictionary')
+    expect(sent.keepAlive.successfulExit).toBe(false)
+    // Non-editable sub-key carried through untouched.
+    expect(sent.keepAlive.pathState).toEqual({ '/tmp/flag': true })
   })
 
   it('saving Settings does not modify existing plists or invoke helper RPCs', async () => {

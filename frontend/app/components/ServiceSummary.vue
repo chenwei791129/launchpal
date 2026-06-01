@@ -72,11 +72,22 @@
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Keep Alive</label>
-        <p class="text-gray-100 mt-1">{{ service.keepAlive ? 'Yes' : 'No' }}</p>
+        <p class="text-gray-100 mt-1" data-testid="keepalive-summary">{{ keepAliveSummary }}</p>
+        <ul
+          v-if="keepAliveConditions.length > 0"
+          class="mt-1 text-sm font-mono text-gray-300 space-y-0.5"
+          data-testid="keepalive-conditions"
+        >
+          <li v-for="cond in keepAliveConditions" :key="cond">{{ cond }}</li>
+        </ul>
       </div>
       <div>
         <label class="text-xs text-gray-400 uppercase tracking-wider">Wake System</label>
         <p class="text-gray-100 mt-1">{{ service.wakeSystem ? 'Yes' : 'No' }}</p>
+      </div>
+      <div v-if="service.throttleInterval !== undefined">
+        <label class="text-xs text-gray-400 uppercase tracking-wider">Throttle Interval</label>
+        <p class="text-gray-100 mt-1" data-testid="throttle-interval">{{ service.throttleInterval }}s</p>
       </div>
       <div v-if="service.schedule">
         <label class="text-xs text-gray-400 uppercase tracking-wider">Schedule</label>
@@ -180,6 +191,41 @@ const props = defineProps<{
 const copiedField = ref<string | null>(null)
 const revealError = ref(false)
 const revealedEnvKeys = reactive(new Set<string>())
+
+// keepAliveSummary renders the high-level mode: disabled ("No"), unconditional
+// ("Yes"), or "On conditions" for the dictionary form. The individual
+// conditions are listed separately by keepAliveConditions.
+const keepAliveSummary = computed(() => {
+  const ka = props.service.keepAlive
+  if (!ka?.enabled) return 'No'
+  if (ka.mode !== 'dictionary') return 'Yes'
+  return 'On conditions'
+})
+
+// keepAliveConditions flattens a dictionary-mode KeepAlive into human-readable
+// lines, including the non-editable NetworkState / PathState / OtherJobEnabled
+// keys so nothing the plist carries is hidden from the user.
+const keepAliveConditions = computed<string[]>(() => {
+  const ka = props.service.keepAlive
+  if (!ka?.enabled || ka.mode !== 'dictionary') return []
+  const lines: string[] = []
+  const bools: Array<[string, boolean | undefined]> = [
+    ['SuccessfulExit', ka.successfulExit],
+    ['Crashed', ka.crashed],
+    ['AfterInitialDemand', ka.afterInitialDemand],
+    ['NetworkState', ka.networkState],
+  ]
+  for (const [name, val] of bools) {
+    if (val !== undefined) lines.push(`${name}: ${val}`)
+  }
+  for (const [path, val] of Object.entries(ka.pathState ?? {})) {
+    lines.push(`PathState[${path}]: ${val}`)
+  }
+  for (const [job, val] of Object.entries(ka.otherJobEnabled ?? {})) {
+    lines.push(`OtherJobEnabled[${job}]: ${val}`)
+  }
+  return lines
+})
 
 watch(() => props.service, () => {
   revealedEnvKeys.clear()

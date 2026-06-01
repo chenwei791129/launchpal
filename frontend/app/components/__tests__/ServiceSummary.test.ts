@@ -26,19 +26,20 @@ vi.mock('~/composables/useNextOccurrences', () => ({
 }))
 
 // Minimal service fixture with environment variables
-const makeService = (environment?: Record<string, string>): Service => ({
+const makeService = (environment?: Record<string, string>, overrides: Partial<Service> = {}): Service => ({
   name: 'com.example.test',
   label: 'com.example.test',
   status: 'stopped',
   statusConfidence: 'verified',
   path: '/Library/LaunchAgents/com.example.test.plist',
   runAtLoad: false,
-  keepAlive: false,
+  keepAlive: { enabled: false, mode: '' },
   wakeSystem: false,
   type: 'user',
   readOnly: false,
   plistFormat: 'xml',
   environment,
+  ...overrides,
 })
 
 describe('ServiceSummary – environment variable masking', () => {
@@ -109,5 +110,46 @@ describe('ServiceSummary – environment variable masking', () => {
     // Reveal second variable too
     await secondBtn.trigger('click')
     expect(wrapper.text()).toContain('https://example.com')
+  })
+})
+
+describe('ServiceSummary – KeepAlive and ThrottleInterval rendering', () => {
+  it('renders "No" for a disabled KeepAlive', () => {
+    const wrapper = mount(ServiceSummary, { props: { service: makeService() } })
+    expect(wrapper.find('[data-testid="keepalive-summary"]').text()).toBe('No')
+    expect(wrapper.find('[data-testid="keepalive-conditions"]').exists()).toBe(false)
+  })
+
+  it('renders "Yes" for a boolean KeepAlive', () => {
+    const wrapper = mount(ServiceSummary, {
+      props: { service: makeService(undefined, { keepAlive: { enabled: true, mode: 'boolean' } }) },
+    })
+    expect(wrapper.find('[data-testid="keepalive-summary"]').text()).toBe('Yes')
+  })
+
+  it('renders dictionary-mode conditions including non-editable sub-keys', () => {
+    const wrapper = mount(ServiceSummary, {
+      props: {
+        service: makeService(undefined, {
+          keepAlive: {
+            enabled: true,
+            mode: 'dictionary',
+            successfulExit: false,
+            pathState: { '/tmp/flag': true },
+          },
+          throttleInterval: 30,
+        }),
+      },
+    })
+    expect(wrapper.find('[data-testid="keepalive-summary"]').text()).toBe('On conditions')
+    const conditions = wrapper.find('[data-testid="keepalive-conditions"]').text()
+    expect(conditions).toContain('SuccessfulExit: false')
+    expect(conditions).toContain('PathState[/tmp/flag]: true')
+    expect(wrapper.find('[data-testid="throttle-interval"]').text()).toBe('30s')
+  })
+
+  it('omits the ThrottleInterval row when unset', () => {
+    const wrapper = mount(ServiceSummary, { props: { service: makeService() } })
+    expect(wrapper.find('[data-testid="throttle-interval"]').exists()).toBe(false)
   })
 })

@@ -68,7 +68,7 @@ function makeService(overrides: Partial<Service> = {}): Service {
     program: '/usr/bin/foo',
     arguments: ['--port=8080'],
     runAtLoad: true,
-    keepAlive: true,
+    keepAlive: { enabled: true, mode: 'boolean' },
     wakeSystem: false,
     schedule: { interval: 60 },
     environment: { LOG_LEVEL: 'debug' },
@@ -165,7 +165,7 @@ describe('Clone user service — Copy click opens modal with prefill', () => {
     expect(prefill.program).toBe('/usr/bin/foo')
     expect(prefill.arguments).toEqual(['--port=8080'])
     expect(prefill.runAtLoad).toBe(true)
-    expect(prefill.keepAlive).toBe(true)
+    expect(prefill.keepAlive).toEqual({ enabled: true, mode: 'boolean' })
     expect(prefill.environment).toEqual({ LOG_LEVEL: 'debug' })
     expect(prefill.schedule).toEqual({ interval: 60 })
     expect(prefill.workingDirectory).toBe('/Users/dev/project')

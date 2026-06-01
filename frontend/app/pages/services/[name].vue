@@ -218,17 +218,12 @@
               >
             </div>
 
-            <!-- Checkboxes -->
-            <div class="flex gap-6">
-              <label class="flex items-center gap-2 text-sm text-gray-300">
-                <input v-model="editForm.runAtLoad" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
-                Run at Load
-              </label>
-              <label class="flex items-center gap-2 text-sm text-gray-300">
-                <input v-model="editForm.keepAlive" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
-                Keep Alive
-              </label>
-            </div>
+            <!-- Launch Policy -->
+            <LaunchPolicyForm
+              v-model:launch-policy="editLaunchPolicy"
+              v-model:keep-alive="editKeepAlive"
+              v-model:throttle-interval="editThrottleInterval"
+            />
 
             <!-- Environment Variables -->
             <div>
@@ -374,12 +369,20 @@
 </template>
 
 <script setup lang="ts">
-import type { Service, ServiceConfig, ScheduleConfig } from '~/types/wails'
+import type { Service, ServiceConfig, ScheduleConfig, KeepAliveConfig } from '~/types/wails'
 import { highlightCode } from '~/composables/useHighlighter'
 import { useAdminMode } from '~/composables/useAdminMode'
 import { parseShellArgs, serializeShellArgs } from '~/utils/shell-args'
 import { hasProgramOrArguments, PROGRAM_PATH_HINT } from '~/utils/serviceValidation'
 import { serviceToConfig } from '~/utils/serviceToConfig'
+import LaunchPolicyForm from '~/components/LaunchPolicyForm.vue'
+import {
+  applyLaunchPolicy,
+  cloneKeepAlive,
+  deriveLaunchPolicy,
+  emptyKeepAlive,
+  type LaunchPolicy,
+} from '~/utils/launchPolicy'
 
 const route = useRoute()
 const name = computed(() => route.params.name as string)
@@ -609,9 +612,12 @@ async function executeKickstart() {
 const editForm = reactive({
   program: '',
   workingDirectory: '',
-  runAtLoad: false,
-  keepAlive: false,
 })
+// Launch behavior mirrors the create modal: a single radio plus a structured
+// KeepAlive config and optional ThrottleInterval (see LaunchPolicyForm).
+const editLaunchPolicy = ref<LaunchPolicy>('onDemand')
+const editKeepAlive = ref<KeepAliveConfig>(emptyKeepAlive())
+const editThrottleInterval = ref<number | undefined>(undefined)
 const editArgumentsText = ref('')
 const editEnvVars = reactive<Array<{ key: string; value: string }>>([])
 const editEnvVisibility = reactive(new Set<number>())
@@ -650,8 +656,15 @@ function populateEditForm() {
   editEnvVisibility.clear()
   editForm.program = service.value.program || ''
   editForm.workingDirectory = service.value.workingDirectory || ''
-  editForm.runAtLoad = service.value.runAtLoad
-  editForm.keepAlive = service.value.keepAlive
+  // Map runAtLoad + keepAlive onto the radio with KeepAlive precedence, and
+  // deep-copy KeepAlive (incl. non-editable NetworkState/PathState/
+  // OtherJobEnabled) so editing one sub-key preserves the rest.
+  editLaunchPolicy.value = deriveLaunchPolicy({
+    runAtLoad: service.value.runAtLoad,
+    keepAlive: service.value.keepAlive,
+  })
+  editKeepAlive.value = cloneKeepAlive(service.value.keepAlive)
+  editThrottleInterval.value = service.value.throttleInterval
   editArgumentsText.value = serializeShellArgs(service.value.arguments ?? [])
   editEnvVars.splice(0)
   if (service.value.environment) {
@@ -678,12 +691,14 @@ async function handleSave() {
       }
     }
 
+    const policy = applyLaunchPolicy(editLaunchPolicy.value, editKeepAlive.value)
     const config: ServiceConfig = {
       label: service.value.label,
       program: editForm.program,
       arguments: parseShellArgs(editArgumentsText.value),
-      runAtLoad: editForm.runAtLoad,
-      keepAlive: editForm.keepAlive,
+      runAtLoad: policy.runAtLoad,
+      keepAlive: policy.keepAlive,
+      throttleInterval: editThrottleInterval.value,
       environment: Object.keys(environment).length > 0 ? environment : undefined,
       workingDirectory: editForm.workingDirectory,
       schedule: editSchedule.value,

@@ -1,16 +1,19 @@
 import type { Service, ServiceConfig } from '~/types/wails'
+import { cloneKeepAlive } from '~/utils/launchPolicy'
 
 // stdoutPath / stderrPath are intentionally omitted: CreateServiceModal always
 // re-derives log paths from `composeLogPaths(serviceType, settings, label)` at
 // submit time, so passing the source service's log paths would be discarded
-// and misleading.
+// and misleading. keepAlive is deep-copied so the clone form can edit it
+// without mutating the source service object.
 export function serviceToConfig(svc: Service): ServiceConfig {
   return {
     label: svc.label,
     program: svc.program,
     arguments: svc.arguments ? [...svc.arguments] : [],
     runAtLoad: svc.runAtLoad,
-    keepAlive: svc.keepAlive,
+    keepAlive: cloneKeepAlive(svc.keepAlive),
+    throttleInterval: svc.throttleInterval,
     wakeSystem: svc.wakeSystem,
     schedule: svc.schedule ? { ...svc.schedule } : undefined,
     environment: svc.environment ? { ...svc.environment } : undefined,

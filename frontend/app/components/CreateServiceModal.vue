@@ -65,17 +65,12 @@
           >
         </div>
 
-        <!-- Checkboxes -->
-        <div class="flex gap-6">
-          <label class="flex items-center gap-2 text-sm text-gray-300">
-            <input v-model="form.runAtLoad" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
-            Run at Load
-          </label>
-          <label class="flex items-center gap-2 text-sm text-gray-300">
-            <input v-model="form.keepAlive" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
-            Keep Alive
-          </label>
-        </div>
+        <!-- Launch Policy -->
+        <LaunchPolicyForm
+          v-model:launch-policy="launchPolicy"
+          v-model:keep-alive="keepAlive"
+          v-model:throttle-interval="throttleInterval"
+        />
 
         <!-- Environment Variables -->
         <div>
@@ -172,11 +167,19 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import type { ServiceConfig, ScheduleConfig } from '~/types/wails.d'
+import type { ServiceConfig, ScheduleConfig, KeepAliveConfig } from '~/types/wails.d'
 import { parseShellArgs, serializeShellArgs } from '~/utils/shell-args'
 import { composeLogPaths } from '~/utils/logPaths'
 import { hasProgramOrArguments, PROGRAM_PATH_HINT } from '~/utils/serviceValidation'
 import { useSettings } from '~/composables/useSettings'
+import LaunchPolicyForm from '~/components/LaunchPolicyForm.vue'
+import {
+  applyLaunchPolicy,
+  cloneKeepAlive,
+  cloneLaunchPolicy,
+  emptyKeepAlive,
+  type LaunchPolicy,
+} from '~/utils/launchPolicy'
 
 const props = withDefaults(defineProps<{
   isOpen: boolean
@@ -196,10 +199,14 @@ const form = reactive({
   label: '',
   program: '',
   arguments: [] as string[],
-  runAtLoad: true,
-  keepAlive: false,
   workingDirectory: '',
 })
+
+// Launch behavior is modeled as a single radio selection plus a structured
+// KeepAlive config and an optional ThrottleInterval (see LaunchPolicyForm).
+const launchPolicy = ref<LaunchPolicy>('runAtLoad')
+const keepAlive = ref<KeepAliveConfig>(emptyKeepAlive())
+const throttleInterval = ref<number | undefined>(undefined)
 
 const argumentsText = ref('')
 const envVars = reactive<Array<{ key: string; value: string }>>([])
@@ -210,14 +217,23 @@ const loading = ref(false)
 const error = ref('')
 
 // When `source` is provided, the form mirrors the clone source but forces
-// `label` empty (user must pick a new identifier) and `runAtLoad` off so a
-// cloned service doesn't double-fire on login (design Decision 3).
+// `label` empty (user must pick a new identifier). The launch policy follows
+// the clone rule: a Keep Alive source is preserved, anything else defaults to
+// On Demand so a clone doesn't inherit a standalone RunAtLoad (Decision 3 /
+// clone spec). A fresh form defaults to Run at Load (the historical default).
 function initFormState(source?: ServiceConfig | null) {
   form.label = ''
   form.program = source?.program ?? ''
   form.arguments = source?.arguments ? [...source.arguments] : []
-  form.runAtLoad = source ? false : true
-  form.keepAlive = source?.keepAlive ?? false
+  if (source) {
+    launchPolicy.value = cloneLaunchPolicy({ runAtLoad: source.runAtLoad, keepAlive: source.keepAlive })
+    keepAlive.value = cloneKeepAlive(source.keepAlive)
+    throttleInterval.value = source.throttleInterval
+  } else {
+    launchPolicy.value = 'runAtLoad'
+    keepAlive.value = emptyKeepAlive()
+    throttleInterval.value = undefined
+  }
   form.workingDirectory = source?.workingDirectory ?? ''
   argumentsText.value = source ? serializeShellArgs(source.arguments ?? []) : ''
   envVars.splice(0)
@@ -288,8 +304,12 @@ async function handleSubmit() {
       }
     }
 
+    const policy = applyLaunchPolicy(launchPolicy.value, keepAlive.value)
     const config: ServiceConfig = {
       ...form,
+      runAtLoad: policy.runAtLoad,
+      keepAlive: policy.keepAlive,
+      throttleInterval: throttleInterval.value,
       arguments: parseShellArgs(argumentsText.value),
       environment: Object.keys(environment).length > 0 ? environment : undefined,
       schedule: schedule.value,
