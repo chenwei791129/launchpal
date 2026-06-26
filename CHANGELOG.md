@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.19.0](https://github.com/chenwei791129/launchpal/compare/v1.18.0...v1.19.0) (2026-06-26)
+
+
+### Features
+
+* preserve unmodeled plist keys on service update ([#37](https://github.com/chenwei791129/launchpal/issues/37)) ([36bec75](https://github.com/chenwei791129/launchpal/commit/36bec75ce97663afcaf8c468a24bbf7b45174022))
+
 ## [1.18.0](https://github.com/chenwei791129/launchpal/compare/v1.17.0...v1.18.0) (2026-06-01)
 
 
