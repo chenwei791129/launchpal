@@ -1,5 +1,38 @@
 package launchctl
 
+import (
+	"fmt"
+	"maps"
+	"os"
+
+	"howett.net/plist"
+)
+
+// modeledPlistKeys is the single source of truth for every plist key
+// BuildPlistDict can emit. The Update merge logic (mergeUnmodeledKeys) uses it
+// as the removal set so that clearing or toggling a modeled key strips its
+// stale on-disk value, while keys absent from this set (everything LaunchPal
+// does not model) are preserved verbatim. StartInterval and
+// StartCalendarInterval are mutually exclusive within a single config but both
+// belong here so switching schedule kinds never leaves a stale key behind.
+// TestModeledPlistKeys enforces that this set covers every key BuildPlistDict
+// produces, preventing drift when new modeled keys are added.
+var modeledPlistKeys = map[string]bool{
+	"Label":                 true,
+	"Program":               true,
+	"ProgramArguments":      true,
+	"RunAtLoad":             true,
+	"KeepAlive":             true,
+	"ThrottleInterval":      true,
+	"WorkingDirectory":      true,
+	"StandardOutPath":       true,
+	"StandardErrorPath":     true,
+	"WakeSystem":            true,
+	"EnvironmentVariables":  true,
+	"StartInterval":         true,
+	"StartCalendarInterval": true,
+}
+
 // BuildPlistDict converts a ServiceConfig into the plist dictionary shape
 // expected by launchd. The two callers (UserManager.writePlist and
 // SystemManager.encodePlist) previously duplicated this field-by-field
@@ -50,6 +83,45 @@ func BuildPlistDict(config *ServiceConfig, expandPaths bool) map[string]any {
 		}
 	}
 	return pd
+}
+
+// readPlistMap reads the plist at path and parses it into a map[string]any,
+// preserving every key — including ones LaunchPal does not model — with the
+// plist library's native value types. plist.Unmarshal auto-detects XML and
+// binary formats, so both round-trip through the same code path. A read or
+// parse failure is returned to the caller so Update can degrade to a fresh
+// write (for example a system daemon plist unreadable without Full Disk
+// Access).
+func readPlistMap(path string) (map[string]any, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read plist: %w", err)
+	}
+	var m map[string]any
+	if _, err := plist.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("parse plist: %w", err)
+	}
+	return m, nil
+}
+
+// mergeUnmodeledKeys returns a new map containing every unmodeled key from
+// existing plus every key from modeled, leaving both inputs unchanged. The
+// removal set is the full modeledPlistKeys set (not just the keys modeled
+// happens to carry), so a modeled key the user cleared — or a mutually
+// exclusive key the user toggled away from, e.g. StartInterval →
+// StartCalendarInterval — is dropped instead of being inherited back from the
+// existing plist. This keeps modeled keys form-authoritative while preserving
+// everything LaunchPal does not model.
+func mergeUnmodeledKeys(modeled, existing map[string]any) map[string]any {
+	merged := make(map[string]any, len(existing)+len(modeled))
+	for k, v := range existing {
+		if modeledPlistKeys[k] {
+			continue
+		}
+		merged[k] = v
+	}
+	maps.Copy(merged, modeled)
+	return merged
 }
 
 // buildCalendarInterval mirrors the historical launchd behavior: a single

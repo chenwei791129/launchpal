@@ -1,6 +1,7 @@
 package launchctl
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -1634,4 +1635,194 @@ func TestUserManager_Update_RejectsEmptyProgramAndArguments(t *testing.T) {
 	if string(after) != string(originalBytes) {
 		t.Error("plist content must not change when Update validation fails")
 	}
+}
+
+// TestUserManagerUpdatePreserve covers task 3.1: a user-domain Update reads
+// the existing plist and preserves unmodeled keys, while modeled keys stay
+// authoritative (including removal of a cleared key), and degrades to a fresh
+// write when the existing plist cannot be parsed.
+func TestUserManagerUpdatePreserve(t *testing.T) {
+	t.Run("preserves unmodeled scalar keys while updating a modeled key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		existing := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.test.preserve</string>
+	<key>Program</key>
+	<string>/usr/bin/old</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>Nice</key>
+	<integer>5</integer>
+</dict>
+</plist>`
+		path := filepath.Join(tmpDir, "com.test.preserve.plist")
+		if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		m := &UserManager{launchAgentsPath: tmpDir}
+		cfg := &ServiceConfig{Label: "com.test.preserve", Program: "/usr/bin/new"}
+		if err := m.Update("com.test.preserve", cfg); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		got, err := readPlistMap(path)
+		if err != nil {
+			t.Fatalf("read written plist: %v", err)
+		}
+		if got["ProcessType"] != "Background" {
+			t.Errorf("ProcessType = %v, want Background (unmodeled key dropped)", got["ProcessType"])
+		}
+		if toInt(got["Nice"]) != 5 {
+			t.Errorf("Nice = %v, want 5 (unmodeled key dropped)", got["Nice"])
+		}
+		if got["Program"] != "/usr/bin/new" {
+			t.Errorf("Program = %v, want /usr/bin/new (modeled key must be updated)", got["Program"])
+		}
+	})
+
+	t.Run("clears a modeled key but keeps an unmodeled key", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		existing := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.test.clear</string>
+	<key>Program</key>
+	<string>/usr/bin/true</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>ExitTimeOut</key>
+	<integer>30</integer>
+</dict>
+</plist>`
+		path := filepath.Join(tmpDir, "com.test.clear.plist")
+		if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		m := &UserManager{launchAgentsPath: tmpDir}
+		// On Demand: RunAtLoad unset, KeepAlive disabled.
+		cfg := &ServiceConfig{Label: "com.test.clear", Program: "/usr/bin/true"}
+		if err := m.Update("com.test.clear", cfg); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		got, err := readPlistMap(path)
+		if err != nil {
+			t.Fatalf("read written plist: %v", err)
+		}
+		if _, ok := got["RunAtLoad"]; ok {
+			t.Errorf("RunAtLoad must be removed when config is On Demand, got %v", got["RunAtLoad"])
+		}
+		if toInt(got["ExitTimeOut"]) != 30 {
+			t.Errorf("ExitTimeOut = %v, want 30 (unmodeled key must be preserved)", got["ExitTimeOut"])
+		}
+	})
+
+	t.Run("preserves unmodeled nested dict and array structures", func(t *testing.T) {
+		// Covers the spec scenario "Unmodeled nested structures round-trip
+		// unchanged": a MachServices dict and a WatchPaths array survive Update
+		// with their structure and values intact.
+		tmpDir := t.TempDir()
+		existing := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.test.nested</string>
+	<key>Program</key>
+	<string>/usr/bin/old</string>
+	<key>MachServices</key>
+	<dict>
+		<key>com.test.nested.svc</key>
+		<true/>
+	</dict>
+	<key>WatchPaths</key>
+	<array>
+		<string>/tmp/watch1</string>
+		<string>/tmp/watch2</string>
+	</array>
+</dict>
+</plist>`
+		path := filepath.Join(tmpDir, "com.test.nested.plist")
+		if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		m := &UserManager{launchAgentsPath: tmpDir}
+		cfg := &ServiceConfig{Label: "com.test.nested", Program: "/usr/bin/new"}
+		if err := m.Update("com.test.nested", cfg); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		got, err := readPlistMap(path)
+		if err != nil {
+			t.Fatalf("read written plist: %v", err)
+		}
+		ms, ok := got["MachServices"].(map[string]any)
+		if !ok {
+			t.Fatalf("MachServices = %v (%T), want nested dict", got["MachServices"], got["MachServices"])
+		}
+		if ms["com.test.nested.svc"] != true {
+			t.Errorf("MachServices[com.test.nested.svc] = %v, want true", ms["com.test.nested.svc"])
+		}
+		wp, ok := got["WatchPaths"].([]any)
+		if !ok {
+			t.Fatalf("WatchPaths = %v (%T), want array", got["WatchPaths"], got["WatchPaths"])
+		}
+		if len(wp) != 2 || wp[0] != "/tmp/watch1" || wp[1] != "/tmp/watch2" {
+			t.Errorf("WatchPaths = %v, want [/tmp/watch1 /tmp/watch2]", wp)
+		}
+		if got["Program"] != "/usr/bin/new" {
+			t.Errorf("Program = %v, want /usr/bin/new", got["Program"])
+		}
+	})
+
+	t.Run("degrades to a fresh write when the existing plist is corrupt", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		path := filepath.Join(tmpDir, "com.test.corrupt.plist")
+		if err := os.WriteFile(path, []byte("this is not a plist"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		m := &UserManager{launchAgentsPath: tmpDir}
+		cfg := &ServiceConfig{Label: "com.test.corrupt", Program: "/usr/bin/true"}
+		if err := m.Update("com.test.corrupt", cfg); err != nil {
+			t.Fatalf("Update on corrupt plist should degrade, not fail: %v", err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read written plist: %v", err)
+		}
+		// The written content must equal a pure BuildPlistDict write. Compute
+		// the expected bytes in-memory via encodeDict (the same path
+		// writePlistDict uses) rather than writing a throwaway file.
+		want, err := encodeDict(BuildPlistDict(cfg, true))
+		if err != nil {
+			t.Fatalf("encode expected: %v", err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Errorf("degraded write must equal pure BuildPlistDict output\n got: %s\nwant: %s", got, want)
+		}
+	})
+}
+
+// toInt coerces a plist-decoded integer to int for test assertions.
+// howett.net/plist decodes <integer> values as uint64 when non-negative and
+// int64 when negative, so those are the only two cases that occur in practice;
+// an unexpected type yields -1 so the assertion fails loudly.
+func toInt(v any) int {
+	switch n := v.(type) {
+	case uint64:
+		return int(n)
+	case int64:
+		return int(n)
+	}
+	return -1
 }
