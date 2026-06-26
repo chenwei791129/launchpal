@@ -16,6 +16,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 📅 Cron-style range (`9-17`) and enumeration (`1,3,5`) syntax with automatic expansion
 - 🌐 Configure environment variables for services
 - ✏️ Edit existing service configurations
+- 🧬 Preserve advanced launchd keys on edit — keys LaunchPal has no UI for (e.g. `ProcessType`, `Nice`, `MachServices`, `Sockets`, resource limits) are kept verbatim when you update a service, instead of being dropped
 - 🔍 Browse system services (read-only) with heuristic status detection (no elevation required); ambiguous matches are flagged with an info icon
 - 🔐 **Admin Mode** — manage `/Library/LaunchDaemons` system services with a single authorization per session (no persistent root process; helper exits when LaunchPal does)
 - 📄 Inspect plist files with syntax highlighting
@@ -115,6 +116,8 @@ LaunchPal can manage system services under `/Library/LaunchDaemons` via an optio
 - System services (`/Library/LaunchDaemons`) require Admin Mode; authorization is prompted **once per LaunchPal session** and not cached across sessions (by design — no persistent root daemon).
 - Apple system services (`/System/Library/LaunchDaemons`) are always read-only.
 - Some system services may require Full Disk Access permission to view.
+- Editing a system daemon requires LaunchPal to read its existing plist to preserve advanced (unmodeled) keys; without Full Disk Access that read fails and the edit falls back to writing only the keys shown in the form.
+- A `Disabled` key in a service plist is preserved on edit (LaunchPal does not model it), so editing a disabled service keeps it disabled. There is no in-app control to clear `Disabled`; use `launchctl enable` to re-enable such a service.
 
 ## License
 

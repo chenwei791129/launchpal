@@ -183,6 +183,14 @@ The `Service` struct carries a `StatusConfidence string` (`verified` / `unverifi
 - Binary plists are converted to XML via `plutil` for display.
 - The Summary page shows the original format.
 
+## Update Preserves Unmodeled Plist Keys
+
+- On **Update** (not Create), both `UserManager.Update` and `SystemManager.Update` perform read-merge-write: the existing on-disk plist is read into a `map[string]any` (`readPlistMap` in `plist_encode.go`), and keys LaunchPal does not model (`ProcessType`, `Nice`, `MachServices`, `Sockets`, resource limits, `ExitTimeOut`, …) are preserved verbatim. Modeled keys stay form-authoritative.
+- The merge (`mergeUnmodeledKeys`) removes keys using the full `modeledPlistKeys` set — the single source of truth listing every key `BuildPlistDict` can emit (guarded by `TestModeledPlistKeys`). This is why clearing a key (e.g. `Run at Load` → `On Demand`) or toggling `StartInterval` ↔ `StartCalendarInterval` strips the stale key instead of inheriting the old value back from disk.
+- Encoding is shared via `writePlistDict` (user) / `encodeDict` (system) so Create passes a fresh dict and Update passes the merged dict.
+- If the existing plist cannot be read or parsed (e.g. a system daemon plist unreadable without Full Disk Access, or a corrupt file), the merge is skipped and Update degrades to a fresh `BuildPlistDict`-only write rather than failing. The system-domain read happens in the GUI process; the degradation point is annotated in `SystemManager.Update`.
+- Because `Disabled` is unmodeled, it is preserved like any other advanced key — editing a disabled service keeps it disabled, and there is no UI control to clear it (this is intended; re-enable via `launchctl enable`). This was a deliberate decision over the legacy "edit silently re-enables" behavior.
+
 ## Log ANSI Color Rendering
 
 - `ServiceLogs.vue` renders log content via `v-html` bound to a `renderedLogs` computed, which runs the raw log string through `frontend/app/utils/ansiToHtml.ts` (a hand-written, dependency-free SGR parser) — this is the single controlled `v-html` XSS surface for all three service types.
