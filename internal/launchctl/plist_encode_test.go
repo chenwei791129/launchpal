@@ -157,6 +157,117 @@ func TestBuildPlistDict_ThrottleInterval(t *testing.T) {
 	})
 }
 
+// TestModeledPlistKeys asserts the completeness invariant from the spec
+// scenario "Modeled key set covers every encoder-emitted key": every key
+// BuildPlistDict can emit must be a member of modeledPlistKeys, so the merge
+// removal set can never leave a stale modeled key behind. StartInterval and
+// StartCalendarInterval are mutually exclusive within a single config, so two
+// maximal configs (one of each schedule kind) are unioned to exercise every
+// emittable key.
+func TestModeledPlistKeys(t *testing.T) {
+	throttle := 10
+	interval := 30
+	minute := 0
+	maximal := func(sched *ScheduleConfig) *ServiceConfig {
+		return &ServiceConfig{
+			Label:            "com.example",
+			Program:          "/usr/bin/true",
+			Arguments:        []string{"/usr/bin/true", "-x"},
+			RunAtLoad:        true,
+			KeepAlive:        KeepAliveConfig{Enabled: true, Mode: KeepAliveModeBoolean},
+			ThrottleInterval: &throttle,
+			WorkingDir:       "/tmp",
+			StdoutPath:       "/tmp/out.log",
+			StderrPath:       "/tmp/err.log",
+			WakeSystem:       true,
+			Environment:      map[string]string{"FOO": "bar"},
+			Schedule:         sched,
+		}
+	}
+	configs := []*ServiceConfig{
+		maximal(&ScheduleConfig{Interval: &interval}),
+		maximal(&ScheduleConfig{Schedules: []CalendarEntry{{Minute: &minute}}}),
+	}
+
+	emitted := map[string]struct{}{}
+	for _, cfg := range configs {
+		for k := range BuildPlistDict(cfg, false) {
+			emitted[k] = struct{}{}
+		}
+	}
+
+	// Forward: every emitted key must be in the set, or the merge removal set
+	// would fail to strip a stale modeled key.
+	for k := range emitted {
+		if !modeledPlistKeys[k] {
+			t.Errorf("BuildPlistDict emits key %q that is not in modeledPlistKeys; the merge removal set would not strip it", k)
+		}
+	}
+
+	// Reverse: every set member must be emitted by the maximal fixtures, or
+	// the set carries a stale entry BuildPlistDict no longer produces — which
+	// would make the merge strip a now-unmodeled key from a user's existing
+	// plist on every Update. The two mutually-exclusive schedule keys are both
+	// emitted across the two fixtures, so the union covers them.
+	for k := range modeledPlistKeys {
+		if _, ok := emitted[k]; !ok {
+			t.Errorf("modeledPlistKeys contains %q that BuildPlistDict never emits; a stale entry makes the merge drop a now-unmodeled key", k)
+		}
+	}
+}
+
+// TestMergeUnmodeledKeys covers the three merge behaviors from task 1.2:
+// (a) an unmodeled key is preserved, (b) a modeled key is overwritten by the
+// modeled dict, and (c) a modeled key present only in existing is removed
+// because the modeled dict does not set it. It also asserts neither input map
+// is mutated.
+func TestMergeUnmodeledKeys(t *testing.T) {
+	modeled := map[string]any{
+		"Label":   "com.example",
+		"Program": "/usr/bin/new",
+	}
+	existing := map[string]any{
+		"Label":       "com.example",
+		"Program":     "/usr/bin/old",
+		"ProcessType": "Background", // unmodeled → preserved
+		"RunAtLoad":   true,         // modeled, absent from modeled dict → removed
+	}
+
+	got := mergeUnmodeledKeys(modeled, existing)
+
+	// (a) unmodeled key preserved
+	if got["ProcessType"] != "Background" {
+		t.Errorf("ProcessType = %v, want Background (unmodeled key must be preserved)", got["ProcessType"])
+	}
+	// (b) modeled key overridden by the modeled dict
+	if got["Program"] != "/usr/bin/new" {
+		t.Errorf("Program = %v, want /usr/bin/new (modeled dict is authoritative)", got["Program"])
+	}
+	// (c) modeled key present only in existing is removed
+	if _, ok := got["RunAtLoad"]; ok {
+		t.Errorf("RunAtLoad should be removed when the modeled dict does not set it, got %v", got["RunAtLoad"])
+	}
+
+	// Inputs must not be mutated.
+	if _, ok := existing["Program"]; !ok || existing["Program"] != "/usr/bin/old" {
+		t.Errorf("existing was mutated: Program = %v", existing["Program"])
+	}
+	if len(modeled) != 2 {
+		t.Errorf("modeled was mutated: %v", modeled)
+	}
+}
+
+// TestReadPlistMap covers readPlistMap's own contract: a missing or unreadable
+// file must return an error so callers can degrade to a fresh write. The
+// happy-path preservation of unmodeled keys is exercised end-to-end by
+// TestUserManagerUpdatePreserve / TestSystemManagerUpdatePreserve; re-asserting
+// it here would only re-test howett.net/plist's decoding rather than our code.
+func TestReadPlistMap(t *testing.T) {
+	if _, err := readPlistMap(filepath.Join(t.TempDir(), "does-not-exist.plist")); err == nil {
+		t.Errorf("readPlistMap on a nonexistent path = nil error, want an error so callers can degrade")
+	}
+}
+
 // TestKeepAlive_RoundTrip reads a plist whose KeepAlive is a dictionary with a
 // ThrottleInterval, then re-encodes via BuildPlistDict and confirms the keys
 // survive (Task 1.5 verification).

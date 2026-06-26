@@ -397,6 +397,81 @@ func TestSystemManager_WriteOperationsWithAdminModeEnabled(t *testing.T) {
 	})
 }
 
+// TestSystemManagerUpdatePreserve covers task 4.1: a system-domain Update
+// reads the existing plist in the GUI process and preserves unmodeled keys in
+// the bytes handed to the privileged helper, and degrades to a fresh write
+// when the existing plist cannot be read.
+func TestSystemManagerUpdatePreserve(t *testing.T) {
+	t.Run("preserves an unmodeled key in the bytes sent to the helper", func(t *testing.T) {
+		tmp := t.TempDir()
+		existing := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.example.sysdaemon</string>
+  <key>Program</key><string>/usr/bin/true</string>
+  <key>ProcessType</key><string>Standard</string>
+</dict></plist>`
+		path := filepath.Join(tmp, "com.example.sysdaemon.plist")
+		if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+
+		cfg := &ServiceConfig{Label: "com.example.sysdaemon", Program: "/usr/bin/changed"}
+		if err := m.Update("com.example.sysdaemon", cfg); err != nil {
+			t.Fatalf("Update: %v", err)
+		}
+
+		body := string(fake.lastWriteData)
+		if !strings.Contains(body, "<key>ProcessType</key>") || !strings.Contains(body, "<string>Standard</string>") {
+			t.Errorf("written bytes dropped the unmodeled ProcessType key:\n%s", body)
+		}
+		if !strings.Contains(body, "<string>/usr/bin/changed</string>") {
+			t.Errorf("written bytes missing the updated Program:\n%s", body)
+		}
+		// Bootout must fire with the OLD label resolved from the existing plist,
+		// and WritePlist must follow it. (Encode happens before Bootout in the
+		// implementation so a failed encode never strips a running daemon; the
+		// fake cannot observe encode, but the Bootout→WritePlist order and the
+		// resolved label are the observable half of that contract.)
+		want := []string{"Bootout:com.example.sysdaemon", "WritePlist:" + path}
+		if got := fake.calls(); strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("calls = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("degrades to a fresh write when the existing plist is unreadable", func(t *testing.T) {
+		tmp := t.TempDir() // empty: the daemon plist does not exist on disk
+		m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+		fake := &fakeAdminClient{}
+		m.SetAdminClient(fake)
+
+		cfg := &ServiceConfig{Label: "com.example.missing", Program: "/usr/bin/true"}
+		if err := m.Update("com.example.missing", cfg); err != nil {
+			t.Fatalf("Update should degrade, not fail: %v", err)
+		}
+
+		want, err := encodePlist(cfg)
+		if err != nil {
+			t.Fatalf("encode expected: %v", err)
+		}
+		if !slices.Equal(fake.lastWriteData, want) {
+			t.Errorf("degraded write must equal pure BuildPlistDict output\n got: %s\nwant: %s", fake.lastWriteData, want)
+		}
+		// When the existing plist is unreadable, oldLabel stays "" and Bootout
+		// MUST be skipped — the GUI must never ask the helper to boot out a
+		// label it could not actually read from disk.
+		for _, call := range fake.calls() {
+			if strings.HasPrefix(call, "Bootout:") {
+				t.Errorf("Bootout must be skipped on the degrade path, got call %q", call)
+			}
+		}
+	})
+}
+
 func TestSystemManager_DeleteWithOptions(t *testing.T) {
 	tmp := t.TempDir()
 	const label = "com.example.logged"

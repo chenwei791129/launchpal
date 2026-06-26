@@ -1,7 +1,6 @@
 package launchctl
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -414,8 +413,17 @@ func (m *UserManager) Update(name string, config *ServiceConfig) error {
 		return err
 	}
 
-	// Write updated plist
-	if err := m.writePlist(plistPath, config); err != nil {
+	// Preserve keys LaunchPal does not model: read the existing plist and
+	// merge so unmodeled keys (ProcessType, Nice, …) survive while modeled
+	// keys stay form-authoritative. If the existing plist cannot be read or
+	// parsed (e.g. corrupt file), degrade to a fresh write rather than
+	// failing the Update.
+	modeled := BuildPlistDict(config, true)
+	if existing, err := readPlistMap(plistPath); err == nil {
+		modeled = mergeUnmodeledKeys(modeled, existing)
+	}
+
+	if err := m.writePlistDict(plistPath, modeled); err != nil {
 		return err
 	}
 
@@ -588,19 +596,22 @@ func expandTilde(path string) string {
 
 // writePlist writes a ServiceConfig to a plist file.
 func (m *UserManager) writePlist(path string, config *ServiceConfig) error {
-	pd := BuildPlistDict(config, true)
+	return m.writePlistDict(path, BuildPlistDict(config, true))
+}
 
-	var buf bytes.Buffer
-	encoder := plist.NewEncoder(&buf)
-	encoder.Indent("\t")
-	if err := encoder.Encode(pd); err != nil {
-		return fmt.Errorf("failed to encode plist: %w", err)
+// writePlistDict encodes pd as an indented XML plist (via the shared
+// encodeDict so user and system domains never diverge in the bytes they
+// write) and writes it to path with mode 0644. Split out from writePlist so
+// Update can pass a dict already merged with the existing plist's unmodeled
+// keys, while Create keeps passing a freshly built dict.
+func (m *UserManager) writePlistDict(path string, pd map[string]any) error {
+	data, err := encodeDict(pd)
+	if err != nil {
+		return err
 	}
-
-	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write plist file: %w", err)
 	}
-
 	return nil
 }
 

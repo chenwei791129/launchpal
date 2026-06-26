@@ -263,15 +263,32 @@ func (m *SystemManager) Update(name string, config *ServiceConfig) error {
 		return err
 	}
 	plistPath := filepath.Join(m.basePath, name+".plist")
-	data, err := encodePlist(config)
+	ctx := context.Background()
+	// Read the existing plist once, in the GUI process: it supplies both the
+	// unmodeled keys to preserve and the old label for Bootout. Modeled keys
+	// stay form-authoritative. When the GUI lacks Full Disk Access it cannot
+	// read the existing system plist, so readPlistMap fails and we degrade to a
+	// fresh write — and skip Bootout, since launchd picks up the new plist on
+	// the next Start.
+	modeled := BuildPlistDict(config, false)
+	var oldLabel string
+	if existing, rerr := readPlistMap(plistPath); rerr == nil {
+		modeled = mergeUnmodeledKeys(modeled, existing)
+		if label, ok := existing["Label"].(string); ok {
+			oldLabel = label
+		}
+	}
+	// Encode before Bootout so a failed encode leaves the running daemon
+	// untouched rather than booted out with a stale plist still on disk.
+	data, err := encodeDict(modeled)
 	if err != nil {
 		return err
 	}
-	ctx := context.Background()
-	// Resolve the old label from disk before we overwrite; Bootout is a
-	// best-effort step so an error (e.g. "not bootstrapped") is OK.
-	if svc, getErr := m.Get(name); getErr == nil && svc.Label != "" {
-		_ = c.Bootout(ctx, svc.Label)
+	// Bootout so launchd drops its in-memory config; writing the plist alone
+	// leaves it running the previous definition forever. Best-effort: a "not
+	// bootstrapped" error is fine.
+	if oldLabel != "" {
+		_ = c.Bootout(ctx, oldLabel)
 	}
 	if err := c.WritePlist(ctx, plistPath, data); err != nil {
 		return err
@@ -389,7 +406,13 @@ func (m *SystemManager) DeleteWithOptions(name string, opts DeleteServiceOptions
 // logic with UserManager; the expandPaths=false argument keeps paths
 // verbatim because a root-written daemon should not resolve `~`.
 func encodePlist(config *ServiceConfig) ([]byte, error) {
-	pd := BuildPlistDict(config, false)
+	return encodeDict(BuildPlistDict(config, false))
+}
+
+// encodeDict marshals an already-built plist dict into indented XML bytes.
+// Split out from encodePlist so Update can encode a dict that has already been
+// merged with the existing plist's unmodeled keys.
+func encodeDict(pd map[string]any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := plist.NewEncoder(&buf)
 	enc.Indent("\t")
