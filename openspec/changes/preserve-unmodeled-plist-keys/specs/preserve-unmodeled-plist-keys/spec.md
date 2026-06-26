@@ -38,13 +38,14 @@ The system SHALL treat every modeled key as authoritative from the supplied conf
 
 ### Requirement: Graceful degradation when the existing plist is unavailable
 
-When the existing plist cannot be read or cannot be parsed (for example a system daemon plist that is unreadable without Full Disk Access, or a corrupt file), the system SHALL skip the merge and write the plist solely from the supplied configuration. The system SHALL NOT fail the Update operation solely because the existing plist could not be read or parsed.
+When the existing plist cannot be read or cannot be parsed (for example a system daemon plist that is unreadable without Full Disk Access, or a corrupt file), the system SHALL skip the merge and write the plist solely from the supplied configuration. The system SHALL NOT fail the Update operation solely because the existing plist could not be read or parsed. On the system domain the reload (Bootout) step SHALL still run using the routing name as the label, so the updated plist takes effect rather than leaving launchd on its stale in-memory definition.
 
 #### Scenario: Unreadable existing plist degrades to a fresh write
 
 - **WHEN** Update is called and the existing plist cannot be read or parsed
 - **THEN** the written plist equals the output produced from the supplied configuration alone
 - **AND** the Update operation returns success
+- **AND** on the system domain the daemon is still booted out via the routing name before the new plist is written
 
 ### Requirement: Single source of truth for the modeled key set
 

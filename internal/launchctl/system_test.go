@@ -443,8 +443,8 @@ func TestSystemManagerUpdatePreserve(t *testing.T) {
 		}
 	})
 
-	t.Run("degrades to a fresh write when the existing plist is unreadable", func(t *testing.T) {
-		tmp := t.TempDir() // empty: the daemon plist does not exist on disk
+	t.Run("degrades to a fresh write but still boots out via the routing name", func(t *testing.T) {
+		tmp := t.TempDir() // empty: the daemon plist cannot be read (e.g. no Full Disk Access)
 		m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
 		fake := &fakeAdminClient{}
 		m.SetAdminClient(fake)
@@ -454,20 +454,23 @@ func TestSystemManagerUpdatePreserve(t *testing.T) {
 			t.Fatalf("Update should degrade, not fail: %v", err)
 		}
 
-		want, err := encodePlist(cfg)
+		freshWrite, err := encodePlist(cfg)
 		if err != nil {
 			t.Fatalf("encode expected: %v", err)
 		}
-		if !slices.Equal(fake.lastWriteData, want) {
-			t.Errorf("degraded write must equal pure BuildPlistDict output\n got: %s\nwant: %s", fake.lastWriteData, want)
+		if !slices.Equal(fake.lastWriteData, freshWrite) {
+			t.Errorf("degraded write must equal pure BuildPlistDict output\n got: %s\nwant: %s", fake.lastWriteData, freshWrite)
 		}
-		// When the existing plist is unreadable, oldLabel stays "" and Bootout
-		// MUST be skipped — the GUI must never ask the helper to boot out a
-		// label it could not actually read from disk.
-		for _, call := range fake.calls() {
-			if strings.HasPrefix(call, "Bootout:") {
-				t.Errorf("Bootout must be skipped on the degrade path, got call %q", call)
-			}
+		// Even when the existing plist is unreadable, Bootout MUST still fire,
+		// using the routing name as the label (Create writes <Label>.plist so
+		// name == label by construction). Skipping it would leave launchd
+		// running the old in-memory definition: Bootstrap fails on an
+		// already-loaded job and `kickstart -k` only restarts the stale job
+		// rather than re-reading the new plist. Bootout is best-effort, so a
+		// "not bootstrapped" error on a daemon that was never loaded is fine.
+		want := []string{"Bootout:com.example.missing", "WritePlist:" + filepath.Join(tmp, "com.example.missing.plist")}
+		if got := fake.calls(); strings.Join(got, "|") != strings.Join(want, "|") {
+			t.Errorf("calls = %v, want %v", got, want)
 		}
 	})
 }

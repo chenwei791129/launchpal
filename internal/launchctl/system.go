@@ -265,16 +265,20 @@ func (m *SystemManager) Update(name string, config *ServiceConfig) error {
 	plistPath := filepath.Join(m.basePath, name+".plist")
 	ctx := context.Background()
 	// Read the existing plist once, in the GUI process: it supplies both the
-	// unmodeled keys to preserve and the old label for Bootout. Modeled keys
-	// stay form-authoritative. When the GUI lacks Full Disk Access it cannot
-	// read the existing system plist, so readPlistMap fails and we degrade to a
-	// fresh write — and skip Bootout, since launchd picks up the new plist on
-	// the next Start.
+	// unmodeled keys to preserve and the label for Bootout. Modeled keys stay
+	// form-authoritative. When the GUI lacks Full Disk Access it cannot read
+	// the existing system plist, so readPlistMap fails and we degrade to a
+	// fresh write. Even then we still Bootout using the routing name, which
+	// equals the label by construction (Create writes <Label>.plist) — skipping
+	// it would leave launchd running the old in-memory definition, and the new
+	// plist on disk would never take effect until an explicit unload/reload or
+	// reboot (Bootstrap fails on an already-loaded job and `kickstart -k` only
+	// restarts the stale job rather than re-reading the plist).
 	modeled := BuildPlistDict(config, false)
-	var oldLabel string
+	oldLabel := name
 	if existing, rerr := readPlistMap(plistPath); rerr == nil {
 		modeled = mergeUnmodeledKeys(modeled, existing)
-		if label, ok := existing["Label"].(string); ok {
+		if label, ok := existing["Label"].(string); ok && label != "" {
 			oldLabel = label
 		}
 	}
@@ -286,7 +290,7 @@ func (m *SystemManager) Update(name string, config *ServiceConfig) error {
 	}
 	// Bootout so launchd drops its in-memory config; writing the plist alone
 	// leaves it running the previous definition forever. Best-effort: a "not
-	// bootstrapped" error is fine.
+	// bootstrapped" error (e.g. the daemon was never loaded) is fine.
 	if oldLabel != "" {
 		_ = c.Bootout(ctx, oldLabel)
 	}

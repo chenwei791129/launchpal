@@ -44,6 +44,8 @@ LaunchPal 的 service 寫入路徑集中在 `internal/launchctl`：`UserManager.
 
 `SystemManager.Update` 在 GUI 程序端呼叫 `readPlistMap(plistPath)`。LaunchPal GUI 既已為顯示而讀取 system plist，可讀到時即可合併；無 Full Disk Access 而讀不到時，`readPlistMap` 回傳 error，合併被跳過、走全新寫入。最終位元組仍由既有 `privhelper.WritePlist` 以 root 寫入並備份，helper 介面不變。**Alternative considered**：把 read-merge-write 整個下放到 helper 內原子完成 — 否決，範圍過大且偏離現行「GUI 讀取、helper 只寫位元組」的架構。
 
+降級時 Bootout 不可省略：`oldLabel` 預設為 routing name（Create 以 `<Label>.plist` 命名，故 name 即 label），讀得到既有 plist 才以其 `Label` 覆寫。若降級時跳過 Bootout，launchd 會繼續沿用記憶體中的舊定義——`Bootstrap` 對已載入的 job 會失敗，而 `kickstart -k` 只重啟已載入的 job、不重讀磁碟上的 plist，使用者的編輯因而永不生效（直到手動 unload/reload 或重開機）。Bootout 為 best-effort，對從未載入的 daemon 回 "not bootstrapped" 無害。`UserManager.Update` 不受影響：它開頭即無條件呼叫 `Stop(name)`，本就以 routing name bootout 而不依賴讀取 plist。
+
 ### Decision: writePlistDict and encodeDict shared encoding helpers
 
 把「dict → bytes / 寫檔」自 `writePlist`、`encodePlist` 抽出：user 端 `writePlistDict(path, pd)`、system 端 `encodeDict(pd) ([]byte, error)`，讓 Update 能傳入已合併的 dict，Create 維持傳 config。`BuildPlistDict` 的欄位對應邏輯不變。
@@ -71,7 +73,7 @@ LaunchPal 的 service 寫入路徑集中在 `internal/launchctl`：`UserManager.
 
 ## Risks / Trade-offs
 
-- [既有 binary system plist 在無 FDA 時讀不到 → 使用者以為保留卻被降級] → 已與使用者確認採降級；程式碼註解標明，必要時後續補 UI 提示。
+- [既有 binary system plist 在無 FDA 時讀不到 → 使用者以為保留卻被降級] → 已與使用者確認採降級；程式碼註解標明，必要時後續補 UI 提示。降級時仍以 routing name 執行 Bootout，確保編輯實際生效而非殘留舊的記憶體定義。
 - [`modeledPlistKeys` 與 `BuildPlistDict` 失同步 → 新建模鍵未被移除致舊值殘留] → 完整性測試強制同步。
 - [plist library 重編碼數值型別（如 uint64）造成格式漂移] → 未建模鍵以同一 library round-trip；round-trip 測試直接斷言鍵值。
 
