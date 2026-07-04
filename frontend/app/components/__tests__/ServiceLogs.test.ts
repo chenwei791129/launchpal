@@ -409,3 +409,295 @@ describe('ServiceLogs – confirm dialog', () => {
     wrapper.unmount()
   })
 })
+
+// Auto-refresh polling suites use fake timers. flushPromises() resolves via
+// setImmediate/setTimeout(0), which fake timers intercept, so these suites
+// drive the clock with vi.advanceTimersByTimeAsync (which also flushes the
+// pending microtasks) instead of flushPromises().
+const AUTO_REFRESH_INTERVAL_MS = 2000
+
+// Shared fake-timer lifecycle for every Auto-refresh suite. The useRealTimers()
+// teardown is mandatory: the outer afterEach only runs restoreAllMocks(), and
+// leaked fake timers would stall confirmClear's real setTimeout(2000).
+function useAutoRefreshFakeTimers() {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+}
+
+// Flush the microtask queue (mount loads, watchers) without advancing wall
+// time beyond the timers scheduled at the current instant.
+const settle = () => vi.advanceTimersByTimeAsync(0)
+
+function isChecked(wrapper: ReturnType<typeof mount>, testid: string) {
+  return (wrapper.find(`[data-testid="${testid}"]`).element as HTMLInputElement).checked
+}
+// installAppMock() replaces globalThis.window with a plain object, which strips
+// the Event constructors @vue/test-utils' setValue/trigger reach through
+// window. Flip the checkbox's checked state and dispatch a change event with
+// the top-level Event global (unaffected by the window swap) so Vue's v-model
+// updates the ref — jsdom's native .click() toggles .checked without firing
+// change for a checkbox, so the ref would otherwise stay stale.
+async function clickToggle(wrapper: ReturnType<typeof mount>, testid: string) {
+  const el = wrapper.find(`[data-testid="${testid}"]`).element as HTMLInputElement
+  el.checked = !el.checked
+  el.dispatchEvent(new Event('change'))
+  await settle()
+}
+
+describe('ServiceLogs – Auto-refresh toggle in the Logs tab', () => {
+  useAutoRefreshFakeTimers()
+
+  it('renders an unchecked Auto-refresh checkbox that does not poll by default', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    const toggle = wrapper.find('[data-testid="auto-refresh-toggle"]')
+    expect(toggle.exists()).toBe(true)
+    expect((toggle.element as HTMLInputElement).checked).toBe(false)
+    // Label text is English, matching the rest of the UI.
+    expect(wrapper.text()).toContain('Auto-refresh')
+    // Only the on-mount load happened; leaving the toggle off must not poll.
+    const callsAfterMount = mockedApp.GetLogs.mock.calls.length
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsAfterMount)
+    wrapper.unmount()
+  })
+
+  it('toggles independently: Auto-refresh on with Auto-scroll off does not force scroll', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    // Auto-scroll defaults to on; turn it off so a polled reload must not move
+    // the scroll position.
+    await clickToggle(wrapper, 'auto-scroll-toggle')
+    const container = wrapper.find('.overflow-auto').element as HTMLElement
+    Object.defineProperty(container, 'scrollHeight', { value: 500, configurable: true })
+    container.scrollTop = 42
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(true)
+    expect(isChecked(wrapper, 'auto-scroll-toggle')).toBe(false)
+    // Auto-scroll off: the reload left the user's scroll position untouched.
+    expect(container.scrollTop).toBe(42)
+    wrapper.unmount()
+  })
+
+  it('follow mode: Auto-refresh + Auto-scroll both on scrolls to bottom after each polled reload', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    const container = wrapper.find('.overflow-auto').element as HTMLElement
+    Object.defineProperty(container, 'scrollHeight', { value: 500, configurable: true })
+    container.scrollTop = 0
+    // Auto-scroll stays on (default); enable Auto-refresh.
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    expect(isChecked(wrapper, 'auto-scroll-toggle')).toBe(true)
+    expect(container.scrollTop).toBe(500)
+    wrapper.unmount()
+  })
+})
+
+describe('ServiceLogs – Periodic reload while Auto-refresh is enabled', () => {
+  useAutoRefreshFakeTimers()
+
+  it('reloads through the manual Refresh path once every 2 seconds', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    const callsAfterMount = mockedApp.GetLogs.mock.calls.length
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsAfterMount + 1)
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsAfterMount + 2)
+    wrapper.unmount()
+  })
+
+  it('skips a tick while a previous load is still in flight', async () => {
+    interface LogsResultShape { content: string, status: string, path: string }
+    // A load that never resolves keeps loading=true, so every tick must skip.
+    installAppMock({
+      GetLogs: vi.fn().mockReturnValue(new Promise<LogsResultShape>(() => {})),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    // The on-mount load is still pending (loading=true).
+    const callsWhilePending = mockedApp.GetLogs.mock.calls.length
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsWhilePending)
+    wrapper.unmount()
+  })
+
+  it('stops polling immediately when the checkbox is unchecked', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    const callsBeforeStop = mockedApp.GetLogs.mock.calls.length
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsBeforeStop)
+    wrapper.unmount()
+  })
+
+  it('clears the timer on unmount so no further loads fire', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    const callsBeforeUnmount = mockedApp.GetLogs.mock.calls.length
+    wrapper.unmount()
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsBeforeUnmount)
+  })
+
+  it('resets the toggle to unchecked and stops polling when serviceName changes', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.a', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    // Service-to-service navigation reuses the component (no remount).
+    await wrapper.setProps({ serviceName: 'com.user.b' })
+    await settle()
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(false)
+    const callsAfterNav = mockedApp.GetLogs.mock.calls.length
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsAfterNav)
+    wrapper.unmount()
+  })
+
+  it('keeps the toggle and continues polling the newly selected stream after a stdout→stderr switch', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockImplementation((_name: string, logType: string) =>
+        Promise.resolve({ content: `${logType} content`, status: 'ok', path: `/tmp/${logType}.log` }),
+      ),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    const stderrToggle = wrapper.findAll('button').find(b => b.text() === 'stderr')
+    expect(stderrToggle).toBeDefined()
+    ;(stderrToggle!.element as HTMLButtonElement).click()
+    await settle()
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(true)
+    mockedApp.GetLogs.mockClear()
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    expect(mockedApp.GetLogs).toHaveBeenCalled()
+    // Every polled load after the switch targets stderr.
+    for (const call of mockedApp.GetLogs.mock.calls) {
+      expect(call[1]).toBe('stderr')
+    }
+    wrapper.unmount()
+  })
+})
+
+describe('ServiceLogs – Auto-refresh disables itself on a non-ok load outcome', () => {
+  useAutoRefreshFakeTimers()
+
+  it('disables and stops polling when a polled load resolves not-found, showing the placeholder', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    // The next polled load resolves not-found.
+    mockedApp.GetLogs.mockResolvedValue({ content: '', status: 'not-found', path: '/var/log/foo/out.log' })
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(false)
+    expect(wrapper.text()).toContain('Log file does not exist yet')
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    // No automatic resume: further ticks do not reload.
+    const callsAfterDisable = mockedApp.GetLogs.mock.calls.length
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsAfterDisable)
+    wrapper.unmount()
+  })
+
+  it('disables and stops polling when a polled load rejects, showing the backend message', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    mockedApp.GetLogs.mockRejectedValue('permission denied reading log file: /var/log/foo/out.log')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(false)
+    expect(wrapper.find('.text-red-400').text()).toBe('permission denied reading log file: /var/log/foo/out.log')
+    const callsAfterDisable = mockedApp.GetLogs.mock.calls.length
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsAfterDisable)
+    wrapper.unmount()
+  })
+
+  it('disables when the manual Refresh button triggers a rejecting load', async () => {
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    mockedApp.GetLogs.mockRejectedValue(new Error('boom'))
+    ;(wrapper.find('button[title="Refresh logs"]').element as HTMLButtonElement).click()
+    await settle()
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(false)
+    const callsAfterDisable = mockedApp.GetLogs.mock.calls.length
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+    expect(mockedApp.GetLogs.mock.calls.length).toBe(callsAfterDisable)
+    wrapper.unmount()
+  })
+
+  it('disables when switching to a stream whose load resolves no-path, showing the placeholder', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockImplementation((_name: string, logType: string) =>
+        logType === 'stdout'
+          ? Promise.resolve({ content: 'stdout content', status: 'ok', path: '/tmp/out.log' })
+          : Promise.resolve({ content: '', status: 'no-path', path: '' }),
+      ),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.x', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    const stderrToggle = wrapper.findAll('button').find(b => b.text() === 'stderr')
+    expect(stderrToggle).toBeDefined()
+    ;(stderrToggle!.element as HTMLButtonElement).click()
+    await settle()
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(false)
+    expect(wrapper.text()).toContain('No stderr log path configured for this service')
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('disables when a polled load completes via the development fallback (no bindings)', async () => {
+    // Development fallback: window.go is absent entirely.
+    ;(globalThis as unknown as { window: object }).window = {}
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.dev', serviceType: 'user' },
+    })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(false)
+    wrapper.unmount()
+  })
+})

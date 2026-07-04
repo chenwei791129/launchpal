@@ -23,10 +23,23 @@
       </div>
 
       <div class="flex items-center gap-3">
+        <!-- Auto-refresh toggle: independent of Auto-scroll. When checked, the
+             current stream reloads every 2s through loadLogs. -->
+        <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
+          <input
+            v-model="autoRefresh"
+            data-testid="auto-refresh-toggle"
+            type="checkbox"
+            class="w-4 h-4 rounded border-gray-600 bg-surface-300 text-primary-600 focus:ring-primary-600 focus:ring-offset-0"
+          >
+          Auto-refresh
+        </label>
+
         <!-- Auto-scroll toggle -->
         <label class="flex items-center gap-2 text-sm text-gray-400 cursor-pointer">
           <input
             v-model="autoScroll"
+            data-testid="auto-scroll-toggle"
             type="checkbox"
             class="w-4 h-4 rounded border-gray-600 bg-surface-300 text-primary-600 focus:ring-primary-600 focus:ring-offset-0"
           >
@@ -179,6 +192,11 @@ const logs = ref<LogsResult | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const autoScroll = ref(true)
+// Auto-refresh is component-local and session-only (not persisted). While
+// checked, pollTimer reloads the current stream every 2s; see startPolling.
+const autoRefresh = ref(false)
+const AUTO_REFRESH_INTERVAL_MS = 2000
+let pollTimer: ReturnType<typeof setInterval> | null = null
 const logContainer = ref<HTMLElement | null>(null)
 
 // renderedLogs converts ANSI SGR escape sequences in the LogsResult content
@@ -213,6 +231,13 @@ async function loadLogs() {
   loading.value = true
   error.value = null
 
+  // Only a LogsResult with Status "ok" is worth continuing to poll. Structural
+  // outcomes (no-path / not-found), rejections, and the development fallback
+  // (no LogsResult at all) will never change on their own, so they turn
+  // Auto-refresh off below. This is the shared post-load path used by polling,
+  // the manual Refresh button, and stream switches, so all three behave alike.
+  let loadOk = false
+
   try {
     // System-domain services live under /Library/LaunchDaemons or
     // /System/Library/LaunchDaemons — UserManager.GetLogs can't resolve
@@ -227,6 +252,10 @@ async function loadLogs() {
       logs.value = null
     }
 
+    // Read the lowercase runtime key: the Wails runtime object carries
+    // lowercase json keys (Status → status).
+    loadOk = logs.value?.status === 'ok'
+
     if (autoScroll.value) {
       await nextTick()
       scrollToBottom()
@@ -239,6 +268,30 @@ async function loadLogs() {
     console.error('Failed to load logs:', e)
   } finally {
     loading.value = false
+  }
+
+  // Auto-disable on any non-ok outcome. Setting autoRefresh false triggers the
+  // watcher below, which clears the interval — there is no automatic resume;
+  // the user must re-check the box. The rendered feedback (placeholder / error)
+  // is unchanged: this adds no error surface of its own.
+  if (autoRefresh.value && !loadOk) {
+    autoRefresh.value = false
+  }
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(() => {
+    // Skip this tick if a load is still in flight; don't queue or overlap.
+    if (loading.value) return
+    loadLogs()
+  }, AUTO_REFRESH_INTERVAL_MS)
+}
+
+function stopPolling() {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -353,10 +406,26 @@ async function confirmClear() {
 watch(logType, () => {
   // Drop the previous stream's result before fetching so the in-flight
   // switch shows the loading branch instead of the other stream's stale
-  // content or placeholder.
+  // content or placeholder. Auto-refresh state is intentionally preserved
+  // across a stream switch; loadLogs auto-disables it if the new stream is
+  // non-ok.
   logs.value = null
   loadLogs()
   loadLogClearStatus()
+})
+
+watch(autoRefresh, (enabled) => {
+  if (enabled) startPolling()
+  else stopPolling()
+})
+
+watch(() => props.serviceName, () => {
+  // Service-to-service navigation reuses this component without remounting
+  // (the detail page has no :key on ServiceLogs), so onBeforeUnmount won't
+  // fire. Auto-refresh is a choice about the previous service, so reset it and
+  // stop polling explicitly rather than silently carrying it to the new one.
+  autoRefresh.value = false
+  stopPolling()
 })
 
 onMounted(() => {
@@ -366,5 +435,6 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (clearSuccessTimeout) clearTimeout(clearSuccessTimeout)
+  stopPolling()
 })
 </script>
