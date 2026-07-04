@@ -20,7 +20,7 @@ func NewAppleSystemManager() *AppleSystemManager {
 func (m *AppleSystemManager) List() ([]Service, error)             { return m.list() }
 func (m *AppleSystemManager) Get(name string) (*Service, error)    { return m.get(name) }
 func (m *AppleSystemManager) GetPlist(name string) (string, error) { return m.getPlist(name) }
-func (m *AppleSystemManager) GetLogs(name string, logType string) (string, error) {
+func (m *AppleSystemManager) GetLogs(name string, logType string) (LogsResult, error) {
 	return m.getLogs(name, logType)
 }
 

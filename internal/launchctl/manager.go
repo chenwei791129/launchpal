@@ -29,8 +29,12 @@ type Manager interface {
 	// GetPlist returns the raw plist content
 	GetPlist(name string) (string, error)
 
-	// GetLogs returns stdout or stderr log content
-	GetLogs(name string, logType string) (string, error)
+	// GetLogs returns stdout or stderr log content classified as a
+	// LogsResult. Structural states (no path configured, file not created
+	// yet) travel in LogsResult.Status with a nil error; only real
+	// failures (invalid log type, missing service, permission, I/O) use
+	// the error channel.
+	GetLogs(name string, logType string) (LogsResult, error)
 
 	// ClearLogs truncates the configured stdout or stderr log file for the
 	// given service to 0 bytes. The file's inode, owner, group, and mode

@@ -540,17 +540,9 @@ func (m *UserManager) GetPlistContent(name string) (*plistutil.Content, error) {
 	return content, nil
 }
 
-// GetLogs returns stdout or stderr log content
-func (m *UserManager) GetLogs(name string, logType string) (string, error) {
-	service, err := m.Get(name)
-	if err != nil {
-		return "", err
-	}
-	logPath, err := resolveLogPath(service, name, logType)
-	if err != nil {
-		return "", err
-	}
-	return readLogTail(expandTilde(logPath))
+// GetLogs returns stdout or stderr log content classified as a LogsResult.
+func (m *UserManager) GetLogs(name string, logType string) (LogsResult, error) {
+	return getServiceLogs(m.Get, name, logType, true)
 }
 
 // ClearLogs truncates the configured stdout or stderr log file for the

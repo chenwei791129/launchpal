@@ -34,7 +34,7 @@ export function GetCurrentSystemPlist(arg1:string):Promise<plistutil.Content>;
 
 export function GetLogClearStatus(arg1:string,arg2:string,arg3:string):Promise<launchctl.LogClearStatus>;
 
-export function GetLogs(arg1:string,arg2:string):Promise<string>;
+export function GetLogs(arg1:string,arg2:string):Promise<launchctl.LogsResult>;
 
 export function GetPlist(arg1:string):Promise<string>;
 
@@ -42,7 +42,7 @@ export function GetService(arg1:string):Promise<launchctl.Service>;
 
 export function GetSettings():Promise<settings.Settings>;
 
-export function GetSystemLogs(arg1:string,arg2:string,arg3:string):Promise<string>;
+export function GetSystemLogs(arg1:string,arg2:string,arg3:string):Promise<launchctl.LogsResult>;
 
 export function GetSystemPlist(arg1:string,arg2:string):Promise<string>;
 

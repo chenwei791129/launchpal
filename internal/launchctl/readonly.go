@@ -164,15 +164,9 @@ func (m *readOnlyManager) getLogClearStatus(name string, logType string) (LogCle
 	return logClearStatusFor(logPath), nil
 }
 
-// getLogs returns stdout or stderr log content
-func (m *readOnlyManager) getLogs(name string, logType string) (string, error) {
-	service, err := m.get(name)
-	if err != nil {
-		return "", err
-	}
-	logPath, err := resolveLogPath(service, name, logType)
-	if err != nil {
-		return "", err
-	}
-	return readLogTail(logPath)
+// getLogs returns stdout or stderr log content classified as a LogsResult.
+// The plist path is opened verbatim — system daemons run as root, so tilde
+// expansion is meaningless in this domain.
+func (m *readOnlyManager) getLogs(name string, logType string) (LogsResult, error) {
+	return getServiceLogs(m.get, name, logType, false)
 }

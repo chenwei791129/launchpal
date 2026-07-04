@@ -109,8 +109,8 @@ func (a *App) GetPlist(name string) (string, error) {
 	return a.manager.GetPlist(name)
 }
 
-// GetLogs returns log content
-func (a *App) GetLogs(name string, logType string) (string, error) {
+// GetLogs returns log content along with the log file status and path
+func (a *App) GetLogs(name string, logType string) (launchctl.LogsResult, error) {
 	return a.manager.GetLogs(name, logType)
 }
 
@@ -255,15 +255,16 @@ func (a *App) GetSystemPlist(name string, serviceType string) (string, error) {
 	}
 }
 
-// GetSystemLogs returns log content for system services
-func (a *App) GetSystemLogs(name string, serviceType string, logType string) (string, error) {
+// GetSystemLogs returns log content for system services along with the log
+// file status and path
+func (a *App) GetSystemLogs(name string, serviceType string, logType string) (launchctl.LogsResult, error) {
 	switch serviceType {
 	case launchctl.ServiceTypeSystem:
 		return a.systemManager.GetLogs(name, logType)
 	case launchctl.ServiceTypeAppleSystem:
 		return a.appleSystemMgr.GetLogs(name, logType)
 	default:
-		return "", fmt.Errorf("invalid service type: %s", serviceType)
+		return launchctl.LogsResult{}, fmt.Errorf("invalid service type: %s", serviceType)
 	}
 }
 

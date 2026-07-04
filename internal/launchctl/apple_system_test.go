@@ -241,32 +241,146 @@ func TestAppleSystemManager_GetLogs(t *testing.T) {
 </dict>
 </plist>`
 
+	// Plist whose StandardOutPath points at a never-created file
+	missingLog := filepath.Join(tmpDir, "missing.log")
+	plistMissing := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.apple.missing</string>
+	<key>Program</key>
+	<string>/usr/libexec/missing</string>
+	<key>StandardOutPath</key>
+	<string>` + missingLog + `</string>
+</dict>
+</plist>`
+
+	// Plist referencing an empty log file
+	emptyLog := filepath.Join(tmpDir, "empty.log")
+	if err := os.WriteFile(emptyLog, []byte(""), 0644); err != nil {
+		t.Fatalf("failed to write empty log file: %v", err)
+	}
+	plistEmpty := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.apple.empty</string>
+	<key>Program</key>
+	<string>/usr/libexec/empty</string>
+	<key>StandardOutPath</key>
+	<string>` + emptyLog + `</string>
+</dict>
+</plist>`
+
 	if err := os.WriteFile(filepath.Join(tmpDir, "com.apple.withlog.plist"), []byte(plistWithLog), 0644); err != nil {
 		t.Fatalf("failed to write plist: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, "com.apple.nolog.plist"), []byte(plistNoLog), 0644); err != nil {
 		t.Fatalf("failed to write plist: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.apple.missing.plist"), []byte(plistMissing), 0644); err != nil {
+		t.Fatalf("failed to write plist: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "com.apple.empty.plist"), []byte(plistEmpty), 0644); err != nil {
+		t.Fatalf("failed to write plist: %v", err)
+	}
 
 	m := &AppleSystemManager{readOnlyManager: readOnlyManager{basePath: tmpDir, serviceType: "apple-system"}}
 
 	t.Run("stdout returns content", func(t *testing.T) {
-		content, err := m.GetLogs("com.apple.withlog", "stdout")
+		got, err := m.GetLogs("com.apple.withlog", "stdout")
 		if err != nil {
 			t.Fatalf("GetLogs() error = %v", err)
 		}
-		if content != logContent {
-			t.Errorf("GetLogs() = %q, want %q", content, logContent)
+		if got.Status != "ok" {
+			t.Errorf("GetLogs() Status = %q, want %q", got.Status, "ok")
+		}
+		if got.Content != logContent {
+			t.Errorf("GetLogs() Content = %q, want %q", got.Content, logContent)
+		}
+		if got.Path != logPath {
+			t.Errorf("GetLogs() Path = %q, want %q", got.Path, logPath)
 		}
 	})
 
-	t.Run("no log path configured", func(t *testing.T) {
-		_, err := m.GetLogs("com.apple.nolog", "stdout")
-		if err == nil {
-			t.Fatal("GetLogs() expected error for service with no log path")
+	t.Run("no log path configured returns no-path status", func(t *testing.T) {
+		got, err := m.GetLogs("com.apple.nolog", "stdout")
+		if err != nil {
+			t.Fatalf("GetLogs() error = %v, want nil", err)
 		}
-		if !strings.Contains(err.Error(), "no stdout log path configured") {
-			t.Errorf("GetLogs() error = %q, want error containing 'no stdout log path configured'", err.Error())
+		if got.Status != "no-path" {
+			t.Errorf("GetLogs() Status = %q, want %q", got.Status, "no-path")
+		}
+		if got.Path != "" {
+			t.Errorf("GetLogs() Path = %q, want empty", got.Path)
+		}
+	})
+
+	t.Run("path configured but file missing returns not-found status", func(t *testing.T) {
+		got, err := m.GetLogs("com.apple.missing", "stdout")
+		if err != nil {
+			t.Fatalf("GetLogs() error = %v, want nil", err)
+		}
+		if got.Status != "not-found" {
+			t.Errorf("GetLogs() Status = %q, want %q", got.Status, "not-found")
+		}
+		if got.Path != missingLog {
+			t.Errorf("GetLogs() Path = %q, want %q", got.Path, missingLog)
+		}
+	})
+
+	t.Run("empty file returns ok status with empty content", func(t *testing.T) {
+		got, err := m.GetLogs("com.apple.empty", "stdout")
+		if err != nil {
+			t.Fatalf("GetLogs() error = %v, want nil", err)
+		}
+		if got.Status != "ok" {
+			t.Errorf("GetLogs() Status = %q, want %q", got.Status, "ok")
+		}
+		if got.Content != "" {
+			t.Errorf("GetLogs() Content = %q, want empty", got.Content)
+		}
+		if got.Path != emptyLog {
+			t.Errorf("GetLogs() Path = %q, want %q", got.Path, emptyLog)
+		}
+	})
+
+	t.Run("permission denied returns error with path", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("running as root; mode 000 does not block reads")
+		}
+
+		noPermLog := filepath.Join(tmpDir, "noperm.log")
+		if err := os.WriteFile(noPermLog, []byte("secret\n"), 0000); err != nil {
+			t.Fatalf("failed to write no-perm log file: %v", err)
+		}
+		plistNoPerm := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.apple.noperm</string>
+	<key>Program</key>
+	<string>/usr/libexec/noperm</string>
+	<key>StandardOutPath</key>
+	<string>` + noPermLog + `</string>
+</dict>
+</plist>`
+		if err := os.WriteFile(filepath.Join(tmpDir, "com.apple.noperm.plist"), []byte(plistNoPerm), 0644); err != nil {
+			t.Fatalf("failed to write plist: %v", err)
+		}
+
+		_, err := m.GetLogs("com.apple.noperm", "stdout")
+		if err == nil {
+			t.Fatal("GetLogs() expected error for permission-denied log file")
+		}
+		if !strings.Contains(err.Error(), "permission denied") {
+			t.Errorf("GetLogs() error = %q, want error containing 'permission denied'", err.Error())
+		}
+		if !strings.Contains(err.Error(), noPermLog) {
+			t.Errorf("GetLogs() error = %q, want it to contain path %q", err.Error(), noPermLog)
 		}
 	})
 

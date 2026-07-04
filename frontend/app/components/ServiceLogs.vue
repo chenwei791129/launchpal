@@ -101,20 +101,27 @@
         {{ error }}
       </div>
 
-      <div v-else-if="!logs" class="flex items-center justify-center h-full text-gray-500">
+      <!-- Branch on the raw content, not renderedLogs: content made of pure
+           ANSI/control sequences renders to an empty string but the file is
+           not empty, so it must still get the <pre>, not the placeholder.
+           renderedLogs comes only from ansiToHtml, which HTML-escapes all log
+           text and emits only a four-property style whitelist, so this v-html
+           is the single controlled XSS surface. -->
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <pre v-else-if="logs?.content" class="text-gray-300 whitespace-pre-wrap break-all" v-html="renderedLogs" />
+
+      <!-- Every non-content state — no-path / not-found / empty — shares this
+           neutral placeholder, never the red error branch: structural states
+           describe a normal condition of the service, not a failure. -->
+      <div v-else class="flex items-center justify-center h-full text-gray-500">
         <div class="text-center">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <p>No logs available for {{ logType }}</p>
+          <p>{{ placeholder.text }}</p>
+          <p v-if="placeholder.subtext" class="text-xs text-gray-600 mt-1">{{ placeholder.subtext }}</p>
         </div>
       </div>
-
-      <!-- renderedLogs comes only from ansiToHtml, which HTML-escapes all log
-           text and emits only a four-property style whitelist, so this v-html
-           is the single controlled XSS surface. -->
-      <!-- eslint-disable-next-line vue/no-v-html -->
-      <pre v-else class="text-gray-300 whitespace-pre-wrap break-all" v-html="renderedLogs" />
     </div>
 
     <!-- Clear Logs confirmation dialog. Reuses the surface from [name].vue's
@@ -156,7 +163,7 @@
 
 <script setup lang="ts">
 import { ansiToHtml } from '~/utils/ansiToHtml'
-import type { LogClearStatus } from '~/types/wails'
+import type { LogClearStatus, LogsResult } from '~/types/wails'
 
 const props = withDefaults(defineProps<{
   serviceName: string
@@ -168,16 +175,29 @@ const props = withDefaults(defineProps<{
 })
 
 const logType = ref<'stdout' | 'stderr'>('stdout')
-const logs = ref<string | null>(null)
+const logs = ref<LogsResult | null>(null)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const autoScroll = ref(true)
 const logContainer = ref<HTMLElement | null>(null)
 
-// renderedLogs converts ANSI SGR escape sequences in the raw log string into
-// styled HTML for v-html. Empty/null logs short-circuit to '' so the existing
-// "No logs available" placeholder branch still owns the empty state.
-const renderedLogs = computed(() => (logs.value ? ansiToHtml(logs.value) : ''))
+// renderedLogs converts ANSI SGR escape sequences in the LogsResult content
+// into styled HTML for v-html. Empty/absent content short-circuits to '' so
+// the placeholder branch still owns the empty state.
+const renderedLogs = computed(() => (logs.value?.content ? ansiToHtml(logs.value.content) : ''))
+
+// Placeholder wording for the non-content states. no-path / not-found come
+// from LogsResult.Status; everything else (empty content, development
+// fallback) keeps the generic "No logs available" text.
+const placeholder = computed(() => {
+  if (logs.value?.status === 'no-path') {
+    return { text: `No ${logType.value} log path configured for this service`, subtext: null }
+  }
+  if (logs.value?.status === 'not-found') {
+    return { text: 'Log file does not exist yet', subtext: logs.value.path }
+  }
+  return { text: `No logs available for ${logType.value}`, subtext: null }
+})
 
 // logClearStatus is null until the first GetLogClearStatus resolves; the
 // matrix below treats null as "pending" so the button stays disabled
@@ -212,7 +232,10 @@ async function loadLogs() {
       scrollToBottom()
     }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to load logs'
+    // Wails v2 rejects with the Go error as a plain string, so the string
+    // check must come first — `instanceof Error` alone would discard the
+    // backend message and always fall back to the generic text.
+    error.value = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to load logs'
     console.error('Failed to load logs:', e)
   } finally {
     loading.value = false
@@ -309,19 +332,29 @@ async function confirmClear() {
     // reads from. Status query runs in parallel because writability may
     // have flipped if mode changed.
     await Promise.all([loadLogs(), loadLogClearStatus()])
-    clearSuccess.value = true
-    if (clearSuccessTimeout) clearTimeout(clearSuccessTimeout)
-    clearSuccessTimeout = setTimeout(() => {
-      clearSuccess.value = false
-    }, 2000)
+    // loadLogs swallows its own failure into error.value; don't flash the
+    // green success indicator on top of a red reload error.
+    if (!error.value) {
+      clearSuccess.value = true
+      if (clearSuccessTimeout) clearTimeout(clearSuccessTimeout)
+      clearSuccessTimeout = setTimeout(() => {
+        clearSuccess.value = false
+      }, 2000)
+    }
   } catch (e) {
-    clearError.value = e instanceof Error ? e.message : 'Failed to clear logs'
+    // Same Wails string-first unwrap as loadLogs: Go errors arrive as
+    // plain strings, so instanceof Error alone would discard the message.
+    clearError.value = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to clear logs'
   } finally {
     clearing.value = false
   }
 }
 
 watch(logType, () => {
+  // Drop the previous stream's result before fetching so the in-flight
+  // switch shows the loading branch instead of the other stream's stale
+  // content or placeholder.
+  logs.value = null
   loadLogs()
   loadLogClearStatus()
 })

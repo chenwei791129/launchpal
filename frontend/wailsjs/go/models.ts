@@ -118,6 +118,22 @@ export namespace launchctl {
 	        this.userWritable = source["userWritable"];
 	    }
 	}
+	export class LogsResult {
+	    content: string;
+	    status: string;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.content = source["content"];
+	        this.status = source["status"];
+	        this.path = source["path"];
+	    }
+	}
 	export class ScheduleConfig {
 	    schedules?: CalendarEntry[];
 	    interval?: number;

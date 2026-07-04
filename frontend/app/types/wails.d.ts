@@ -63,6 +63,12 @@ export interface LogClearStatus {
   userWritable: boolean
 }
 
+export interface LogsResult {
+  content: string
+  status: 'ok' | 'no-path' | 'not-found'
+  path: string
+}
+
 export interface Backup {
   id: string
   service: string
@@ -114,7 +120,7 @@ declare global {
           RestartService(name: string): Promise<void>
           KickstartService(name: string): Promise<void>
           GetPlist(name: string): Promise<string>
-          GetLogs(name: string, logType: string): Promise<string>
+          GetLogs(name: string, logType: string): Promise<LogsResult>
           ClearLogs(name: string, logType: string): Promise<void>
           ClearSystemLogs(name: string, serviceType: string, logType: string): Promise<void>
           GetLogClearStatus(name: string, serviceType: string, logType: string): Promise<LogClearStatus>
@@ -125,7 +131,7 @@ declare global {
           ListAppleSystemServices(): Promise<Service[]>
           GetSystemService(name: string, serviceType: string): Promise<Service>
           GetSystemPlist(name: string, serviceType: string): Promise<string>
-          GetSystemLogs(name: string, serviceType: string, logType: string): Promise<string>
+          GetSystemLogs(name: string, serviceType: string, logType: string): Promise<LogsResult>
           ListAllBackups(): Promise<Backup[]>
           ListBackups(serviceName: string): Promise<Backup[]>
           GetBackupContent(serviceName: string, backupID: string): Promise<PlistContent>

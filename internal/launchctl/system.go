@@ -81,7 +81,7 @@ func (m *SystemManager) GetPlist(name string) (string, error) { return m.getPlis
 func (m *SystemManager) GetPlistContent(name string) (*plistutil.Content, error) {
 	return m.getPlistContent(name)
 }
-func (m *SystemManager) GetLogs(name string, logType string) (string, error) {
+func (m *SystemManager) GetLogs(name string, logType string) (LogsResult, error) {
 	return m.getLogs(name, logType)
 }
 func (m *SystemManager) GetLogClearStatus(name string, logType string) (LogClearStatus, error) {

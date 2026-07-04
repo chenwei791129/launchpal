@@ -94,6 +94,27 @@ const (
 	LogTypeStderr = "stderr"
 )
 
+// LogsResult status constants
+const (
+	LogStatusOK       = "ok"
+	LogStatusNoPath   = "no-path"
+	LogStatusNotFound = "not-found"
+)
+
+// LogsResult is the structured return value of Manager.GetLogs. Structural
+// states — no log path configured, log file not created yet — travel in
+// Status rather than the error channel: the Wails bridge can only carry
+// strings through Promise rejections, so the frontend must never classify
+// by matching error text. Content is meaningful only when Status is "ok".
+// Path is the path actually used to open the file (tilde-expanded in the
+// user domain, plist-literal in the system domains) and is empty when
+// Status is "no-path".
+type LogsResult struct {
+	Content string `json:"content"`
+	Status  string `json:"status"`
+	Path    string `json:"path"`
+}
+
 // LogClearStatus describes whether a service's log file can be truncated.
 // LogPath is the resolved (post-tilde-expansion) path or "" when the service
 // has no log path configured for the requested type. Exists is whether
@@ -150,18 +171,60 @@ func selectLogPath(service *Service, logType string) string {
 	return ""
 }
 
+// validateLogType returns the shared "invalid log type" error for values
+// outside {stdout, stderr}, so the wording stays in one place.
+func validateLogType(logType string) error {
+	if logType != LogTypeStdout && logType != LogTypeStderr {
+		return fmt.Errorf("invalid log type: %s (use 'stdout' or 'stderr')", logType)
+	}
+	return nil
+}
+
 // resolveLogPath validates logType and returns the configured path on
 // service. Returns the same "invalid log type" and "no log path configured"
-// errors used by every Get/Clear caller, so error wording stays in one place.
+// errors used by every Clear caller, so error wording stays in one place.
 func resolveLogPath(service *Service, serviceName, logType string) (string, error) {
-	if logType != LogTypeStdout && logType != LogTypeStderr {
-		return "", fmt.Errorf("invalid log type: %s (use 'stdout' or 'stderr')", logType)
+	if err := validateLogType(logType); err != nil {
+		return "", err
 	}
 	p := selectLogPath(service, logType)
 	if p == "" {
 		return "", fmt.Errorf("no %s log path configured for service %s", logType, serviceName)
 	}
 	return p, nil
+}
+
+// getServiceLogs is the Get-then-classify scaffolding shared by
+// UserManager.GetLogs and readOnlyManager.getLogs (mirroring
+// validateClearLogsArgs on the Clear path): an invalid logType stays on the
+// error channel, a missing path maps to Status "no-path", a missing file
+// maps to Status "not-found", and every other read failure (permission,
+// directory, I/O) stays on the error channel. expand applies tilde expansion
+// to the configured path (user domain); the system domains open the
+// plist-literal path verbatim.
+func getServiceLogs(get func(string) (*Service, error), name, logType string, expand bool) (LogsResult, error) {
+	service, err := get(name)
+	if err != nil {
+		return LogsResult{}, err
+	}
+	if err := validateLogType(logType); err != nil {
+		return LogsResult{}, err
+	}
+	logPath := selectLogPath(service, logType)
+	if logPath == "" {
+		return LogsResult{Status: LogStatusNoPath}, nil
+	}
+	if expand {
+		logPath = expandTilde(logPath)
+	}
+	content, err := readLogTail(logPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return LogsResult{Status: LogStatusNotFound, Path: logPath}, nil
+		}
+		return LogsResult{}, err
+	}
+	return LogsResult{Content: content, Status: LogStatusOK, Path: logPath}, nil
 }
 
 // validateClearLogsArgs is the Get-then-resolveLogPath scaffolding shared by
@@ -249,11 +312,14 @@ const maxLogSize = 1024 * 1024
 
 // readLogTail reads up to the last maxLogSize bytes of a file.
 // If the file is smaller than maxLogSize, it reads the entire file.
+// A nonexistent path returns the os.Open error unwrapped so callers can
+// classify the not-found state with os.IsNotExist instead of matching
+// error message text.
 func readLogTail(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("log file not found: %s", path)
+			return "", err
 		}
 		if os.IsPermission(err) {
 			return "", fmt.Errorf("permission denied reading log file: %s", path)

@@ -27,8 +27,8 @@ let mockedApp: MockedApp
 // don't bleed across cases.
 function installAppMock(overrides: Partial<MockedApp> = {}) {
   mockedApp = {
-    GetLogs: vi.fn().mockResolvedValue('user log content'),
-    GetSystemLogs: vi.fn().mockResolvedValue('system log content'),
+    GetLogs: vi.fn().mockResolvedValue({ content: 'user log content', status: 'ok', path: '/tmp/user.log' }),
+    GetSystemLogs: vi.fn().mockResolvedValue({ content: 'system log content', status: 'ok', path: '/var/log/sys.log' }),
     GetLogClearStatus: vi.fn().mockResolvedValue({
       logPath: '/tmp/log.log',
       exists: true,
@@ -159,7 +159,7 @@ describe('ServiceLogs – disabled tooltips', () => {
 describe('ServiceLogs – ANSI color rendering', () => {
   it('renders ANSI colors as spans and drops the literal escape codes', async () => {
     installAppMock({
-      GetLogs: vi.fn().mockResolvedValue('\x1b[32mOK\x1b[0m booted'),
+      GetLogs: vi.fn().mockResolvedValue({ content: '\x1b[32mOK\x1b[0m booted', status: 'ok', path: '/tmp/log.log' }),
     })
     const wrapper = mount(ServiceLogs, {
       props: { serviceName: 'com.user.x', serviceType: 'user' },
@@ -176,7 +176,7 @@ describe('ServiceLogs – ANSI color rendering', () => {
 
   it('preserves the placeholder branch for an empty log', async () => {
     installAppMock({
-      GetLogs: vi.fn().mockResolvedValue(''),
+      GetLogs: vi.fn().mockResolvedValue({ content: '', status: 'ok', path: '/tmp/log.log' }),
     })
     const wrapper = mount(ServiceLogs, {
       props: { serviceName: 'com.user.empty', serviceType: 'user' },
@@ -188,9 +188,10 @@ describe('ServiceLogs – ANSI color rendering', () => {
   })
 
   it('keeps the loading branch while GetLogs is pending', async () => {
-    let resolveLogs!: (value: string) => void
+    interface LogsResultShape { content: string, status: string, path: string }
+    let resolveLogs!: (value: LogsResultShape) => void
     installAppMock({
-      GetLogs: vi.fn().mockReturnValue(new Promise<string>((resolve) => {
+      GetLogs: vi.fn().mockReturnValue(new Promise<LogsResultShape>((resolve) => {
         resolveLogs = resolve
       })),
     })
@@ -200,7 +201,7 @@ describe('ServiceLogs – ANSI color rendering', () => {
     await nextTick()
     expect(wrapper.find('pre').exists()).toBe(false)
     expect(wrapper.text()).toContain('Loading logs...')
-    resolveLogs('done')
+    resolveLogs({ content: 'done', status: 'ok', path: '/tmp/log.log' })
     await flushPromises()
     wrapper.unmount()
   })
@@ -215,6 +216,143 @@ describe('ServiceLogs – ANSI color rendering', () => {
     await flushPromises()
     expect(wrapper.find('pre').exists()).toBe(false)
     expect(wrapper.find('.text-red-400').text()).toBe('boom')
+    wrapper.unmount()
+  })
+})
+
+describe('ServiceLogs – log load result classification', () => {
+  it('renders the no-path placeholder without the red error branch', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockResolvedValue({ content: '', status: 'no-path', path: '' }),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.nopath', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('No stdout log path configured for this service')
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('renders the not-found placeholder with the path as secondary text', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockResolvedValue({ content: '', status: 'not-found', path: '/var/log/foo/out.log' }),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.missing', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Log file does not exist yet')
+    expect(wrapper.text()).toContain('/var/log/foo/out.log')
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps the existing placeholder for ok with empty content', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockResolvedValue({ content: '', status: 'ok', path: '/tmp/log.log' }),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.empty', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('No logs available for stdout')
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('renders ok content through the ANSI pipeline in the pre element', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockResolvedValue({ content: 'hello\n', status: 'ok', path: '/tmp/log.log' }),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.hello', serviceType: 'user' },
+    })
+    await flushPromises()
+    const pre = wrapper.find('pre')
+    expect(pre.exists()).toBe(true)
+    expect(pre.text()).toContain('hello')
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('falls back to the existing placeholder when no Wails bindings exist', async () => {
+    // Development fallback: window.go is absent entirely.
+    ;(globalThis as unknown as { window: object }).window = {}
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.dev', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('No logs available for stdout')
+    expect(wrapper.find('pre').exists()).toBe(false)
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('ServiceLogs – backend error passthrough', () => {
+  it('shows a string rejection from Wails verbatim', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockRejectedValue('permission denied reading log file: /var/log/foo/out.log'),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.denied', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.find('.text-red-400').text()).toBe('permission denied reading log file: /var/log/foo/out.log')
+    expect(wrapper.find('pre').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('shows the message of an Error rejection', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockRejectedValue(new Error('boom')),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.err', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.find('.text-red-400').text()).toBe('boom')
+    wrapper.unmount()
+  })
+
+  it('falls back to the generic text for a rejection that is neither string nor Error', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockRejectedValue({ code: 1 }),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.weird', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.find('.text-red-400').text()).toBe('Failed to load logs')
+    wrapper.unmount()
+  })
+
+  it('clears stale error state when switching to a logType that loads fine', async () => {
+    installAppMock({
+      GetLogs: vi.fn().mockImplementation((_name: string, logType: string) =>
+        logType === 'stdout'
+          ? Promise.reject('permission denied reading log file: /var/log/foo/out.log')
+          : Promise.resolve({ content: 'stderr content', status: 'ok', path: '/tmp/err.log' }),
+      ),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.switch', serviceType: 'user' },
+    })
+    await flushPromises()
+    expect(wrapper.find('.text-red-400').exists()).toBe(true)
+
+    const stderrToggle = wrapper.findAll('button').find(b => b.text() === 'stderr')
+    expect(stderrToggle).toBeDefined()
+    ;(stderrToggle!.element as HTMLButtonElement).click()
+    await flushPromises()
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    const pre = wrapper.find('pre')
+    expect(pre.exists()).toBe(true)
+    expect(pre.text()).toContain('stderr content')
     wrapper.unmount()
   })
 })
