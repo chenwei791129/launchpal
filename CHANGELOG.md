@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.20.0](https://github.com/chenwei791129/launchpal/compare/v1.19.0...v1.20.0) (2026-07-04)
+
+
+### Features
+
+* auto-refresh the Logs tab with a 2s polling toggle ([9eb5c27](https://github.com/chenwei791129/launchpal/commit/9eb5c2739cae066ddc31c41308f477ef7f43fdbe))
+* classify log load results and surface backend errors in Logs tab ([6b3b9f9](https://github.com/chenwei791129/launchpal/commit/6b3b9f93fc4a940fd8c01b5e754d4f71dcf99463))
+
+
+### Bug Fixes
+
+* discard superseded concurrent log loads in ServiceLogs ([a48bc8e](https://github.com/chenwei791129/launchpal/commit/a48bc8e7e7a8dfdf9f6e916c2224bab5e73f5f81))
+
 ## [1.19.0](https://github.com/chenwei791129/launchpal/compare/v1.18.0...v1.19.0) (2026-06-26)
 
 
