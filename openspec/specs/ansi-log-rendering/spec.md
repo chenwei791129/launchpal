@@ -248,61 +248,46 @@ tests:
 ---
 ### Requirement: Mount rendered output in ServiceLogs view
 
-The `ServiceLogs.vue` component SHALL replace its previous text-interpolated `<pre>{{ logs }}</pre>` log-content element with a `v-html`-bound `<pre>` element whose contents come from a `renderedLogs` computed value defined as `ansiToHtml(logs.value)` (or the empty string when `logs.value` is null). The CSS classes `text-gray-300`, `whitespace-pre-wrap`, `break-all`, `font-mono`, and `text-sm` SHALL remain on the `<pre>` element so that monospace, line-wrapping, and color base behavior are unchanged. The existing loading, error, and "No logs available" branches SHALL remain unchanged.
+The `ServiceLogs.vue` component SHALL render log content through a `v-html`-bound `<pre>` element whose contents come from a `renderedLogs` computed value defined as `ansiToHtml` applied to the log content string carried in the `LogsResult` returned by `GetLogs` / `GetSystemLogs` (or the empty string when no content is loaded). The CSS classes `text-gray-300`, `whitespace-pre-wrap`, `break-all`, `font-mono`, and `text-sm` SHALL remain on the `<pre>` element so that monospace, line-wrapping, and color base behavior are unchanged. The existing loading and error branches SHALL be preserved; the placeholder branch SHALL follow the `log-load-feedback` capability, which extends it with status-specific wording for the `no-path` and `not-found` states.
 
 #### Scenario: Logs containing ANSI colors render as colored spans
 
-- **WHEN** `GetLogs` returns the string `"\x1b[32mOK\x1b[0m booted"` and the Logs tab is opened
+- **WHEN** `GetLogs` resolves with Status "ok" and Content `"\x1b[32mOK\x1b[0m booted"` and the Logs tab is opened
 - **THEN** the `<pre>` element contains `<span style="color:#98c379">OK</span>` followed by ` booted`, and the literal characters `[32m` and `[0m` do not appear in the rendered DOM
 
 #### Scenario: Empty log preserves placeholder
 
-- **WHEN** `GetLogs` returns the empty string
+- **WHEN** `GetLogs` resolves with Status "ok" and empty Content
 - **THEN** the component renders the existing "No logs available for {logType}" placeholder branch and does not render the `<pre>` element
 
 #### Scenario: Existing loading state is unaffected
 
-- **WHEN** `loading` is true and `logs` is null
+- **WHEN** `loading` is true and no log content is loaded
 - **THEN** the component renders the existing spinner branch ("Loading logs..."), not the `<pre>` element
 
 #### Scenario: Existing error state is unaffected
 
-- **WHEN** `loadLogs` throws and `error.value` is set
+- **WHEN** the `GetLogs` promise rejects and `error.value` is set
 - **THEN** the component renders the existing red-text error branch and does not render the `<pre>` element
 
 <!-- @trace
-source: render-ansi-log-colors
-updated: 2026-06-01
+source: fix-log-error-classification
+updated: 2026-07-04
 code:
-  - frontend/app/utils/ansiToHtml.ts
-  - frontend/app/utils/launchPolicy.ts
-  - frontend/app/components/ServiceRow.vue
-  - internal/launchctl/plist_encode.go
-  - internal/launchctl/user.go
-  - frontend/app/components/LaunchPolicyForm.vue
-  - frontend/app/components/CreateServiceModal.vue
   - frontend/app/types/wails.d.ts
-  - frontend/app/components/ServiceLogs.vue
-  - internal/launchctl/keepalive.go
-  - frontend/app/utils/serviceToConfig.ts
-  - CHANGELOG.md
-  - internal/launchctl/types.go
-  - frontend/app/pages/services/[name].vue
-  - internal/launchctl/readonly.go
-  - frontend/app/components/ServiceSummary.vue
   - frontend/wailsjs/go/models.ts
+  - internal/launchctl/system.go
+  - internal/launchctl/types.go
+  - frontend/wailsjs/go/main/App.d.ts
+  - internal/launchctl/user.go
+  - app.go
+  - internal/launchctl/readonly.go
+  - frontend/app/components/ServiceLogs.vue
+  - internal/launchctl/apple_system.go
+  - internal/launchctl/manager.go
 tests:
-  - frontend/app/utils/__tests__/ansiToHtml.test.ts
-  - frontend/app/components/__tests__/CloneUserService.test.ts
-  - frontend/app/utils/__tests__/serviceToConfig.test.ts
-  - frontend/app/components/__tests__/LaunchPolicyForm.test.ts
-  - frontend/app/components/__tests__/ServiceRow.test.ts
-  - frontend/app/pages/services/__tests__/edit-launch-policy.test.ts
-  - frontend/app/components/__tests__/CreateServiceModal.test.ts
-  - internal/launchctl/user_test.go
+  - internal/launchctl/apple_system_test.go
+  - internal/launchctl/system_test.go
   - frontend/app/components/__tests__/ServiceLogs.test.ts
-  - internal/launchctl/plist_encode_test.go
-  - frontend/app/utils/__tests__/launchPolicy.test.ts
-  - frontend/app/components/__tests__/ServiceSummary.test.ts
-  - internal/launchctl/keepalive_test.go
+  - internal/launchctl/user_test.go
 -->

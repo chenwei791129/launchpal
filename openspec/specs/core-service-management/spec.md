@@ -242,24 +242,60 @@ The system SHALL return the raw file content of `~/Library/LaunchAgents/<name>.p
 
 The system SHALL read log files based on the service's configured `StandardOutPath` or `StandardErrorPath`.
 The system SHALL expand `~` in log paths to the user's home directory.
+GetLogs SHALL return a structured `LogsResult` value containing `Content` (log tail content), `Status` (one of `"ok"`, `"no-path"`, `"not-found"`), and `Path` (the resolved log path, empty when no path is configured).
+When no log path is configured for the requested type, GetLogs SHALL return `LogsResult` with `Status: "no-path"` and a nil error.
+When a log path is configured but the file does not exist, GetLogs SHALL return `LogsResult` with `Status: "not-found"`, the resolved path in `Path`, and a nil error.
+When the log file exists and is readable, GetLogs SHALL return `LogsResult` with `Status: "ok"`, the tail content in `Content`, and the resolved path in `Path`; an empty file yields `Status: "ok"` with empty `Content`.
 The system SHALL return an error for invalid log type (not "stdout" or "stderr").
-The system SHALL return an error when no log path is configured for the requested type.
-The system SHALL return an error when the log file does not exist.
+The system SHALL return an error when the service does not exist.
+The system SHALL return an error containing "permission denied" and the resolved path when the log file exists but is not readable.
+The system SHALL return an error (not a `Status` value) for any other read failure, such as a configured path that points to a directory.
+The classification of the not-found state SHALL be derived from the file-open result (such as `os.IsNotExist`), never from matching error message text.
 
 #### Scenario: Read stdout log
 
-- **WHEN** GetLogs is called with logType="stdout" for a service with StandardOutPath configured
-- **THEN** the content of the stdout log file is returned
+- **WHEN** GetLogs is called with logType="stdout" for a service with StandardOutPath configured and the file exists
+- **THEN** the system returns LogsResult with Status "ok" and the log file content in Content
 
 #### Scenario: No log path configured
 
 - **WHEN** GetLogs is called with logType="stdout" for a service with no StandardOutPath
-- **THEN** the system returns an error indicating no stdout log path is configured
+- **THEN** the system returns LogsResult with Status "no-path" and a nil error
+
+#### Scenario: Log file does not exist
+
+- **WHEN** GetLogs is called for a service whose configured log path points to a nonexistent file
+- **THEN** the system returns LogsResult with Status "not-found", the resolved path in Path, and a nil error
+
+#### Scenario: Log file not readable
+
+- **WHEN** GetLogs is called for a service whose configured log file exists but is not readable by the current process
+- **THEN** the system returns an error whose message contains "permission denied" and the resolved path
+
+#### Scenario: Empty log file
+
+- **WHEN** GetLogs is called for a service whose configured log file exists and is 0 bytes
+- **THEN** the system returns LogsResult with Status "ok" and empty Content
 
 #### Scenario: Invalid log type
 
 - **WHEN** GetLogs is called with logType="debug"
 - **THEN** the system returns an error indicating invalid log type
+
+#### Scenario: Log path points to a directory
+
+- **WHEN** GetLogs is called for a service whose configured log path points to a directory
+- **THEN** the system returns an error (not a LogsResult status)
+
+##### Example: status classification for a user service
+
+| StandardOutPath value        | File state          | Status      | Error                          |
+| ---------------------------- | ------------------- | ----------- | ------------------------------ |
+| (key absent)                 | —                   | `no-path`   | nil                            |
+| `~/Library/Logs/foo/out.log` | does not exist      | `not-found` | nil                            |
+| `~/Library/Logs/foo/out.log` | exists, 0 bytes     | `ok`        | nil                            |
+| `~/Library/Logs/foo/out.log` | exists, readable    | `ok`        | nil                            |
+| `~/Library/Logs/foo/out.log` | exists, mode 000    | —           | contains "permission denied"   |
 
 
 <!-- @trace
@@ -299,6 +335,29 @@ tests:
   - app_test.go
   - internal/launchctl/user_test.go
   - frontend/app/components/__tests__/ServiceLogs.test.ts
+-->
+
+
+<!-- @trace
+source: fix-log-error-classification
+updated: 2026-07-04
+code:
+  - frontend/app/types/wails.d.ts
+  - frontend/wailsjs/go/models.ts
+  - internal/launchctl/system.go
+  - internal/launchctl/types.go
+  - frontend/wailsjs/go/main/App.d.ts
+  - internal/launchctl/user.go
+  - app.go
+  - internal/launchctl/readonly.go
+  - frontend/app/components/ServiceLogs.vue
+  - internal/launchctl/apple_system.go
+  - internal/launchctl/manager.go
+tests:
+  - internal/launchctl/apple_system_test.go
+  - internal/launchctl/system_test.go
+  - frontend/app/components/__tests__/ServiceLogs.test.ts
+  - internal/launchctl/user_test.go
 -->
 
 ### Requirement: Backup creation
@@ -502,7 +561,7 @@ The user-domain implementation SHALL truncate directly without consulting any pr
 #### Scenario: Truncate user stdout log
 
 - **WHEN** `ClearLogs("com.example", "stdout")` is called for a user service whose stdout log file exists
-- **THEN** the file size becomes 0, the inode and mode are unchanged, and a subsequent `GetLogs` returns an empty string
+- **THEN** the file size becomes 0, the inode and mode are unchanged, and a subsequent `GetLogs` returns LogsResult with Status "ok" and empty Content
 
 #### Scenario: Invalid log type rejected
 
@@ -521,42 +580,25 @@ The user-domain implementation SHALL truncate directly without consulting any pr
 
 
 <!-- @trace
-source: clear-service-logs
-updated: 2026-05-03
+source: fix-log-error-classification
+updated: 2026-07-04
 code:
-  - internal/launchctl/system.go
-  - internal/launchctl/manager.go
-  - frontend/wailsjs/go/models.ts
-  - internal/privhelper/client.go
-  - frontend/wailsjs/go/main/App.js
-  - internal/launchctl/user.go
-  - frontend/vitest.setup.ts
   - frontend/app/types/wails.d.ts
-  - internal/launchctl/apple_system.go
-  - internal/launchctl/nofollow_other.go
-  - README.md
-  - app.go
-  - frontend/package.json.md5
-  - frontend/app/components/ServiceLogs.vue
-  - internal/launchctl/nofollow_darwin.go
-  - internal/launchctl/readonly.go
-  - .github/workflows/build.yml
-  - frontend/app/pages/services/[name].vue
+  - frontend/wailsjs/go/models.ts
+  - internal/launchctl/system.go
   - internal/launchctl/types.go
-  - internal/privhelper/protocol.go
   - frontend/wailsjs/go/main/App.d.ts
-  - internal/privhelper/handlers.go
-  - CHANGELOG.md
+  - internal/launchctl/user.go
+  - app.go
+  - internal/launchctl/readonly.go
+  - frontend/app/components/ServiceLogs.vue
+  - internal/launchctl/apple_system.go
+  - internal/launchctl/manager.go
 tests:
   - internal/launchctl/apple_system_test.go
   - internal/launchctl/system_test.go
-  - internal/launchctl/types_test.go
-  - internal/privhelper/handlers_test.go
-  - internal/privhelper/client_test.go
-  - internal/privhelper/protocol_test.go
-  - app_test.go
-  - internal/launchctl/user_test.go
   - frontend/app/components/__tests__/ServiceLogs.test.ts
+  - internal/launchctl/user_test.go
 -->
 
 ---
