@@ -188,7 +188,6 @@ describe('ServiceLogs – ANSI color rendering', () => {
   })
 
   it('keeps the loading branch while GetLogs is pending', async () => {
-    interface LogsResultShape { content: string, status: string, path: string }
     let resolveLogs!: (value: LogsResultShape) => void
     installAppMock({
       GetLogs: vi.fn().mockReturnValue(new Promise<LogsResultShape>((resolve) => {
@@ -448,6 +447,27 @@ async function clickToggle(wrapper: ReturnType<typeof mount>, testid: string) {
   await settle()
 }
 
+// A manually controlled promise so a test can hold two concurrent loadLogs
+// calls in flight and resolve/reject them in an arbitrary (out-of-order)
+// sequence — the core of exercising the request-sequencing guard.
+interface LogsResultShape { content: string, status: string, path: string }
+interface Deferred<T> { promise: Promise<T>, resolve: (v: T) => void, reject: (e: unknown) => void }
+function deferred<T>(): Deferred<T> {
+  let resolve!: (v: T) => void
+  let reject!: (e: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function clickStderr(wrapper: ReturnType<typeof mount>) {
+  const stderrToggle = wrapper.findAll('button').find(b => b.text() === 'stderr')
+  expect(stderrToggle).toBeDefined()
+  ;(stderrToggle!.element as HTMLButtonElement).click()
+}
+
 describe('ServiceLogs – Auto-refresh toggle in the Logs tab', () => {
   useAutoRefreshFakeTimers()
 
@@ -523,7 +543,6 @@ describe('ServiceLogs – Periodic reload while Auto-refresh is enabled', () => 
   })
 
   it('skips a tick while a previous load is still in flight', async () => {
-    interface LogsResultShape { content: string, status: string, path: string }
     // A load that never resolves keeps loading=true, so every tick must skip.
     installAppMock({
       GetLogs: vi.fn().mockReturnValue(new Promise<LogsResultShape>(() => {})),
@@ -698,6 +717,125 @@ describe('ServiceLogs – Auto-refresh disables itself on a non-ok load outcome'
     await clickToggle(wrapper, 'auto-refresh-toggle')
     await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
     expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('ServiceLogs – Discard superseded concurrent log load results', () => {
+  useAutoRefreshFakeTimers()
+
+  // GetLogs hands back a distinct manually controlled promise per stream so the
+  // test can start a stdout load, supersede it with a stderr load via a stream
+  // switch, then resolve/reject the two out of order.
+  function installRaceMock() {
+    const stdoutD = deferred<LogsResultShape>()
+    const stderrD = deferred<LogsResultShape>()
+    installAppMock({
+      GetLogs: vi.fn().mockImplementation((_name: string, logType: string) =>
+        logType === 'stdout' ? stdoutD.promise : stderrD.promise,
+      ),
+    })
+    return { stdoutD, stderrD }
+  }
+
+  it('keeps the newest stream content when an older stdout load resolves after the stderr load', async () => {
+    const { stdoutD, stderrD } = installRaceMock()
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.race', serviceType: 'user' },
+    })
+    await settle() // onMounted started the stdout load; it is still pending
+    // Switch to stderr: a second concurrent load starts while stdout is in flight.
+    clickStderr(wrapper)
+    await settle()
+    // The newer stderr load resolves first and owns the pane.
+    stderrD.resolve({ content: 'stderr wins', status: 'ok', path: '/tmp/err.log' })
+    await settle()
+    expect(wrapper.find('pre').exists()).toBe(true)
+    expect(wrapper.find('pre').text()).toContain('stderr wins')
+    // The older stdout load resolves last: its result must be discarded.
+    stdoutD.resolve({ content: 'stale stdout', status: 'ok', path: '/tmp/out.log' })
+    await settle()
+    expect(wrapper.find('pre').text()).toContain('stderr wins')
+    expect(wrapper.find('pre').text()).not.toContain('stale stdout')
+    wrapper.unmount()
+  })
+
+  it('does not drive the Auto-refresh auto-disable when a superseded stdout load resolves non-ok', async () => {
+    const { stdoutD, stderrD } = installRaceMock()
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.race', serviceType: 'user' },
+    })
+    await settle() // stdout load pending
+    // Enable Auto-refresh while the stdout load is still in flight; polls skip
+    // because loading is true, so nothing else touches shared state.
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(true)
+    // Switch to stderr, superseding the in-flight stdout load.
+    clickStderr(wrapper)
+    await settle()
+    // Newer stderr load resolves ok — Auto-refresh stays on.
+    stderrD.resolve({ content: 'stderr ok', status: 'ok', path: '/tmp/err.log' })
+    await settle()
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(true)
+    // Superseded stdout load resolves with a non-ok status: it must NOT flip
+    // the toggle, because auto-disable is driven only by the newest load.
+    stdoutD.resolve({ content: '', status: 'not-found', path: '/var/log/foo/out.log' })
+    await settle()
+    expect(isChecked(wrapper, 'auto-refresh-toggle')).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('does not populate the error branch when a superseded load rejects', async () => {
+    const { stdoutD, stderrD } = installRaceMock()
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.race', serviceType: 'user' },
+    })
+    await settle() // stdout load pending
+    clickStderr(wrapper)
+    await settle()
+    // Newer stderr load resolves ok, so the pane has no error.
+    stderrD.resolve({ content: 'stderr ok', status: 'ok', path: '/tmp/err.log' })
+    await settle()
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    // Superseded stdout load rejects late: the red error branch must stay clean.
+    stdoutD.reject('permission denied reading log file: /var/log/foo/out.log')
+    await settle()
+    expect(wrapper.find('.text-red-400').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('permission denied reading log file')
+    wrapper.unmount()
+  })
+
+  it('keeps the Clear button matching the newest stream when an older status query resolves last', async () => {
+    interface ClearStatusShape { logPath: string, exists: boolean, userWritable: boolean }
+    const stdoutS = deferred<ClearStatusShape>()
+    const stderrS = deferred<ClearStatusShape>()
+    installAppMock({
+      // Log content resolves immediately so only the clear-status query races.
+      GetLogs: vi.fn().mockResolvedValue({ content: 'x', status: 'ok', path: '/tmp/x.log' }),
+      GetLogClearStatus: vi.fn().mockImplementation((_name: string, _type: string, logType: string) =>
+        logType === 'stdout' ? stdoutS.promise : stderrS.promise,
+      ),
+    })
+    const wrapper = mount(ServiceLogs, {
+      props: { serviceName: 'com.user.race', serviceType: 'user' },
+    })
+    await settle() // onMounted issued the stdout status query; it is still pending
+    // Switch to stderr: issues a newer status query for the stderr stream.
+    clickStderr(wrapper)
+    await settle()
+    // The newer stderr query resolves first: stderr has no log path, so the
+    // Clear button is disabled and describes the stderr stream.
+    stderrS.resolve({ logPath: '', exists: false, userWritable: false })
+    await settle()
+    const btn = wrapper.find('[data-testid="clear-logs-button"]')
+    expect(btn.attributes('disabled')).toBeDefined()
+    expect(btn.attributes('title')).toBe('No log path configured')
+    // The older stdout query (a writable path) resolves last: its result must be
+    // discarded so the button does not flip to enabled while stderr is shown.
+    stdoutS.resolve({ logPath: '/tmp/out.log', exists: true, userWritable: true })
+    await settle()
+    expect(wrapper.find('[data-testid="clear-logs-button"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('[data-testid="clear-logs-button"]').attributes('title')).toBe('No log path configured')
     wrapper.unmount()
   })
 })

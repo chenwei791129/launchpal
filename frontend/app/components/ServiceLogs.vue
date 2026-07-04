@@ -197,6 +197,17 @@ const autoScroll = ref(true)
 const autoRefresh = ref(false)
 const AUTO_REFRESH_INTERVAL_MS = 2000
 let pollTimer: ReturnType<typeof setInterval> | null = null
+// Monotonic request-sequence token for loadLogs. loadLogs has five triggers
+// (mount, stream switch, manual Refresh, poll tick, post-Clear reload) and any
+// two can be in flight at once; the later-resolving one would otherwise win the
+// shared state regardless of which the user is viewing. Each call claims a token
+// synchronously (before any await) and applies its result only while it is still
+// the newest issued token.
+let loadSeq = 0
+// loadLogClearStatus shares the same triggers (mount, stream switch, and
+// confirmClear) and the same last-resolver-wins hazard, so it carries its own
+// independent request-sequence token.
+let clearStatusSeq = 0
 const logContainer = ref<HTMLElement | null>(null)
 
 // renderedLogs converts ANSI SGR escape sequences in the LogsResult content
@@ -228,6 +239,12 @@ const clearSuccess = ref(false)
 let clearSuccessTimeout: ReturnType<typeof setTimeout> | null = null
 
 async function loadLogs() {
+  // Claim a request-sequence token before any await so a load entered later
+  // always owns a higher number. After the awaited binding settles, this load
+  // mutates shared state only while it is still the newest (seq === loadSeq);
+  // a superseded load discards its outcome without touching anything, on both
+  // the resolve and reject paths, leaving the newest load authoritative.
+  const seq = ++loadSeq
   loading.value = true
   error.value = null
 
@@ -243,15 +260,21 @@ async function loadLogs() {
     // /System/Library/LaunchDaemons — UserManager.GetLogs can't resolve
     // those, so route through the system-aware binding instead.
     const app = window.go?.main?.App
+    let result: LogsResult | null
     if (props.serviceType === 'user' && app?.GetLogs) {
-      logs.value = await app.GetLogs(props.serviceName, logType.value)
+      result = await app.GetLogs(props.serviceName, logType.value)
     } else if (props.serviceType !== 'user' && app?.GetSystemLogs) {
-      logs.value = await app.GetSystemLogs(props.serviceName, props.serviceType, logType.value)
+      result = await app.GetSystemLogs(props.serviceName, props.serviceType, logType.value)
     } else {
       // Development fallback (no Wails bindings available)
-      logs.value = null
+      result = null
     }
 
+    // A newer load superseded this one while the binding was in flight; drop
+    // this result so it can't overwrite the newest load's content.
+    if (seq !== loadSeq) return
+
+    logs.value = result
     // Read the lowercase runtime key: the Wails runtime object carries
     // lowercase json keys (Status → status).
     loadOk = logs.value?.status === 'ok'
@@ -261,20 +284,26 @@ async function loadLogs() {
       scrollToBottom()
     }
   } catch (e) {
+    // Superseded rejection: discard it so a stale load can't pollute the error
+    // branch (and thereby suppress confirmClear's success indicator).
+    if (seq !== loadSeq) return
     // Wails v2 rejects with the Go error as a plain string, so the string
     // check must come first — `instanceof Error` alone would discard the
     // backend message and always fall back to the generic text.
     error.value = typeof e === 'string' ? e : e instanceof Error ? e.message : 'Failed to load logs'
     console.error('Failed to load logs:', e)
   } finally {
-    loading.value = false
+    // A superseded load leaving loading false would clear the spinner the
+    // newest load still needs, so only the newest load resets it.
+    if (seq === loadSeq) loading.value = false
   }
 
-  // Auto-disable on any non-ok outcome. Setting autoRefresh false triggers the
-  // watcher below, which clears the interval — there is no automatic resume;
-  // the user must re-check the box. The rendered feedback (placeholder / error)
-  // is unchanged: this adds no error surface of its own.
-  if (autoRefresh.value && !loadOk) {
+  // Auto-disable on any non-ok outcome, gated on the sequence check so a
+  // superseded load can't flip the toggle. Setting autoRefresh false triggers
+  // the watcher below, which clears the interval — there is no automatic
+  // resume; the user must re-check the box. The rendered feedback (placeholder
+  // / error) is unchanged: this adds no error surface of its own.
+  if (seq === loadSeq && autoRefresh.value && !loadOk) {
     autoRefresh.value = false
   }
 }
@@ -304,17 +333,24 @@ async function loadLogClearStatus() {
   }
   const app = window.go?.main?.App
   if (!app?.GetLogClearStatus) return
+  // Claim a sequence token before the await; a superseded query (an older
+  // stream's status resolving after a newer switch) discards its result so the
+  // Clear button's enabled state always describes the stream now being viewed.
+  const seq = ++clearStatusSeq
   try {
-    logClearStatus.value = await app.GetLogClearStatus(
+    const status = await app.GetLogClearStatus(
       props.serviceName,
       props.serviceType,
       logType.value,
     )
+    if (seq !== clearStatusSeq) return
+    logClearStatus.value = status
   } catch {
     // Silent fail: the disabled button + "Loading status..." tooltip is
     // the user-visible feedback. Writing to clearError here would mix
     // with confirm-clear failures (and clobber a recent success indicator)
     // even though the user took no clear action.
+    if (seq !== clearStatusSeq) return
     logClearStatus.value = null
   }
 }
