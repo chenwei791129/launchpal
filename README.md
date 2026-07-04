@@ -9,7 +9,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 📊 View service status in real-time
 - ▶️ Start/Stop user services with one click
 - ⚡ Run Now (Kickstart) — start a service immediately with one click (`launchctl kickstart -k`)
-- 📋 View service logs (stdout/stderr) with ANSI color rendering (16-color SGR sequences are shown as colored text instead of raw `[31m` escape codes)
+- 📋 View service logs (stdout/stderr) with ANSI color rendering (16-color SGR sequences are shown as colored text instead of raw `[31m` escape codes); services without a configured log path or a not-yet-created log file show a clear placeholder instead of a generic error
 - 🧹 Clear stdout / stderr logs from the Logs tab (one-click in-place truncate; system daemons fall back to the privileged helper only when the file is not user-writable)
 - ➕ Create and configure new services
 - ⏰ Schedule services with Calendar Interval or Fixed Interval
