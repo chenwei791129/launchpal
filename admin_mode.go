@@ -144,6 +144,13 @@ func (a *adminModeManager) Enable(ctx context.Context) error {
 
 	helperPath, err := a.helperPath()
 	if err != nil {
+		// Integrity failure is distinct from a plain missing binary: refuse to
+		// launch osascript and surface a dedicated code. The message carries
+		// only the code so it reveals nothing beyond the existing errors.
+		if errors.Is(err, errHelperIntegrity) {
+			a.failFromRequesting("helper_integrity_failed", "")
+			return err
+		}
 		a.failFromRequesting("helper_binary_not_found", err.Error())
 		return err
 	}
@@ -235,20 +242,100 @@ func (a *adminModeManager) failFromRequesting(code, message string) {
 	a.setState(AdminModeDisabled, msg)
 }
 
-// resolveHelperPath returns the sibling launchpal-privhelper binary path.
-// Resolved at runtime so we locate it inside the .app bundle regardless of
-// how the app was invoked.
+// errHelperIntegrity signals that no verified protected copy exists and the
+// bundle helper fails hash-pin verification (missing/unreadable, or its
+// SHA-256 differs from a non-empty pin). Enable maps it to the
+// helper_integrity_failed error code and refuses to launch osascript.
+var errHelperIntegrity = errors.New("helper_integrity_failed")
+
+// helperResolution carries the inputs of the launch-path decision so the
+// logic is unit-testable without touching os.Executable, the real protected
+// path, or the embedded pin. Production wiring is in resolveHelperPath.
+type helperResolution struct {
+	bundlePath    string
+	protectedPath string
+	pin           string
+	isVerified    func(string) bool
+	fileHash      func(string) (string, error)
+}
+
+// resolveHelperPath returns the path of the helper binary LaunchPal should
+// launch. The trust of the protected copy derives solely from its root
+// ownership and permissions, never from matching the bundle hash — see
+// resolveHelperLaunchPath for the full decision.
 func resolveHelperPath() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("os.Executable: %w", err)
 	}
-	dir := filepath.Dir(exe)
-	helper := filepath.Join(dir, "launchpal-privhelper")
-	if _, err := os.Stat(helper); err != nil {
-		return "", fmt.Errorf("helper binary not found at %s: %w", helper, err)
+	bundle := filepath.Join(filepath.Dir(exe), "launchpal-privhelper")
+	return resolveHelperLaunchPath(helperResolution{
+		bundlePath:    bundle,
+		protectedPath: privhelper.ProtectedHelperPath,
+		pin:           helperPin,
+		isVerified:    privhelper.IsVerifiedProtectedCopy,
+		fileHash:      privhelper.FileSHA256,
+	})
+}
+
+// resolveHelperLaunchPath applies the launch-path priority:
+//
+//  1. A verified protected copy is launched by default. The only exception is
+//     a legitimate update — the pin is non-empty, the bundle is readable, the
+//     bundle hash equals the pin, and the bundle differs from the protected
+//     copy — in which case the bundle copy is launched to re-provision.
+//  2. With no verified protected copy, the bundle copy is launched after
+//     hash-pin verification (or, with an empty pin, without it). A non-empty
+//     pin that the bundle fails (missing/unreadable, or hash mismatch) yields
+//     errHelperIntegrity; an empty pin with a missing bundle yields a plain
+//     not-found error naming the path.
+//
+// The key invariant: an existing verified protected copy is never bypassed by
+// an empty pin, a missing bundle, or a tampered bundle.
+func resolveHelperLaunchPath(r helperResolution) (string, error) {
+	if r.isVerified(r.protectedPath) {
+		if isLegitimateBundleUpdate(r) {
+			// Bundle proven current and differs from the protected copy →
+			// launch it to re-provision.
+			return r.bundlePath, nil
+		}
+		return r.protectedPath, nil
 	}
-	return helper, nil
+
+	// No verified protected copy → first-install path via the bundle.
+	bundleHash, err := r.fileHash(r.bundlePath)
+	if err != nil {
+		if r.pin != "" {
+			// Non-empty pin but the bundle can't be verified.
+			return "", errHelperIntegrity
+		}
+		return "", fmt.Errorf("helper binary not found at %s: %w", r.bundlePath, err)
+	}
+	if r.pin != "" && bundleHash != r.pin {
+		return "", errHelperIntegrity
+	}
+	return r.bundlePath, nil
+}
+
+// isLegitimateBundleUpdate reports whether the bundle copy is a proven-current
+// app update that differs from the existing protected copy — the sole case in
+// which a verified protected copy is bypassed. It requires a non-empty pin, a
+// readable bundle whose hash equals the pin, and a protected copy whose hash
+// differs from that pin (equivalently, differs from the bundle).
+func isLegitimateBundleUpdate(r helperResolution) bool {
+	if r.pin == "" {
+		return false
+	}
+	// Hash the protected copy first and bail out in the steady state
+	// (protected copy already current, or unreadable) — this skips the
+	// multi-MB bundle hash on the common Enable path, which touches the bundle
+	// only for an actual update.
+	protectedHash, err := r.fileHash(r.protectedPath)
+	if err != nil || protectedHash == r.pin {
+		return false
+	}
+	bundleHash, err := r.fileHash(r.bundlePath)
+	return err == nil && bundleHash == r.pin
 }
 
 // wailsEventEmitter adapts the Wails runtime's EventsEmit to our emitter

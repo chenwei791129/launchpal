@@ -14,6 +14,15 @@ import (
 // version is set at build time via -ldflags "-X main.version=<value>"
 var version = "dev"
 
+// helperPin is the SHA-256 (hex) of the packaged bundle helper, injected at
+// build time via -ldflags "-X main.helperPin=<sha256>" before the main binary
+// is linked. It is empty in local development builds. The pin gates only the
+// launch of a bundle helper copy (first install / legitimate update); it is
+// never a precondition for launching an already-verified root-owned protected
+// copy. It is defense-in-depth, not the trust anchor — the anchor is the
+// root-owned protected copy, whose availability does not depend on this pin.
+var helperPin string
+
 //go:embed all:frontend/.output/public
 var assets embed.FS
 

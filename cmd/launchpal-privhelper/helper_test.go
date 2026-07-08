@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"launchpal/internal/privhelper"
 )
 
 // These tests exercise the argument-validation surface of the helper without
@@ -165,3 +167,30 @@ func TestParseFlags_UserHomeIsOptional(t *testing.T) {
 		t.Errorf("UserHome = %q", cfg.UserHome)
 	}
 }
+
+func TestSelfInstallProtectedCopy_SkipWhenLaunchedFromProtectedPath(t *testing.T) {
+	called := false
+	install := func(string) (bool, error) { called = true; return false, nil }
+	selfInstallProtectedCopy(privhelper.ProtectedHelperPath, install, func(string, ...any) {})
+	if called {
+		t.Error("install should not run when launched from the protected path")
+	}
+}
+
+func TestSelfInstallProtectedCopy_FailureIsNonFatal(t *testing.T) {
+	var logged strings.Builder
+	install := func(string) (bool, error) { return false, errFakeInstall }
+	// A failing install must return normally (non-fatal) and emit a log line —
+	// the caller keeps serving the current session regardless.
+	selfInstallProtectedCopy("/Applications/LaunchPal.app/Contents/MacOS/launchpal-privhelper", install,
+		func(format string, args ...any) { logged.WriteString(format) })
+	if logged.Len() == 0 {
+		t.Error("expected a log line on install failure")
+	}
+}
+
+var errFakeInstall = errorString("boom")
+
+type errorString string
+
+func (e errorString) Error() string { return string(e) }

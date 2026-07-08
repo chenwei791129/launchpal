@@ -147,6 +147,16 @@ func main() {
 // code. Split out from main() so tests can exercise the wiring without
 // calling os.Exit.
 func run(cfg *helperConfig) int {
+	// Provision the root-owned protected copy before binding the socket. This
+	// runs in the root helper process so the privileged write never crosses an
+	// RPC boundary. Failure is non-fatal (see selfInstallProtectedCopy).
+	if exe, err := os.Executable(); err != nil {
+		fmt.Fprintln(os.Stderr, "launchpal-privhelper: os.Executable:", err)
+	} else {
+		selfInstallProtectedCopy(exe, privhelper.InstallProtectedCopy,
+			func(format string, args ...any) { fmt.Fprintf(os.Stderr, format+"\n", args...) })
+	}
+
 	launchingGID, _ := lookupGID(cfg.LaunchingUID)
 
 	// Handlers must be declared before the server so the server's handler
@@ -182,6 +192,24 @@ func run(cfg *helperConfig) int {
 		return 1
 	}
 	return 0
+}
+
+// selfInstallProtectedCopy provisions the root-owned protected helper copy at
+// startup. It runs only when the helper was launched from a path other than
+// the protected path (i.e. from the app bundle) — launching from the protected
+// path already means the copy is in place. The skip check and the install
+// target derive from the same privhelper.ProtectedHelperPath constant, so they
+// cannot diverge. Failure is non-fatal: the helper logs it and keeps serving
+// from the binary it was launched as, and the protected copy is retried on the
+// next enable. A provisioning failure must not make the current Admin Mode
+// session unusable.
+func selfInstallProtectedCopy(exePath string, install func(string) (bool, error), logf func(string, ...any)) {
+	if exePath == privhelper.ProtectedHelperPath {
+		return
+	}
+	if _, err := install(exePath); err != nil {
+		logf("launchpal-privhelper: protected-copy install failed: %v", err)
+	}
 }
 
 // lookupGID resolves the primary GID for uid. A zero GID is fine if lookup
