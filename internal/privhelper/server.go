@@ -70,7 +70,9 @@ type Server struct {
 	mu            sync.Mutex
 	stopped       bool
 	stopErr       error
-	activityAtNs  atomic.Int64 // unix nanos of the last RPC event
+	conns         map[net.Conn]struct{} // accepted connections still being served
+	primaryConn   net.Conn              // first accepted connection: the session client
+	activityAtNs  atomic.Int64          // unix nanos of the last RPC event
 	idleCancel    context.CancelFunc
 	stopSignal    chan struct{}
 	connWG        sync.WaitGroup
@@ -87,6 +89,7 @@ func NewServer(opts ServerOptions) *Server {
 	}
 	s := &Server{
 		opts:          opts,
+		conns:         make(map[net.Conn]struct{}),
 		stopSignal:    make(chan struct{}),
 		shutdownCalls: make(chan struct{}, 1),
 	}
@@ -165,6 +168,14 @@ func (s *Server) Stop() {
 	if s.listener != nil {
 		_ = s.listener.Close()
 	}
+	// Close any accepted connection still being served. Without this, a stop
+	// triggered while the GUI holds a long-lived idle connection (idle timeout
+	// or parent watchdog) would leave handleConn blocked on scanner.Scan() and
+	// the process would never exit. Closing unblocks the scan so handleConn
+	// returns and connWG drains.
+	for c := range s.conns {
+		_ = c.Close()
+	}
 	if s.idleCancel != nil {
 		s.idleCancel()
 	}
@@ -218,11 +229,40 @@ func (s *Server) acceptLoop() {
 			continue
 		}
 
+		s.mu.Lock()
+		s.conns[conn] = struct{}{}
+		// The first accepted connection is the session client (the GUI, which
+		// connects immediately after launch and holds one long-lived
+		// connection). Only its ending self-terminates the helper.
+		isPrimary := s.primaryConn == nil
+		if isPrimary {
+			s.primaryConn = conn
+		}
+		s.mu.Unlock()
+
 		s.connWG.Add(1)
 		go func() {
 			defer s.connWG.Done()
-			defer func() { _ = conn.Close() }()
+			defer func() {
+				s.mu.Lock()
+				delete(s.conns, conn)
+				s.mu.Unlock()
+				_ = conn.Close()
+			}()
 			s.handleConn(conn)
+			// Single-client design: once the session client's connection ends
+			// for any reason — clean EOF, a read/scan error, or a failed
+			// response write — self-terminate rather than lingering as a root
+			// socket. Covering every handleConn return path (not just the
+			// post-scan EOF path) is the primary teardown mechanism, since the
+			// unprivileged GUI cannot signal the root helper. Only the primary
+			// connection triggers this: a stray same-UID connection opening and
+			// closing must not tear down the live session. Skip when the server
+			// is already stopping for another reason (idle, watchdog, or an
+			// in-flight shutdown request).
+			if isPrimary && !s.isStopped() {
+				s.Stop()
+			}
 		}()
 	}
 }
@@ -273,10 +313,13 @@ func (s *Server) handleConn(conn *net.UnixConn) {
 
 		// If a handler requested shutdown during this iteration, finish the
 		// response then tear down the server. The client's last response was
-		// already flushed by the encoder.
+		// already flushed by the encoder. Stop synchronously: this is the
+		// explicit-shutdown path (works regardless of which connection sent
+		// it) and setting stopped here means the acceptLoop's post-return
+		// primary check sees isStopped() and does not double-stop.
 		select {
 		case <-s.shutdownCalls:
-			go s.Stop()
+			s.Stop()
 			return
 		default:
 		}

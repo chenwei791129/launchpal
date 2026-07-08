@@ -116,15 +116,42 @@ func validateUserHome(p string) error {
 
 // parentAlive returns true when pid refers to a live process. A nil
 // syscall.Kill(pid, 0) succeeds when the caller has permission to signal
-// the process (always, for root) and it exists.
+// the process (always, for root) and it exists. Used as the PID-existence
+// fallback for makeParentAlive.
 func parentAlive(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
 
+// makeParentAlive builds the watchdog's liveness closure, capturing the
+// parent's recorded start time so the injected StartParentWatchdog signature
+// (alive func(int) bool) is preserved. The parent is alive only when a
+// process with pid still reports the recorded start time; a mismatch means
+// the PID was reused and the parent is gone. When the start time cannot be
+// read (non-darwin, or a transient lookup error), it degrades to a plain
+// PID-existence check rather than treating the parent as dead.
+func makeParentAlive(recordedStart time.Time, startTimeOf func(int) (time.Time, error), pidExists func(int) bool) func(int) bool {
+	return func(pid int) bool {
+		// With no baseline (the launch-time read failed, or non-darwin) we
+		// cannot detect PID reuse. Degrade to a plain existence check rather
+		// than comparing a live process against a zero baseline it can never
+		// match — that would self-terminate against a still-alive parent.
+		if recordedStart.IsZero() {
+			return pidExists(pid)
+		}
+		start, err := startTimeOf(pid)
+		if err != nil {
+			return pidExists(pid)
+		}
+		return start.Equal(recordedStart)
+	}
+}
+
 // idleTimeout is the dormant-period after which the helper shuts itself
-// down (spec: "Idle timeout"). Exposed as a var so tests could override,
-// though production always uses the 30-minute default.
-var idleTimeout = 30 * time.Minute
+// down (spec: "Idle timeout"). Kept short so an idle-but-still-connected
+// Admin Mode session bounds how long a root socket stays alive; an actively
+// used session is unaffected because every RPC resets the timer. Exposed as
+// a var so tests can override. This is the single adjustable constant.
+var idleTimeout = 5 * time.Minute
 
 // parentCheckInterval is how often the parent-watchdog polls (spec: "Parent
 // PID watchdog"). Exposed as a var for the same reason as idleTimeout.
@@ -184,7 +211,13 @@ func run(cfg *helperConfig) int {
 		return 1
 	}
 
-	watchdogCancel := server.StartParentWatchdog(cfg.ParentPID, parentCheckInterval, parentAlive, nil)
+	// Record the parent's start time up front so the watchdog can distinguish
+	// the original LaunchPal parent from an unrelated process that reuses its
+	// PID. On non-darwin (or if the lookup fails) recordedStart is the zero
+	// time and the closure degrades to a PID-existence check.
+	recordedStart, _ := parentStartTime(cfg.ParentPID)
+	parentIsAlive := makeParentAlive(recordedStart, parentStartTime, parentAlive)
+	watchdogCancel := server.StartParentWatchdog(cfg.ParentPID, parentCheckInterval, parentIsAlive, nil)
 	defer watchdogCancel()
 
 	if err := server.Wait(); err != nil {

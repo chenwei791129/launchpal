@@ -234,7 +234,12 @@ func TestAdminMode_Disable(t *testing.T) {
 	}
 }
 
-func TestAdminMode_HelperCrashSetsState(t *testing.T) {
+// TestAdminMode_HelperDisconnectWhileEnabled_NeutralStatus covers the "Helper
+// connection ends while Enabled" scenario: because the helper now
+// self-terminates by design (idle) and the GUI cannot tell that apart from a
+// crash, a disconnect while Enabled must surface the neutral
+// `admin_session_ended` status, not a red `helper_crashed` error.
+func TestAdminMode_HelperDisconnectWhileEnabled_NeutralStatus(t *testing.T) {
 	client := liveClient(t)
 	launch := func(ctx context.Context, opts privhelper.LaunchHelperOptions) (*privhelper.Client, error) {
 		return client, nil
@@ -250,11 +255,94 @@ func TestAdminMode_HelperCrashSetsState(t *testing.T) {
 	if s.State != AdminModeDisabled {
 		t.Errorf("state = %q", s.State)
 	}
-	if s.Error == nil || *s.Error != "helper_crashed" {
-		t.Errorf("error = %v, want helper_crashed", s.Error)
+	if s.Error == nil || *s.Error != "admin_session_ended" {
+		t.Errorf("error = %v, want admin_session_ended", s.Error)
 	}
 	if sysMgr.cleared != 1 {
 		t.Errorf("ClearAdminClient calls = %d", sysMgr.cleared)
+	}
+}
+
+// TestAdminMode_HelperDiesDuringRequesting covers the race where the helper
+// connection ends after a successful handshake but before Enable commits: the
+// OnDisconnect callback fires while state is still Requesting. Enable must not
+// store the dead client as Enabled — it resolves to Disabled with the neutral
+// session-ended status.
+func TestAdminMode_HelperDiesDuringRequesting(t *testing.T) {
+	client := liveClient(t)
+	launch := func(_ context.Context, opts privhelper.LaunchHelperOptions) (*privhelper.Client, error) {
+		// Simulate the helper dropping mid-commit: OnDisconnect (wired to
+		// handleHelperCrash) fires while the manager is still in Requesting.
+		opts.OnDisconnect(errors.New("boom"))
+		return client, nil
+	}
+	a, sysMgr, _ := newTestAdminMode(t, launch, nil)
+
+	if err := a.Enable(context.Background()); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+	s := a.status()
+	if s.State != AdminModeDisabled {
+		t.Errorf("state = %q, want %q", s.State, AdminModeDisabled)
+	}
+	if s.Error == nil || *s.Error != "admin_session_ended" {
+		t.Errorf("error = %v, want admin_session_ended", s.Error)
+	}
+	if sysMgr.set != 0 {
+		t.Errorf("SetAdminClient must not be called with a dead client, got %d", sysMgr.set)
+	}
+}
+
+// TestAdminMode_MultiClickDuringRequesting covers the "Admin Mode status
+// states" example table: a Disable click during the authorization prompt
+// records a pending intent that survives further no-op Enable clicks, so a
+// handshake that later succeeds still resolves to Disabled with no surviving
+// helper.
+func TestAdminMode_MultiClickDuringRequesting(t *testing.T) {
+	cases := []struct {
+		name   string
+		clicks func(a *adminModeManager)
+		want   string
+	}{
+		{"no disable", func(_ *adminModeManager) {}, AdminModeEnabled},
+		{"disable", func(a *adminModeManager) { _ = a.Disable(context.Background()) }, AdminModeDisabled},
+		{"disable then enable noop", func(a *adminModeManager) {
+			_ = a.Disable(context.Background())
+			_ = a.Enable(context.Background()) // no-op: state is Requesting
+		}, AdminModeDisabled},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := liveClient(t)
+			launched := make(chan struct{})
+			release := make(chan struct{})
+			var once sync.Once
+			launch := func(_ context.Context, _ privhelper.LaunchHelperOptions) (*privhelper.Client, error) {
+				once.Do(func() { close(launched) })
+				<-release
+				return client, nil
+			}
+			a, sysMgr, _ := newTestAdminMode(t, launch, nil)
+
+			enableDone := make(chan struct{})
+			go func() { _ = a.Enable(context.Background()); close(enableDone) }()
+			<-launched // state is Requesting, launch in flight
+			tc.clicks(a)
+			close(release)
+			<-enableDone
+
+			if got := a.status().State; got != tc.want {
+				t.Errorf("final state = %q, want %q", got, tc.want)
+			}
+			if tc.want == AdminModeDisabled {
+				sysMgr.mu.Lock()
+				cur := sysMgr.current
+				sysMgr.mu.Unlock()
+				if cur != nil {
+					t.Error("admin client should be cleared: pending disable must tear down the helper")
+				}
+			}
+		})
 	}
 }
 

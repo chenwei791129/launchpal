@@ -44,8 +44,12 @@
             <p class="text-gray-400 text-sm mb-2">
               Enable Admin Mode to manage system LaunchDaemons (under /Library/LaunchDaemons). You will be prompted for your password once per session; no privileged process remains after LaunchPal exits.
             </p>
-            <p v-if="admin.lastError.value" class="text-red-400 text-sm mb-2">
-              {{ admin.lastError.value }}
+            <p
+              v-if="admin.lastError.value"
+              class="text-sm mb-2"
+              :class="admin.isSessionEnded.value ? 'text-gray-400' : 'text-red-400'"
+            >
+              {{ admin.displayMessage.value }}
             </p>
             <div class="flex items-center gap-2">
               <button

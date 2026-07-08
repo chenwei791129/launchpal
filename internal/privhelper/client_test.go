@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -324,6 +325,89 @@ func TestLaunchHelper_OsascriptFailure(t *testing.T) {
 	}
 	if err == nil {
 		t.Error("expected an error")
+	}
+}
+
+// TestLaunchHelper_SendsShutdownWhenPingFails covers the "Enable fails after
+// authorization with a connection established" scenario: osascript succeeds,
+// the connection is established, but the Ping handshake fails. LaunchHelper
+// must send a best-effort Shutdown over the live connection before closing,
+// rather than only closing it.
+func TestLaunchHelper_SendsShutdownWhenPingFails(t *testing.T) {
+	sockPath := shortSocketPath(t)
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sockPath, Net: "unix"})
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	var gotShutdown atomic.Bool
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		dec := json.NewDecoder(conn)
+		enc := json.NewEncoder(conn)
+		for {
+			var req Request
+			if err := dec.Decode(&req); err != nil {
+				return
+			}
+			id := req.ID
+			switch req.Method {
+			case MethodPing:
+				// Fail the handshake with an RPC error (connection stays live).
+				_ = enc.Encode(Response{ID: &id, Error: &RPCError{Code: ErrCodeInternalError, Message: "ping refused"}})
+			case MethodShutdown:
+				gotShutdown.Store(true)
+				raw, _ := json.Marshal(OKResult{OK: true})
+				_ = enc.Encode(Response{ID: &id, Result: raw})
+			default:
+				raw, _ := json.Marshal(OKResult{OK: true})
+				_ = enc.Encode(Response{ID: &id, Result: raw})
+			}
+		}
+	}()
+
+	_, err = LaunchHelper(context.Background(), LaunchHelperOptions{
+		HelperPath:       "/fake/helper",
+		SocketPath:       sockPath,
+		ParentPID:        1234,
+		LaunchingUID:     501,
+		HandshakeTimeout: 1 * time.Second,
+		osascriptRunner:  func(_ context.Context, _ string) error { return nil },
+	})
+	if err == nil {
+		t.Fatal("expected handshake error when Ping fails")
+	}
+
+	deadline := time.Now().Add(1 * time.Second)
+	for time.Now().Before(deadline) && !gotShutdown.Load() {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !gotShutdown.Load() {
+		t.Error("expected a best-effort Shutdown to be sent when Ping fails on an established connection")
+	}
+}
+
+// TestLaunchHelper_NoShutdownWhenConnectFails covers the "Enable fails before
+// a connection is established" scenario: with no listener the Connect step
+// fails, so there is no channel on which to send Shutdown. LaunchHelper must
+// return an error cleanly without attempting a Shutdown.
+func TestLaunchHelper_NoShutdownWhenConnectFails(t *testing.T) {
+	sockPath := shortSocketPath(t) // no listener bound here
+	_, err := LaunchHelper(context.Background(), LaunchHelperOptions{
+		HelperPath:       "/fake/helper",
+		SocketPath:       sockPath,
+		ParentPID:        1234,
+		LaunchingUID:     501,
+		HandshakeTimeout: 200 * time.Millisecond,
+		osascriptRunner:  func(_ context.Context, _ string) error { return nil },
+	})
+	if err == nil {
+		t.Fatal("expected a connect error when no helper is listening")
 	}
 }
 

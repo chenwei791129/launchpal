@@ -2,11 +2,83 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"launchpal/internal/privhelper"
 )
+
+// TestMakeParentAlive_PIDReuseDetected covers the "Parent PID reused by
+// another process" scenario: the PID still exists but reports a different
+// start time, so the closure must treat the original parent as gone.
+func TestMakeParentAlive_PIDReuseDetected(t *testing.T) {
+	recorded := time.Unix(1000, 0)
+	startTimeOf := func(int) (time.Time, error) { return time.Unix(2000, 0), nil }
+	pidExists := func(int) bool { return true }
+	alive := makeParentAlive(recorded, startTimeOf, pidExists)
+	if alive(1234) {
+		t.Error("parent should be considered gone when the start time differs (PID reuse)")
+	}
+}
+
+func TestMakeParentAlive_SameStartIsAlive(t *testing.T) {
+	recorded := time.Unix(1000, 0)
+	startTimeOf := func(int) (time.Time, error) { return time.Unix(1000, 0), nil }
+	alive := makeParentAlive(recorded, startTimeOf, func(int) bool { return true })
+	if !alive(1234) {
+		t.Error("parent should be alive when the recorded start time matches")
+	}
+}
+
+// TestMakeParentAlive_ZeroBaselineDegradesToPIDExistence covers the case where
+// the launch-time start-time read failed (recordedStart is the zero value):
+// the closure must degrade to a PID-existence check, never compare a live
+// process's real start time against the zero baseline (which would never match
+// and would self-terminate against a still-alive parent).
+func TestMakeParentAlive_ZeroBaselineDegradesToPIDExistence(t *testing.T) {
+	// A successful, non-zero current reading must NOT be compared to the zero
+	// baseline; the existence check decides instead.
+	startTimeOf := func(int) (time.Time, error) { return time.Unix(2000, 0), nil }
+
+	aliveWhenExists := makeParentAlive(time.Time{}, startTimeOf, func(int) bool { return true })
+	if !aliveWhenExists(1234) {
+		t.Error("zero baseline with a live PID should report alive via existence check")
+	}
+	aliveWhenGone := makeParentAlive(time.Time{}, startTimeOf, func(int) bool { return false })
+	if aliveWhenGone(1234) {
+		t.Error("zero baseline with a dead PID should report gone via existence check")
+	}
+}
+
+// TestMakeParentAlive_FallbackToPIDExistence covers platforms where the start
+// time cannot be obtained (non-darwin, or a transient lookup error): the
+// closure degrades to a plain PID-existence check rather than killing the
+// helper spuriously.
+func TestMakeParentAlive_FallbackToPIDExistence(t *testing.T) {
+	startTimeOf := func(int) (time.Time, error) { return time.Time{}, errors.New("unavailable") }
+	recorded := time.Unix(1000, 0)
+
+	aliveWhenExists := makeParentAlive(recorded, startTimeOf, func(int) bool { return true })
+	if !aliveWhenExists(1234) {
+		t.Error("should fall back to PID-existence=true when start time is unavailable")
+	}
+	aliveWhenGone := makeParentAlive(recorded, startTimeOf, func(int) bool { return false })
+	if aliveWhenGone(1234) {
+		t.Error("should fall back to PID-existence=false when start time is unavailable")
+	}
+}
+
+// TestIdleTimeout_DefaultIsFiveMinutes pins the idle-timeout backstop. The
+// duration is the security mitigation itself — it bounds how long an idle
+// root socket lingers — so a silent regression to the old 30-minute value
+// must fail the build.
+func TestIdleTimeout_DefaultIsFiveMinutes(t *testing.T) {
+	if idleTimeout != 5*time.Minute {
+		t.Errorf("idleTimeout = %v, want 5m", idleTimeout)
+	}
+}
 
 // These tests exercise the argument-validation surface of the helper without
 // requiring root or actually opening a socket. The helper refuses to run when

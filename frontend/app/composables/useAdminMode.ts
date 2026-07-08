@@ -48,10 +48,24 @@ function ensureSubscribed() {
   }
 }
 
+// Reason code emitted when the helper connection ends while Enabled (idle
+// self-termination, clean teardown, or a crash — the GUI cannot tell them
+// apart). Presented as informational rather than a red error.
+const ADMIN_SESSION_ENDED = 'admin_session_ended'
+
 export function useAdminMode() {
   const isEnabled = computed(() => state.value === 'enabled')
   const isRequesting = computed(() => state.value === 'requesting')
   const isShuttingDown = computed(() => state.value === 'shutting_down')
+
+  // A neutral session-ended notice is informational, not an error, so the UI
+  // can style it differently and show a friendly re-enable prompt.
+  const isSessionEnded = computed(() => lastError.value === ADMIN_SESSION_ENDED)
+  const displayMessage = computed(() =>
+    isSessionEnded.value
+      ? 'Admin Mode session ended — re-enable to continue'
+      : lastError.value,
+  )
 
   async function enable() {
     if (loading.value) return
@@ -97,6 +111,8 @@ export function useAdminMode() {
     isEnabled,
     isRequesting,
     isShuttingDown,
+    isSessionEnded,
+    displayMessage,
     enable,
     disable,
     refresh,

@@ -338,6 +338,227 @@ func TestServer_ParentWatchdog(t *testing.T) {
 	}
 }
 
+// waitForStop asserts the server self-terminated: Wait returns promptly, the
+// socket file is removed, and a fresh connect attempt fails.
+func waitForStop(t *testing.T, s *Server, sockPath string) {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- s.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("server did not stop after client disconnect")
+	}
+	if _, err := os.Stat(sockPath); !os.IsNotExist(err) {
+		t.Errorf("socket should be removed after teardown, err=%v", err)
+	}
+	if c, err := net.DialUnix("unix", nil, &net.UnixAddr{Name: sockPath, Net: "unix"}); err == nil {
+		_ = c.Close()
+		t.Error("expected connect to fail after server stopped")
+	}
+}
+
+func TestServer_TerminatesOnClientDisconnect_EOF(t *testing.T) {
+	sockPath := shortSocketPath(t)
+	s := NewServer(ServerOptions{
+		SocketPath:    sockPath,
+		AuthorizedUID: os.Getuid(),
+		Handler:       pingHandler,
+		PeerUID:       stubPeerUID(os.Getuid()),
+	})
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { s.Stop(); _ = s.Wait() })
+
+	conn := dial(t, sockPath)
+	write(t, conn, Request{ID: 1, Method: MethodPing})
+	_ = readResponse(t, conn, 2*time.Second)
+	// Clean close → the connection handler returns on EOF.
+	_ = conn.Close()
+
+	waitForStop(t, s, sockPath)
+}
+
+func TestServer_TerminatesOnClientDisconnect_ReadError(t *testing.T) {
+	sockPath := shortSocketPath(t)
+	s := NewServer(ServerOptions{
+		SocketPath:    sockPath,
+		AuthorizedUID: os.Getuid(),
+		Handler:       pingHandler,
+		PeerUID:       stubPeerUID(os.Getuid()),
+	})
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { s.Stop(); _ = s.Wait() })
+
+	conn := dial(t, sockPath)
+	// Send an oversized frame with no newline: the server's scanner exceeds its
+	// 4 MiB token limit and handleConn returns on a non-EOF scan (read) error,
+	// distinct from the clean-EOF path.
+	go func() {
+		blob := make([]byte, 5*1024*1024)
+		for i := range blob {
+			blob[i] = 'a'
+		}
+		_, _ = conn.Write(blob)
+		_ = conn.Close()
+	}()
+
+	waitForStop(t, s, sockPath)
+}
+
+func TestServer_TerminatesOnClientDisconnect_FailedWrite(t *testing.T) {
+	sockPath := shortSocketPath(t)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	handler := func(_ context.Context, _ *Request) (any, *RPCError) {
+		once.Do(func() { close(entered) })
+		<-release
+		return OKResult{OK: true}, nil
+	}
+	s := NewServer(ServerOptions{
+		SocketPath:    sockPath,
+		AuthorizedUID: os.Getuid(),
+		Handler:       handler,
+		PeerUID:       stubPeerUID(os.Getuid()),
+	})
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { s.Stop(); _ = s.Wait() })
+
+	conn := dial(t, sockPath)
+	write(t, conn, Request{ID: 1, Method: MethodPing})
+	<-entered        // request read; handler in flight
+	_ = conn.Close() // close client so the pending encode write fails
+	close(release)   // handler returns → encode fails → handleConn returns
+
+	waitForStop(t, s, sockPath)
+}
+
+func TestServer_StopClosesActiveConnection(t *testing.T) {
+	sockPath := shortSocketPath(t)
+	s := NewServer(ServerOptions{
+		SocketPath:    sockPath,
+		AuthorizedUID: os.Getuid(),
+		Handler:       pingHandler,
+		PeerUID:       stubPeerUID(os.Getuid()),
+	})
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Long-lived GUI-style connection: established, then left open and idle.
+	conn := dial(t, sockPath)
+	defer func() { _ = conn.Close() }()
+	write(t, conn, Request{ID: 1, Method: MethodPing})
+	_ = readResponse(t, conn, 2*time.Second)
+
+	// Stop() while the connection is still open must unblock handleConn so the
+	// process actually exits; closing the listener alone would leave connWG
+	// pending and Wait would hang.
+	s.Stop()
+	done := make(chan error, 1)
+	go func() { done <- s.Wait() }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Wait did not return; Stop() left handleConn blocked on an open connection")
+	}
+}
+
+func TestServer_StrayConnectionDoesNotTerminate(t *testing.T) {
+	sockPath := shortSocketPath(t)
+	s := NewServer(ServerOptions{
+		SocketPath:    sockPath,
+		AuthorizedUID: os.Getuid(),
+		Handler:       pingHandler,
+		PeerUID:       stubPeerUID(os.Getuid()),
+	})
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { s.Stop(); _ = s.Wait() })
+
+	// Primary (session) connection: established first and kept open.
+	primary := dial(t, sockPath)
+	defer func() { _ = primary.Close() }()
+	write(t, primary, Request{ID: 1, Method: MethodPing})
+	_ = readResponse(t, primary, 2*time.Second)
+
+	// A stray same-UID connection opens, does one RPC, and closes. Its ending
+	// must NOT tear down the helper while the primary connection is alive.
+	stray := dial(t, sockPath)
+	write(t, stray, Request{ID: 1, Method: MethodPing})
+	_ = readResponse(t, stray, 2*time.Second)
+	_ = stray.Close()
+
+	// Give any (erroneous) teardown a chance to happen, then confirm the
+	// primary connection is still served.
+	time.Sleep(300 * time.Millisecond)
+	write(t, primary, Request{ID: 2, Method: MethodPing})
+	resp := readResponse(t, primary, 2*time.Second)
+	if resp.Error != nil {
+		t.Fatalf("server should still serve the primary after a stray closed: %+v", resp.Error)
+	}
+}
+
+func TestServer_IdleTimeout_TerminatesWithConnectionOpen(t *testing.T) {
+	sockPath := shortSocketPath(t)
+	s := NewServer(ServerOptions{
+		SocketPath:    sockPath,
+		AuthorizedUID: os.Getuid(),
+		Handler:       pingHandler,
+		PeerUID:       stubPeerUID(os.Getuid()),
+		IdleTimeout:   200 * time.Millisecond,
+	})
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { s.Stop(); _ = s.Wait() })
+
+	// Keep a connection open but send no further RPCs so the idle timer fires.
+	conn := dial(t, sockPath)
+	defer func() { _ = conn.Close() }()
+	write(t, conn, Request{ID: 1, Method: MethodPing})
+	_ = readResponse(t, conn, 2*time.Second)
+
+	waitForStop(t, s, sockPath)
+}
+
+func TestServer_IdleTimeout_ActivityResets(t *testing.T) {
+	sockPath := shortSocketPath(t)
+	var idleFired atomic.Bool
+	s := NewServer(ServerOptions{
+		SocketPath:    sockPath,
+		AuthorizedUID: os.Getuid(),
+		Handler:       pingHandler,
+		PeerUID:       stubPeerUID(os.Getuid()),
+		IdleTimeout:   300 * time.Millisecond,
+		OnIdle:        func() { idleFired.Store(true) },
+	})
+	if err := s.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { s.Stop(); _ = s.Wait() })
+
+	conn := dial(t, sockPath)
+	defer func() { _ = conn.Close() }()
+	// Drive RPCs at intervals shorter than the timeout for longer than one
+	// timeout window; each should reset the idle timer.
+	for i := int64(1); i <= 5; i++ {
+		write(t, conn, Request{ID: i, Method: MethodPing})
+		_ = readResponse(t, conn, 2*time.Second)
+		time.Sleep(100 * time.Millisecond)
+	}
+	if idleFired.Load() {
+		t.Error("idle timer fired despite continuous activity")
+	}
+}
+
 // atomicSlice is a tiny thread-safe append helper for concurrent test
 // assertions on ordered operations.
 type atomicSlice[T any] struct {

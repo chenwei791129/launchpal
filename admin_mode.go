@@ -35,22 +35,31 @@ type AdminModeStatus struct {
 // Methods are safe for concurrent use; the mutex protects all mutable
 // fields (state, err, client).
 type adminModeManager struct {
-	mu          sync.Mutex
-	state       string
-	lastErr     string // "" when no error
-	client      *privhelper.Client
-	systemMgr   systemManagerAdapter
-	event       adminModeEventEmitter
-	helperPath  func() (string, error) // resolves the helper binary path at runtime
-	launchFn    launchHelperFunc       // injectable for tests
-	nowFn       func() time.Time
-	currentUID  int
-	currentGID  int
-	userHome    string
-	currentPID  int
-	handshakeTO time.Duration
-	shutdownTO  time.Duration
-	testHook    func(state string) // optional; called on every transition
+	mu      sync.Mutex
+	state   string
+	lastErr string // "" when no error
+	client  *privhelper.Client
+	// disableRequested records a Disable click that arrived while state was
+	// Requesting (authorization prompt in flight). Enable's success path
+	// honors it by tearing down instead of enabling. Guarded by mu.
+	disableRequested bool
+	// helperDisconnected records that the helper connection ended during the
+	// Requesting window (after a successful handshake but before Enable
+	// committed Enabled). Enable's success path checks it so it never commits
+	// Enabled with an already-dead client. Guarded by mu.
+	helperDisconnected bool
+	systemMgr          systemManagerAdapter
+	event              adminModeEventEmitter
+	helperPath         func() (string, error) // resolves the helper binary path at runtime
+	launchFn           launchHelperFunc       // injectable for tests
+	nowFn              func() time.Time
+	currentUID         int
+	currentGID         int
+	userHome           string
+	currentPID         int
+	handshakeTO        time.Duration
+	shutdownTO         time.Duration
+	testHook           func(state string) // optional; called on every transition
 }
 
 // adminModeEventEmitter notifies the frontend when the state changes. The
@@ -130,9 +139,18 @@ func maybeStrPtr(s string) *string {
 func (a *adminModeManager) Enable(ctx context.Context) error {
 	a.mu.Lock()
 	if a.state == AdminModeEnabled || a.state == AdminModeRequesting {
+		// No-op: an already-requesting/enabled Enable must NOT clear a pending
+		// disable recorded during this Requesting window (spec: only a fresh
+		// request cycle clears the intent).
 		a.mu.Unlock()
 		return nil
 	}
+	// A brand-new request cycle (Disabled → Requesting) is the only place that
+	// clears a pending-disable intent, making the multi-click outcome
+	// deterministic. The disconnect flag is per-request scratch state and is
+	// reset here too.
+	a.disableRequested = false
+	a.helperDisconnected = false
 	a.setState(AdminModeRequesting, "")
 	a.mu.Unlock()
 
@@ -179,6 +197,29 @@ func (a *adminModeManager) Enable(ctx context.Context) error {
 	// now, poll via Ping-on-error is sufficient and keeps the Client struct
 	// smaller. (The server-side tests already cover OnDisconnect behavior.)
 	a.mu.Lock()
+	// Resolve the commit under the lock, then tear down (if needed) OUTSIDE
+	// the lock — Shutdown blocks on a possibly-slow RPC and holding mu would
+	// freeze concurrent GetAdminModeStatus. Both early exits land on Disabled.
+	switch {
+	case a.disableRequested:
+		// The user clicked Disable while the authorization prompt was in
+		// flight. Honor that intent rather than enabling.
+		a.disableRequested = false
+		a.helperDisconnected = false
+		a.mu.Unlock()
+		a.teardownClient(ctx, client)
+		a.setStateLocked(AdminModeDisabled, "")
+		return nil
+	case a.helperDisconnected:
+		// The helper connection ended between a successful handshake and this
+		// commit. Never store a dead client as Enabled; surface the neutral
+		// session-ended status and clean up.
+		a.helperDisconnected = false
+		a.mu.Unlock()
+		a.teardownClient(ctx, client)
+		a.setStateLocked(AdminModeDisabled, "admin_session_ended")
+		return nil
+	}
 	a.client = client
 	a.systemMgr.SetAdminClient(client)
 	a.setState(AdminModeEnabled, "")
@@ -187,10 +228,26 @@ func (a *adminModeManager) Enable(ctx context.Context) error {
 	return nil
 }
 
+// setStateLocked acquires mu, transitions, and releases. A convenience for
+// the out-of-lock teardown paths that need to record a final state.
+func (a *adminModeManager) setStateLocked(state, errMsg string) {
+	a.mu.Lock()
+	a.setState(state, errMsg)
+	a.mu.Unlock()
+}
+
 // Disable sends Shutdown, waits up to shutdownTO, and returns to Disabled.
 // If the helper is unresponsive the connection is closed anyway.
 func (a *adminModeManager) Disable(ctx context.Context) error {
 	a.mu.Lock()
+	if a.state == AdminModeRequesting {
+		// Authorization prompt in flight: the helper isn't up yet, so there is
+		// nothing to tear down here. Record the intent; Enable's success path
+		// honors it once the handshake completes.
+		a.disableRequested = true
+		a.mu.Unlock()
+		return nil
+	}
 	if a.state != AdminModeEnabled {
 		a.mu.Unlock()
 		return nil
@@ -199,6 +256,19 @@ func (a *adminModeManager) Disable(ctx context.Context) error {
 	client := a.client
 	a.mu.Unlock()
 
+	a.teardownClient(ctx, client)
+	a.setStateLocked(AdminModeDisabled, "")
+	return nil
+}
+
+// teardownClient shuts the given client down with a short timeout, closes it,
+// and clears the shared client reference plus the system manager's admin
+// client. Centralizes the teardown sequence shared by Disable and the
+// pending-disable path so a future change (timeout, extra cleanup) only has to
+// touch one place. Safe with a nil client (nothing to shut down). The caller
+// owns the state transition; teardownClient shuts the connection down and
+// clears the client refs but does not call setState.
+func (a *adminModeManager) teardownClient(ctx context.Context, client *privhelper.Client) {
 	if client != nil {
 		shutdownCtx, cancel := context.WithTimeout(ctx, a.shutdownTO)
 		_ = client.Shutdown(shutdownCtx)
@@ -209,22 +279,29 @@ func (a *adminModeManager) Disable(ctx context.Context) error {
 	a.mu.Lock()
 	a.client = nil
 	a.systemMgr.ClearAdminClient()
-	a.setState(AdminModeDisabled, "")
 	a.mu.Unlock()
-	return nil
 }
 
-// handleHelperCrash is wired to Client.OnDisconnect for unexpected exits.
-// Clean shutdowns (state == ShuttingDown) don't surface as crashes.
+// handleHelperCrash is wired to Client.OnDisconnect for a connection that ends
+// while Enabled. The helper now self-terminates on its idle timeout by design,
+// and the GUI observes that as the same EOF/connection error as an actual
+// crash — so this surfaces the neutral `admin_session_ended` status rather
+// than a red `helper_crashed` error. Clean shutdowns (state == ShuttingDown)
+// don't reach here as a crash.
 func (a *adminModeManager) handleHelperCrash(_ error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.state != AdminModeEnabled {
-		return
+	switch a.state {
+	case AdminModeRequesting:
+		// The connection ended during the enable handshake-commit window.
+		// Record it so Enable's commit does not store a dead client as
+		// Enabled; the actual teardown/state transition happens there.
+		a.helperDisconnected = true
+	case AdminModeEnabled:
+		a.client = nil
+		a.systemMgr.ClearAdminClient()
+		a.setState(AdminModeDisabled, "admin_session_ended")
 	}
-	a.client = nil
-	a.systemMgr.ClearAdminClient()
-	a.setState(AdminModeDisabled, "helper_crashed")
 }
 
 // failFromRequesting transitions from Requesting → Disabled with a reason

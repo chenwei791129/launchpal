@@ -37,10 +37,11 @@ type Client struct {
 	encoder *json.Encoder
 	closed  atomic.Bool
 
-	mu      sync.Mutex
-	nextID  int64
-	pending map[int64]chan Response
-	closeCh chan struct{}
+	mu        sync.Mutex
+	nextID    int64
+	pending   map[int64]chan Response
+	closeCh   chan struct{}
+	closeOnce sync.Once
 
 	// onDisconnect is called once when the background reader observes that
 	// the connection has ended (EOF, helper crash, or deliberate Close).
@@ -216,8 +217,16 @@ func (c *Client) Close() error {
 		return nil
 	}
 	err := c.conn.Close()
-	close(c.closeCh)
+	c.signalClosed()
 	return err
+}
+
+// signalClosed closes closeCh exactly once. Both Close() and readLoop's exit
+// path reach it, and they can race (e.g. Close() shuts the connection, which
+// unblocks readLoop's scan); routing every close through a sync.Once avoids a
+// double-close panic on closeCh.
+func (c *Client) signalClosed() {
+	c.closeOnce.Do(func() { close(c.closeCh) })
 }
 
 // readLoop reads responses off the wire and dispatches them to the waiting
@@ -227,11 +236,7 @@ func (c *Client) readLoop() {
 	defer func() {
 		c.closed.Store(true)
 		_ = c.conn.Close()
-		select {
-		case <-c.closeCh:
-		default:
-			close(c.closeCh)
-		}
+		c.signalClosed()
 		c.mu.Lock()
 		for id, ch := range c.pending {
 			select {
@@ -386,6 +391,17 @@ func LaunchHelper(ctx context.Context, opts LaunchHelperOptions) (*Client, error
 	pingCtx, cancel := context.WithTimeout(ctx, opts.HandshakeTimeout)
 	defer cancel()
 	if err := client.Ping(pingCtx); err != nil {
+		// The connection was established but the handshake failed. Ask the
+		// helper to exit now over this live connection rather than leaving a
+		// root socket up until its idle/watchdog backstop fires. Best-effort
+		// with a short timeout: a hung helper won't answer, and adding to the
+		// already-elapsed handshake wait must stay bounded; a responsive
+		// helper acks a local socket round-trip well within it. On failure we
+		// fall through to Close and the backstops. (When Connect above failed
+		// there is no client here, so this only covers the established case.)
+		shutdownCtx, scancel := context.WithTimeout(ctx, 1*time.Second)
+		_ = client.Shutdown(shutdownCtx)
+		scancel()
 		_ = client.Close()
 		return nil, fmt.Errorf("helper handshake failed: %w", err)
 	}
