@@ -111,6 +111,8 @@ LaunchPal can manage system services under `/Library/LaunchDaemons` via an optio
 
 **Scope of Admin Mode writes**: only `/Library/LaunchDaemons/`. `/System/Library/LaunchDaemons/` remains read-only under Admin Mode (SIP would reject writes anyway).
 
+**Helper launch integrity**: because LaunchPal is unsigned, it protects the root-privileged helper against tampering with a root-owned trust anchor. The first time you enable Admin Mode, the helper installs a copy of itself at `/Library/Application Support/LaunchPal/launchpal-privhelper`, owned `root:wheel` with mode `0755` — a location no non-root process can write. Every subsequent enable launches that protected copy directly, so a helper planted in the (user-writable) app bundle can never be run as root once the protected copy exists. As defense-in-depth, the SHA-256 of the packaged helper is pinned into the app binary at build time and checked before a bundle copy is ever launched (first install or a legitimate app update); the pin only gates the bundle copy and is never required to launch the protected copy. This requires no extra prompts — provisioning happens inside the same one-per-session authorization, and `brew install` never asks for `sudo`. Residual risk: the very first enable (and the first enable after each app update) still runs the bundle copy once — this bootstrap window cannot be fully closed without a paid Apple Developer signing identity.
+
 ## Known Limitations
 
 - User services (`~/Library/LaunchAgents`) can be managed without authorization.
