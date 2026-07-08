@@ -45,18 +45,20 @@ jobs:
       run: cd frontend && pnpm run generate
 
     - name: Run Go tests
-      run: go test ./internal/...
+      # Cover all packages, not just ./internal/... — the Admin Mode launch
+      # integrity tests live in package main (resolve_helper_test.go) and
+      # cmd/launchpal-privhelper, which ./internal/... would silently skip. The
+      # frontend is generated in the prior step so the //go:embed in main
+      # compiles.
+      run: go test ./...
 
     - name: Build application
       env:
         VERSION: ${{ inputs.version }}
-      run: |
-        if [ -n "$VERSION" ]; then
-          go tool wails build -ldflags "-X main.version=$VERSION"
-        else
-          go tool wails build
-        fi
-        make install-helper
+      # The build-helper → hash → pin-ldflags → install-helper order lives in
+      # the Makefile `build` target (single source of truth). VERSION is passed
+      # through for the main.version ldflag; empty → the "dev" default.
+      run: make build VERSION="$VERSION"
 
     - name: Install create-dmg
       run: brew install create-dmg

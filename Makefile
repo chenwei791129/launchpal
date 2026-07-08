@@ -31,11 +31,11 @@ build-helper: ## Build the launchpal-privhelper binary
 	mkdir -p build/bin
 	CGO_ENABLED=1 go build -trimpath -o build/bin/launchpal-privhelper ./cmd/launchpal-privhelper
 
-# Copy the privhelper into the .app bundle next to the main binary. This must
-# run after `wails build` so the bundle directory exists. The install target
-# is a no-op when the bundle is missing (used by `make build` below which
-# runs this after wails succeeds).
-install-helper: build-helper
+# Copy the prebuilt privhelper into the .app bundle next to the main binary.
+# Expects build-helper to have run already (so the pinned binary is copied
+# verbatim); must run after `wails build` so the bundle directory exists. A
+# no-op when the bundle is missing.
+install-helper: ## Copy the prebuilt privhelper into the app bundle
 	@if [ -d build/bin/launchpal.app/Contents/MacOS ]; then \
 		cp build/bin/launchpal-privhelper build/bin/launchpal.app/Contents/MacOS/launchpal-privhelper; \
 		chmod 0755 build/bin/launchpal.app/Contents/MacOS/launchpal-privhelper; \
@@ -44,12 +44,24 @@ install-helper: build-helper
 		echo "No app bundle found at build/bin/launchpal.app — skipping install-helper"; \
 	fi
 
-build: ## Build production app (includes privhelper)
-	go tool wails build
+# VERSION, when set (release builds pass it, e.g. `make build VERSION=v1.6.0`),
+# is injected as main.version; empty locally → the binary keeps its "dev"
+# default. Kept as a make-time prefix to the ldflags string below.
+VERSION_LDFLAG := $(if $(VERSION),-X main.version=$(VERSION) ,)
+
+# The build order is load-bearing: build the helper first, hash it, then inject
+# that hash as main.helperPin BEFORE the main binary is linked (via wails build
+# ldflags), and finally copy the same helper binary into the bundle so its
+# SHA-256 matches the embedded pin. This target is the single source of truth
+# for that order — CI calls `make build VERSION=...` rather than re-inlining it.
+build: build-helper ## Build production app (includes privhelper)
+	HELPER_PIN=$$(shasum -a 256 build/bin/launchpal-privhelper | awk '{print $$1}'); \
+	go tool wails build -ldflags "$(VERSION_LDFLAG)-X main.helperPin=$$HELPER_PIN"
 	$(MAKE) install-helper
 
-build-debug: ## Build with devtools enabled
-	go tool wails build -debug
+build-debug: build-helper ## Build with devtools enabled
+	HELPER_PIN=$$(shasum -a 256 build/bin/launchpal-privhelper | awk '{print $$1}'); \
+	go tool wails build -debug -ldflags "$(VERSION_LDFLAG)-X main.helperPin=$$HELPER_PIN"
 	$(MAKE) install-helper
 
 dev: build-debug ## Build and run app
