@@ -269,12 +269,17 @@ tests:
 ---
 ### Requirement: Parent PID watchdog
 
-The helper SHALL spawn a background goroutine that checks the parent LaunchPal process every second using `syscall.Kill(parentPID, 0)`. If the parent is no longer running, the helper SHALL remove the socket file and exit within 2 seconds.
+The helper SHALL record the parent LaunchPal process's start time at launch and SHALL spawn a background goroutine that checks the parent every second. The parent SHALL be considered alive only when a process with the parent PID exists AND its start time matches the recorded value. If the PID no longer exists, or exists but reports a different start time (PID reuse), the helper SHALL treat the parent as gone, remove the socket file, and exit within 2 seconds. On platforms where the start time cannot be obtained, the helper SHALL fall back to a PID-existence check.
 
 #### Scenario: Parent exits normally
 
 - **WHEN** LaunchPal exits without sending Shutdown
 - **THEN** the helper detects the parent is gone, removes the socket, and exits within 2 seconds
+
+#### Scenario: Parent PID reused by another process
+
+- **WHEN** LaunchPal exits and its PID is subsequently claimed by an unrelated live process
+- **THEN** the helper observes a mismatched parent start time, treats the parent as gone, and self-exits
 
 #### Scenario: Parent is killed
 
@@ -283,51 +288,41 @@ The helper SHALL spawn a background goroutine that checks the parent LaunchPal p
 
 
 <!-- @trace
-source: session-privileged-helper
-updated: 2026-04-22
+source: admin-mode-lifecycle-hardening
+updated: 2026-07-23
 code:
-  - frontend/app/pages/services/[name].vue
-  - frontend/app/components/ServiceLogs.vue
-  - internal/launchctl/readonly.go
-  - internal/launchctl/system.go
-  - internal/privhelper/peer_darwin.go
-  - frontend/wailsjs/go/main/App.d.ts
-  - launchpal-privhelper
-  - Makefile
-  - cmd/launchpal-privhelper/main.go
-  - go.mod
-  - internal/launchctl/user.go
-  - frontend/app/components/ServiceRow.vue
-  - app.go
-  - frontend/wailsjs/go/models.ts
-  - internal/launchctl/plist_encode.go
-  - frontend/app/components/BackupDiffDialog.vue
-  - frontend/app/components/CreateServiceModal.vue
-  - frontend/app/types/wails.d.ts
-  - internal/privhelper/nofollow_other.go
-  - internal/privhelper/protocol.go
-  - internal/privhelper/server.go
+  - internal/privhelper/logpath_darwin.go
+  - .github/workflows/build.yml
   - frontend/app/composables/useAdminMode.ts
-  - frontend/app/pages/system.vue
-  - frontend/app/pages/settings.vue
-  - internal/privhelper/nofollow_darwin.go
-  - frontend/wailsjs/go/main/App.js
-  - README.md
-  - internal/privhelper/peer_other.go
-  - internal/privhelper/handlers.go
-  - admin_mode.go
+  - internal/privhelper/integrity.go
+  - cmd/launchpal-privhelper/procinfo_other.go
+  - internal/launchctl/system.go
+  - internal/privhelper/install.go
   - internal/privhelper/client.go
+  - internal/privhelper/server.go
+  - main.go
+  - internal/launchctl/readonly.go
+  - README.md
+  - internal/launchctl/user.go
+  - frontend/app/pages/settings.vue
+  - cmd/launchpal-privhelper/main.go
+  - admin_mode.go
+  - cmd/launchpal-privhelper/procinfo_darwin.go
+  - internal/privhelper/logpath_other.go
+  - internal/privhelper/handlers.go
+  - internal/privhelper/logpath.go
+  - Makefile
 tests:
-  - internal/privhelper/handlers_test.go
   - internal/privhelper/server_test.go
-  - internal/launchctl/plist_encode_test.go
-  - internal/privhelper/protocol_test.go
+  - internal/privhelper/handlers_test.go
+  - resolve_helper_test.go
+  - internal/launchctl/system_test.go
+  - internal/privhelper/integrity_test.go
+  - internal/launchctl/user_test.go
+  - internal/privhelper/install_test.go
   - internal/privhelper/client_test.go
   - cmd/launchpal-privhelper/helper_test.go
-  - app_test.go
   - admin_mode_test.go
-  - admin_mode_testhelpers_test.go
-  - internal/launchctl/system_test.go
 -->
 
 ---
@@ -392,57 +387,106 @@ tests:
 ---
 ### Requirement: Idle timeout
 
-The helper SHALL track the time of the last successful RPC. If no RPC is received for 30 minutes, the helper SHALL remove the socket and exit.
+The helper SHALL track the time of the last successful RPC. If no RPC is received for 5 minutes, the helper SHALL remove the socket and exit. Any successful RPC resets the idle timer, so an actively used session is unaffected; the timeout bounds only the window during which an idle-but-still-connected session keeps a root socket alive. Because the GUI holds a single long-lived connection that stays open while idle, the idle-driven stop SHALL close the active accepted connection (not only the listener) so that the connection handler unblocks and the helper process actually exits; closing the listener alone would leave a connected-but-idle helper running.
 
-#### Scenario: Extended idle period
+#### Scenario: Extended idle period with the GUI still connected
 
-- **WHEN** no RPC traffic occurs for 30 minutes
-- **THEN** helper cleans up and self-exits, and any subsequent client connection attempt fails
+- **WHEN** no RPC traffic occurs for 5 minutes while the GUI connection is still open
+- **THEN** the helper closes the active connection, cleans up, and self-exits (the process terminates, not merely the listener), and any subsequent client connection attempt fails
+
+#### Scenario: Activity resets the idle timer
+
+- **WHEN** RPCs continue to arrive at intervals shorter than 5 minutes
+- **THEN** the helper does not self-exit on idle and remains available
+
 
 <!-- @trace
-source: session-privileged-helper
-updated: 2026-04-22
+source: admin-mode-lifecycle-hardening
+updated: 2026-07-23
 code:
-  - frontend/app/pages/services/[name].vue
-  - frontend/app/components/ServiceLogs.vue
-  - internal/launchctl/readonly.go
-  - internal/launchctl/system.go
-  - internal/privhelper/peer_darwin.go
-  - frontend/wailsjs/go/main/App.d.ts
-  - launchpal-privhelper
-  - Makefile
-  - cmd/launchpal-privhelper/main.go
-  - go.mod
-  - internal/launchctl/user.go
-  - frontend/app/components/ServiceRow.vue
-  - app.go
-  - frontend/wailsjs/go/models.ts
-  - internal/launchctl/plist_encode.go
-  - frontend/app/components/BackupDiffDialog.vue
-  - frontend/app/components/CreateServiceModal.vue
-  - frontend/app/types/wails.d.ts
-  - internal/privhelper/nofollow_other.go
-  - internal/privhelper/protocol.go
-  - internal/privhelper/server.go
+  - internal/privhelper/logpath_darwin.go
+  - .github/workflows/build.yml
   - frontend/app/composables/useAdminMode.ts
-  - frontend/app/pages/system.vue
-  - frontend/app/pages/settings.vue
-  - internal/privhelper/nofollow_darwin.go
-  - frontend/wailsjs/go/main/App.js
-  - README.md
-  - internal/privhelper/peer_other.go
-  - internal/privhelper/handlers.go
-  - admin_mode.go
+  - internal/privhelper/integrity.go
+  - cmd/launchpal-privhelper/procinfo_other.go
+  - internal/launchctl/system.go
+  - internal/privhelper/install.go
   - internal/privhelper/client.go
+  - internal/privhelper/server.go
+  - main.go
+  - internal/launchctl/readonly.go
+  - README.md
+  - internal/launchctl/user.go
+  - frontend/app/pages/settings.vue
+  - cmd/launchpal-privhelper/main.go
+  - admin_mode.go
+  - cmd/launchpal-privhelper/procinfo_darwin.go
+  - internal/privhelper/logpath_other.go
+  - internal/privhelper/handlers.go
+  - internal/privhelper/logpath.go
+  - Makefile
 tests:
-  - internal/privhelper/handlers_test.go
   - internal/privhelper/server_test.go
-  - internal/launchctl/plist_encode_test.go
-  - internal/privhelper/protocol_test.go
+  - internal/privhelper/handlers_test.go
+  - resolve_helper_test.go
+  - internal/launchctl/system_test.go
+  - internal/privhelper/integrity_test.go
+  - internal/launchctl/user_test.go
+  - internal/privhelper/install_test.go
   - internal/privhelper/client_test.go
   - cmd/launchpal-privhelper/helper_test.go
-  - app_test.go
   - admin_mode_test.go
-  - admin_mode_testhelpers_test.go
+-->
+
+---
+### Requirement: Helper self-terminates on client disconnect
+
+The helper serves a single client connection. WHEN that client connection ends for any reason — the connection handler returning on EOF, on a read error, or on a write/encode error — the helper SHALL remove the socket file and exit, ending the accept loop, rather than continuing to listen until the idle timeout or parent watchdog fires. This teardown SHALL be triggered on every connection-handler exit path that indicates the connection ended (not only the post-scan EOF path), and SHALL NOT be triggered when the server is already stopping for another reason. This is the primary teardown mechanism, because the unprivileged GUI cannot signal the root helper directly.
+
+#### Scenario: Client disconnects (EOF)
+
+- **WHEN** the LaunchPal client connection to the helper closes cleanly (Disable, GUI exit, GUI crash, or a transient drop) and the connection handler returns on EOF
+- **THEN** the helper removes the socket and exits within a few seconds, and any subsequent connection attempt to the socket fails
+
+#### Scenario: Disconnect surfaced via a failed write
+
+- **WHEN** the connection dies while the helper is writing a response, so the connection handler returns from a failed write/encode rather than from the EOF path
+- **THEN** the helper still removes the socket and exits within a few seconds — the failed-write return path is not exempt from teardown
+
+<!-- @trace
+source: admin-mode-lifecycle-hardening
+updated: 2026-07-23
+code:
+  - internal/privhelper/logpath_darwin.go
+  - .github/workflows/build.yml
+  - frontend/app/composables/useAdminMode.ts
+  - internal/privhelper/integrity.go
+  - cmd/launchpal-privhelper/procinfo_other.go
+  - internal/launchctl/system.go
+  - internal/privhelper/install.go
+  - internal/privhelper/client.go
+  - internal/privhelper/server.go
+  - main.go
+  - internal/launchctl/readonly.go
+  - README.md
+  - internal/launchctl/user.go
+  - frontend/app/pages/settings.vue
+  - cmd/launchpal-privhelper/main.go
+  - admin_mode.go
+  - cmd/launchpal-privhelper/procinfo_darwin.go
+  - internal/privhelper/logpath_other.go
+  - internal/privhelper/handlers.go
+  - internal/privhelper/logpath.go
+  - Makefile
+tests:
+  - internal/privhelper/server_test.go
+  - internal/privhelper/handlers_test.go
+  - resolve_helper_test.go
   - internal/launchctl/system_test.go
+  - internal/privhelper/integrity_test.go
+  - internal/launchctl/user_test.go
+  - internal/privhelper/install_test.go
+  - internal/privhelper/client_test.go
+  - cmd/launchpal-privhelper/helper_test.go
+  - admin_mode_test.go
 -->
