@@ -527,3 +527,116 @@ tests:
   - internal/launchctl/user_test.go
   - frontend/app/components/__tests__/ServiceLogs.test.ts
 -->
+
+---
+### Requirement: Helper invokes launchctl by absolute path
+
+The helper SHALL invoke `launchctl` by its absolute path `/bin/launchctl` for the bootstrap, bootout, and kickstart operations, rather than by the bare name `launchctl` resolved through `$PATH`. This makes the resolved binary independent of any inherited environment.
+
+#### Scenario: launchctl resolved by absolute path
+
+- **WHEN** the helper performs a bootstrap, bootout, or kickstart
+- **THEN** it executes `/bin/launchctl`, regardless of the `$PATH` value inherited by the helper process
+
+
+<!-- @trace
+source: filesystem-input-hardening
+updated: 2026-07-23
+code:
+  - internal/launchctl/user.go
+  - .github/workflows/build.yml
+  - internal/privhelper/client.go
+  - README.md
+  - frontend/app/composables/useAdminMode.ts
+  - internal/privhelper/handlers.go
+  - main.go
+  - frontend/app/pages/settings.vue
+  - internal/privhelper/integrity.go
+  - internal/privhelper/server.go
+  - internal/privhelper/logpath.go
+  - internal/launchctl/readonly.go
+  - internal/privhelper/install.go
+  - cmd/launchpal-privhelper/procinfo_other.go
+  - Makefile
+  - cmd/launchpal-privhelper/procinfo_darwin.go
+  - internal/launchctl/system.go
+  - internal/privhelper/logpath_other.go
+  - cmd/launchpal-privhelper/main.go
+  - admin_mode.go
+  - internal/privhelper/logpath_darwin.go
+tests:
+  - internal/privhelper/integrity_test.go
+  - internal/privhelper/client_test.go
+  - internal/privhelper/handlers_test.go
+  - cmd/launchpal-privhelper/helper_test.go
+  - admin_mode_test.go
+  - internal/privhelper/server_test.go
+  - resolve_helper_test.go
+  - internal/privhelper/install_test.go
+  - internal/launchctl/system_test.go
+  - internal/launchctl/user_test.go
+-->
+
+---
+### Requirement: System daemon schedule validation parity
+
+System daemon create and update SHALL apply the same schedule range validation as user services: `StartInterval` SHALL be at least 10, and calendar-entry fields SHALL be within range (minute 0-59, hour 0-23, day 1-31, weekday 0-6, month 1-12). In addition, the system-domain create and update path SHALL reject a schedule whose calendar-entry count exceeds the 50-entry cap (matching the cron range-expansion limit). Both checks SHALL be performed in the create/update path (which returns an error and writes no plist on failure), not in the error-less plist encoder, so the enforcement holds for every caller of the system create/update binding rather than only in the frontend form.
+
+#### Scenario: Out-of-range system daemon schedule is rejected
+
+- **WHEN** a system daemon create or update is called with an out-of-range calendar field or a `StartInterval` below 10
+- **THEN** it returns a validation error and does not write the plist
+
+#### Scenario: Over-cap system daemon schedule is rejected in the create/update path
+
+- **WHEN** a system daemon create or update is called with more than 50 calendar entries
+- **THEN** the create/update path returns a validation error and writes no plist, independently of the frontend
+
+##### Example: system-domain schedule validation
+
+| Input                                   | Result            |
+| --------------------------------------- | ----------------- |
+| StartInterval = 9                       | rejected          |
+| StartInterval = 10                      | accepted          |
+| calendar Hour = 24                      | rejected          |
+| calendar Hour = 23                      | accepted          |
+| expansion producing 51 calendar entries | rejected          |
+| expansion producing 50 calendar entries | accepted          |
+
+<!-- @trace
+source: filesystem-input-hardening
+updated: 2026-07-23
+code:
+  - internal/launchctl/user.go
+  - .github/workflows/build.yml
+  - internal/privhelper/client.go
+  - README.md
+  - frontend/app/composables/useAdminMode.ts
+  - internal/privhelper/handlers.go
+  - main.go
+  - frontend/app/pages/settings.vue
+  - internal/privhelper/integrity.go
+  - internal/privhelper/server.go
+  - internal/privhelper/logpath.go
+  - internal/launchctl/readonly.go
+  - internal/privhelper/install.go
+  - cmd/launchpal-privhelper/procinfo_other.go
+  - Makefile
+  - cmd/launchpal-privhelper/procinfo_darwin.go
+  - internal/launchctl/system.go
+  - internal/privhelper/logpath_other.go
+  - cmd/launchpal-privhelper/main.go
+  - admin_mode.go
+  - internal/privhelper/logpath_darwin.go
+tests:
+  - internal/privhelper/integrity_test.go
+  - internal/privhelper/client_test.go
+  - internal/privhelper/handlers_test.go
+  - cmd/launchpal-privhelper/helper_test.go
+  - admin_mode_test.go
+  - internal/privhelper/server_test.go
+  - resolve_helper_test.go
+  - internal/privhelper/install_test.go
+  - internal/launchctl/system_test.go
+  - internal/launchctl/user_test.go
+-->

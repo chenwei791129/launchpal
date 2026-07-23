@@ -861,3 +861,56 @@ tests:
   - frontend/app/components/__tests__/ServiceRow.test.ts
   - frontend/app/utils/__tests__/launchPolicy.test.ts
 -->
+
+---
+### Requirement: Routing name path-traversal confinement
+
+The user, system, and read-only service managers SHALL reject any routing `name` (and `CreateService`'s `config.Label`) that is not a single path component before it is joined into a plist path. A value containing a path separator or a NUL byte, or equal to `.` or `..`, SHALL be rejected with a validation error and SHALL NOT reach any file operation. A single component that merely contains `..` as a substring (e.g. `com.example..worker`) is NOT rejected: with no path separator it cannot traverse out of the base directory, and it is a legal launchd label that must remain manageable. This confines all name-derived operations (get, read plist, read logs, create, update, delete, clear logs, and the system-domain start/stop/restart) to the intended base directory (`~/Library/LaunchAgents` for user services, `/Library/LaunchDaemons` for system daemons, or the read-only system directories), since `filepath.Join` alone does not confine `..` to the base directory. This is a GUI-side defense in depth; for system-domain writes the privileged helper independently re-validates the path, but the manager SHALL NOT rely on that alone.
+
+#### Scenario: Traversal name is rejected (user and system domains)
+
+- **WHEN** a binding is invoked with `name` set to `../../etc/passwd` (or `config.Label` containing `..`/`/`), in either the user domain or the system domain
+- **THEN** the manager returns a validation error and performs no file read, write, or delete outside the base directory
+
+#### Scenario: Normal service name is accepted
+
+- **WHEN** `name` is a plain label such as `com.example.foo`
+- **THEN** the operation proceeds normally
+
+<!-- @trace
+source: filesystem-input-hardening
+updated: 2026-07-23
+code:
+  - internal/launchctl/user.go
+  - .github/workflows/build.yml
+  - internal/privhelper/client.go
+  - README.md
+  - frontend/app/composables/useAdminMode.ts
+  - internal/privhelper/handlers.go
+  - main.go
+  - frontend/app/pages/settings.vue
+  - internal/privhelper/integrity.go
+  - internal/privhelper/server.go
+  - internal/privhelper/logpath.go
+  - internal/launchctl/readonly.go
+  - internal/privhelper/install.go
+  - cmd/launchpal-privhelper/procinfo_other.go
+  - Makefile
+  - cmd/launchpal-privhelper/procinfo_darwin.go
+  - internal/launchctl/system.go
+  - internal/privhelper/logpath_other.go
+  - cmd/launchpal-privhelper/main.go
+  - admin_mode.go
+  - internal/privhelper/logpath_darwin.go
+tests:
+  - internal/privhelper/integrity_test.go
+  - internal/privhelper/client_test.go
+  - internal/privhelper/handlers_test.go
+  - cmd/launchpal-privhelper/helper_test.go
+  - admin_mode_test.go
+  - internal/privhelper/server_test.go
+  - resolve_helper_test.go
+  - internal/privhelper/install_test.go
+  - internal/launchctl/system_test.go
+  - internal/launchctl/user_test.go
+-->
