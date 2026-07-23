@@ -8,65 +8,65 @@ Defines how the `launchpal-privhelper` binary is built, packaged inside `LaunchP
 
 ### Requirement: Helper binary packaged in app bundle
 
-The `launchpal-privhelper` binary SHALL be compiled and placed at `LaunchPal.app/Contents/MacOS/launchpal-privhelper` during the build. LaunchPal SHALL locate the helper at runtime using `os.Executable()` to find the main binary directory, then joining `launchpal-privhelper`.
+The `launchpal-privhelper` binary SHALL be compiled and placed at `LaunchPal.app/Contents/MacOS/launchpal-privhelper` during the build. At runtime LaunchPal SHALL resolve the helper to launch by locating the bundle helper via `os.Executable()` (the main binary directory joined with `launchpal-privhelper`) as the packaged source, and SHALL launch a verified root-owned protected copy whenever one exists — its trust deriving from root ownership and permissions, not from matching the bundle. LaunchPal SHALL launch the bundle copy only when no verified protected copy exists, or when a non-empty pin proves the bundle copy is a legitimate update differing from the protected copy.
 
-#### Scenario: Helper binary resolved at runtime
+#### Scenario: Bundle helper is the packaged source
 
-- **WHEN** LaunchPal enables Admin Mode
-- **THEN** the helper path is computed as `<main-binary-dir>/launchpal-privhelper` and exists at that path
+- **WHEN** LaunchPal is built
+- **THEN** the helper is packaged at `<main-binary-dir>/launchpal-privhelper` and is used as the source from which the protected copy is provisioned
+
+#### Scenario: Runtime launch prefers verified protected copy
+
+- **WHEN** LaunchPal enables Admin Mode and a verified protected copy exists
+- **THEN** the protected copy is launched instead of the bundle copy, regardless of whether the bundle copy is present, altered, or hash-matched
+
+#### Scenario: Bundle copy used only for first install or legitimate update
+
+- **WHEN** no verified protected copy exists, or a non-empty pin proves the bundle copy is a legitimate update differing from the protected copy
+- **THEN** LaunchPal launches the bundle copy after hash-pin verification
 
 #### Scenario: Helper binary missing
 
-- **WHEN** the helper binary is not found at the expected path
+- **WHEN** no verified protected copy exists and the bundle helper is not found
 - **THEN** Admin Mode enablement fails with an error identifying the missing binary path
 
 
 <!-- @trace
-source: session-privileged-helper
-updated: 2026-04-22
+source: privileged-helper-launch-integrity
+updated: 2026-07-23
 code:
-  - frontend/app/pages/services/[name].vue
-  - frontend/app/components/ServiceLogs.vue
-  - internal/launchctl/readonly.go
-  - internal/launchctl/system.go
-  - internal/privhelper/peer_darwin.go
-  - frontend/wailsjs/go/main/App.d.ts
-  - launchpal-privhelper
   - Makefile
-  - cmd/launchpal-privhelper/main.go
-  - go.mod
-  - internal/launchctl/user.go
-  - frontend/app/components/ServiceRow.vue
-  - app.go
-  - frontend/wailsjs/go/models.ts
-  - internal/launchctl/plist_encode.go
-  - frontend/app/components/BackupDiffDialog.vue
-  - frontend/app/components/CreateServiceModal.vue
-  - frontend/app/types/wails.d.ts
-  - internal/privhelper/nofollow_other.go
-  - internal/privhelper/protocol.go
-  - internal/privhelper/server.go
   - frontend/app/composables/useAdminMode.ts
-  - frontend/app/pages/system.vue
-  - frontend/app/pages/settings.vue
-  - internal/privhelper/nofollow_darwin.go
-  - frontend/wailsjs/go/main/App.js
-  - README.md
-  - internal/privhelper/peer_other.go
-  - internal/privhelper/handlers.go
+  - internal/privhelper/integrity.go
   - admin_mode.go
+  - README.md
+  - frontend/app/pages/settings.vue
+  - internal/launchctl/readonly.go
+  - internal/privhelper/server.go
+  - internal/privhelper/handlers.go
+  - cmd/launchpal-privhelper/main.go
+  - internal/privhelper/logpath_darwin.go
+  - cmd/launchpal-privhelper/procinfo_darwin.go
   - internal/privhelper/client.go
+  - internal/privhelper/install.go
+  - internal/privhelper/logpath.go
+  - internal/privhelper/logpath_other.go
+  - main.go
+  - internal/launchctl/user.go
+  - cmd/launchpal-privhelper/procinfo_other.go
+  - internal/launchctl/system.go
+  - .github/workflows/build.yml
 tests:
-  - internal/privhelper/handlers_test.go
-  - internal/privhelper/server_test.go
-  - internal/launchctl/plist_encode_test.go
-  - internal/privhelper/protocol_test.go
-  - internal/privhelper/client_test.go
-  - cmd/launchpal-privhelper/helper_test.go
-  - app_test.go
-  - admin_mode_test.go
-  - admin_mode_testhelpers_test.go
   - internal/launchctl/system_test.go
+  - internal/privhelper/server_test.go
+  - internal/privhelper/client_test.go
+  - internal/privhelper/integrity_test.go
+  - internal/privhelper/install_test.go
+  - admin_mode_test.go
+  - internal/privhelper/handlers_test.go
+  - resolve_helper_test.go
+  - cmd/launchpal-privhelper/helper_test.go
+  - internal/launchctl/user_test.go
 -->
 
 ---
