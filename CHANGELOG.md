@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.21.0](https://github.com/chenwei791129/launchpal/compare/v1.20.0...v1.21.0) (2026-07-23)
+
+
+### Features
+
+* harden Admin Mode privileged-helper lifecycle ([9f5beb4](https://github.com/chenwei791129/launchpal/commit/9f5beb48185146799f710ec8e60195f8ac3c5366))
+* verify privileged-helper launch integrity via root-owned protected copy ([36be6bc](https://github.com/chenwei791129/launchpal/commit/36be6bceabd83df9cee67581877a92f568896f5e))
+
+
+### Bug Fixes
+
+* harden filesystem inputs in launchctl managers and privhelper ([63a5954](https://github.com/chenwei791129/launchpal/commit/63a595401b19adc30c3856e5ec87231de53efbbd))
+
 ## [1.20.0](https://github.com/chenwei791129/launchpal/compare/v1.19.0...v1.20.0) (2026-07-04)
 
 
