@@ -1262,6 +1262,124 @@ func TestSystemManager_GetLogs(t *testing.T) {
 	})
 }
 
+// TestSystemManager_ScheduleValidationParity covers the spec "System daemon
+// schedule validation parity". Values come straight from the spec Example
+// table — do not invent additional rows.
+func TestSystemManager_ScheduleValidationParity(t *testing.T) {
+	interval := func(n int) *ScheduleConfig { return &ScheduleConfig{Interval: intPtr(n)} }
+	hour := func(h int) *ScheduleConfig {
+		return &ScheduleConfig{Schedules: []CalendarEntry{{Hour: intPtr(h)}}}
+	}
+	entries := func(n int) *ScheduleConfig {
+		s := make([]CalendarEntry, n)
+		for i := range s {
+			s[i] = CalendarEntry{Minute: intPtr(i % 60)}
+		}
+		return &ScheduleConfig{Schedules: s}
+	}
+	cases := []struct {
+		name    string
+		sched   *ScheduleConfig
+		wantErr bool
+	}{
+		{"StartInterval 9 rejected", interval(9), true},
+		{"StartInterval 10 accepted", interval(10), false},
+		{"calendar Hour 24 rejected", hour(24), true},
+		{"calendar Hour 23 accepted", hour(23), false},
+		{"51 entries rejected", entries(51), true},
+		{"50 entries accepted", entries(50), false},
+	}
+
+	for _, tc := range cases {
+		t.Run("Create/"+tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+			fake := &fakeAdminClient{}
+			m.SetAdminClient(fake)
+			cfg := &ServiceConfig{Label: "com.example.sched", Program: "/bin/true", Schedule: tc.sched}
+			err := m.Create(cfg)
+			plistPath := filepath.Join(tmp, "com.example.sched.plist")
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("Create() = nil, want validation error")
+				}
+				if fake.lastWriteData != nil {
+					t.Error("Create() wrote plist despite invalid schedule")
+				}
+				if _, statErr := os.Stat(plistPath); !os.IsNotExist(statErr) {
+					t.Errorf("plist must not exist on rejection: %v", statErr)
+				}
+			} else if err != nil {
+				t.Fatalf("Create() = %v, want success", err)
+			}
+		})
+
+		t.Run("Update/"+tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			seed := `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.example.sched</string>
+  <key>Program</key><string>/usr/bin/true</string>
+</dict></plist>`
+			plistPath := filepath.Join(tmp, "com.example.sched.plist")
+			if err := os.WriteFile(plistPath, []byte(seed), 0644); err != nil {
+				t.Fatalf("seed: %v", err)
+			}
+			original, _ := os.ReadFile(plistPath)
+			m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+			fake := &fakeAdminClient{}
+			m.SetAdminClient(fake)
+			cfg := &ServiceConfig{Label: "com.example.sched", Program: "/bin/true", Schedule: tc.sched}
+			err := m.Update("com.example.sched", cfg)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("Update() = nil, want validation error")
+				}
+				if fake.lastWriteData != nil {
+					t.Error("Update() wrote plist despite invalid schedule")
+				}
+				after, _ := os.ReadFile(plistPath)
+				if string(after) != string(original) {
+					t.Error("on-disk plist changed despite invalid schedule")
+				}
+			} else if err != nil {
+				t.Fatalf("Update() = %v, want success", err)
+			}
+		})
+	}
+}
+
+func TestSystemManager_RejectsTraversalName(t *testing.T) {
+	tmp := t.TempDir()
+	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}
+	fake := &fakeAdminClient{}
+	m.SetAdminClient(fake)
+	const name = "../evil"
+	ops := []struct {
+		op string
+		fn func() error
+	}{
+		{"Create", func() error { return m.Create(&ServiceConfig{Label: name, Program: "/bin/true"}) }},
+		{"Update", func() error { return m.Update(name, &ServiceConfig{Label: name, Program: "/bin/true"}) }},
+		{"Delete", func() error { return m.Delete(name) }},
+		{"Start", func() error { return m.Start(name) }},
+		{"Stop", func() error { return m.Stop(name) }},
+		{"Restart", func() error { return m.Restart(name) }},
+	}
+	for _, op := range ops {
+		if err := op.fn(); err == nil {
+			t.Errorf("%s(%q) = nil, want validation error", op.op, name)
+		}
+	}
+	if calls := fake.calls(); len(calls) != 0 {
+		t.Errorf("traversal name triggered helper RPCs: %v", calls)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "..", "evil.plist")); !os.IsNotExist(err) {
+		t.Errorf("traversal created a file outside the base dir: %v", err)
+	}
+}
+
 func TestSystemManager_CreateRejectsEmptyProgramAndArguments(t *testing.T) {
 	tmp := t.TempDir()
 	m := &SystemManager{readOnlyManager: readOnlyManager{basePath: tmp, serviceType: "system"}}

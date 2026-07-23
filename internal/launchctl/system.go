@@ -150,6 +150,9 @@ func (m *SystemManager) Start(name string) error {
 	if c == nil {
 		return ErrReadOnlyManager
 	}
+	if err := validateRoutingName(name); err != nil {
+		return err
+	}
 	plistPath := filepath.Join(m.basePath, name+".plist")
 	ctx := context.Background()
 
@@ -188,6 +191,9 @@ func (m *SystemManager) Stop(name string) error {
 	if c == nil {
 		return ErrReadOnlyManager
 	}
+	if err := validateRoutingName(name); err != nil {
+		return err
+	}
 	svc, err := m.Get(name)
 	if err != nil {
 		return err
@@ -205,6 +211,9 @@ func (m *SystemManager) Restart(name string) error {
 	c := m.client()
 	if c == nil {
 		return ErrReadOnlyManager
+	}
+	if err := validateRoutingName(name); err != nil {
+		return err
 	}
 	svc, err := m.Get(name)
 	if err != nil {
@@ -227,7 +236,13 @@ func (m *SystemManager) Create(config *ServiceConfig) error {
 	if config == nil || config.Label == "" {
 		return fmt.Errorf("service label is required")
 	}
+	if err := validateRoutingName(config.Label); err != nil {
+		return err
+	}
 	if err := validateProgramOrArguments(config); err != nil {
+		return err
+	}
+	if err := validateSystemSchedule(config.Schedule); err != nil {
 		return err
 	}
 	plistPath := filepath.Join(m.basePath, config.Label+".plist")
@@ -259,7 +274,13 @@ func (m *SystemManager) Update(name string, config *ServiceConfig) error {
 	if config == nil {
 		return fmt.Errorf("config is required")
 	}
+	if err := validateRoutingName(name); err != nil {
+		return err
+	}
 	if err := validateProgramOrArguments(config); err != nil {
+		return err
+	}
+	if err := validateSystemSchedule(config.Schedule); err != nil {
 		return err
 	}
 	plistPath := filepath.Join(m.basePath, name+".plist")
@@ -347,6 +368,9 @@ func (m *SystemManager) DeleteWithOptions(name string, opts DeleteServiceOptions
 	if c == nil {
 		return ErrReadOnlyManager
 	}
+	if err := validateRoutingName(name); err != nil {
+		return err
+	}
 	plistPath := filepath.Join(m.basePath, name+".plist")
 	// Capture log paths from the parsed plist BEFORE deletion. After
 	// DeletePlist succeeds the file is gone and a fresh Get would fail; the
@@ -401,6 +425,27 @@ func (m *SystemManager) DeleteWithOptions(name string, opts DeleteServiceOptions
 	}
 	if len(warnings) > 0 {
 		return &LogDeletionWarning{Errors: warnings}
+	}
+	return nil
+}
+
+// maxSystemCalendarEntries bounds the number of StartCalendarInterval entries a
+// system daemon create/update may write, matching the frontend cron
+// range-expansion cap (ScheduleForm.vue MAX_EXPANSION). It is enforced in the
+// create/update path — which can return an error and write no plist — NOT in
+// buildCalendarInterval/BuildPlistDict, which have no error channel and are
+// shared with the user domain whose behavior this change must not alter.
+const maxSystemCalendarEntries = 50
+
+// validateSystemSchedule brings system daemon schedule validation to parity
+// with the user domain: the shared range check (validateSchedule) plus the
+// system-domain-only 50-entry cap. On failure the caller writes no plist.
+func validateSystemSchedule(s *ScheduleConfig) error {
+	if err := validateSchedule(s); err != nil {
+		return err
+	}
+	if s != nil && len(s.Schedules) > maxSystemCalendarEntries {
+		return fmt.Errorf("schedule has %d calendar entries, exceeding the %d-entry limit", len(s.Schedules), maxSystemCalendarEntries)
 	}
 	return nil
 }

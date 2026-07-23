@@ -94,8 +94,8 @@ func TestHandlers_Bootstrap_Valid(t *testing.T) {
 		t.Fatalf("runner calls = %d, want 1", len(runner.calls))
 	}
 	got := runner.calls[0]
-	if got.name != "launchctl" {
-		t.Errorf("name = %q", got.name)
+	if got.name != "/bin/launchctl" {
+		t.Errorf("name = %q, want /bin/launchctl", got.name)
 	}
 	want := []string{"bootstrap", "system", "/Library/LaunchDaemons/com.example.daemon.plist"}
 	if fmt.Sprintf("%v", got.args) != fmt.Sprintf("%v", want) {
@@ -203,6 +203,38 @@ func TestHandlers_Kickstart_Valid(t *testing.T) {
 	}
 }
 
+// TestHandlers_LaunchctlInvokedByAbsolutePath covers the spec "Helper invokes
+// launchctl by absolute path": bootstrap/bootout/kickstart must exec
+// /bin/launchctl so the resolved binary is independent of $PATH.
+func TestHandlers_LaunchctlInvokedByAbsolutePath(t *testing.T) {
+	cases := []struct {
+		name   string
+		method string
+		params any
+	}{
+		{"bootstrap", MethodBootstrap, BootstrapParams{PlistPath: "/Library/LaunchDaemons/com.example.daemon.plist"}},
+		{"bootout", MethodBootout, BootoutParams{Label: "com.example.daemon"}},
+		{"kickstart", MethodKickstart, KickstartParams{Label: "com.example.daemon"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			runner := &fakeRunner{}
+			h := NewHandlers(HandlerOptions{Runner: runner})
+			raw, _ := json.Marshal(tc.params)
+			_, errR := h.Handle(context.Background(), &Request{Method: tc.method, Params: raw})
+			if errR != nil {
+				t.Fatalf("handler err = %s", errMsgFromRPC(errR))
+			}
+			if len(runner.calls) != 1 {
+				t.Fatalf("calls = %d, want 1", len(runner.calls))
+			}
+			if got := runner.calls[0].name; got != "/bin/launchctl" {
+				t.Errorf("command = %q, want /bin/launchctl", got)
+			}
+		})
+	}
+}
+
 func TestHandlers_WritePlist_PathValidation(t *testing.T) {
 	h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}, UserHome: t.TempDir()})
 	params, _ := json.Marshal(WritePlistParams{PlistPath: "/etc/passwd", Data: ""})
@@ -300,6 +332,32 @@ func TestHandlers_Backup_ChownsToUser(t *testing.T) {
 		if c.uid != 501 || c.gid != 20 {
 			t.Errorf("chown %s: uid=%d gid=%d, want 501:20", p, c.uid, c.gid)
 		}
+	}
+}
+
+func TestHandlers_Backup_RefusesIntermediateSymlink(t *testing.T) {
+	if syscallNoFollow == 0 {
+		t.Skip("O_NOFOLLOW unavailable on this build; backup symlink safety only enforced on darwin")
+	}
+	home := t.TempDir()
+	outside := t.TempDir()
+	// A same-UID attacker pre-plants ~/.launchpal as a symlink to a directory
+	// they control, hoping to redirect the root-privileged backup write.
+	if err := os.Symlink(outside, filepath.Join(home, ".launchpal")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	h := NewHandlers(HandlerOptions{
+		Runner:   &fakeRunner{},
+		UserHome: home,
+		NowFn:    func() time.Time { return time.Date(2026, 4, 22, 10, 0, 0, 0, time.UTC) },
+	})
+	errR := h.backupExisting("/Library/LaunchDaemons/com.example.test.plist", []byte("<plist/>"))
+	if errR == nil {
+		t.Fatal("backupExisting should refuse a symlinked intermediate directory")
+	}
+	// Nothing may have been written through the symlink to the attacker's dir.
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Errorf("root write escaped through the intermediate symlink: %v", entries)
 	}
 }
 
@@ -831,6 +889,116 @@ func errCodeOrEmpty(e *RPCError) string {
 
 // Smoke test that writePlist-via-handler correctly rejects path even when
 // data is valid base64. Keeps the end-to-end code path green.
+// TestHandlers_LogPath_IntermediateSymlink covers the spec "Symlink-safe
+// resolution of log-path arguments": a symlink planted at an INTERMEDIATE
+// directory (not only the leaf) inside a world-writable allowlisted root must
+// not let the root helper chmod/create/truncate/delete the real target the
+// symlink points to. Legitimate deeply-nested (non-symlinked) paths must still
+// work, including creating missing intermediate directories.
+func TestHandlers_LogPath_IntermediateSymlink(t *testing.T) {
+	if syscallNoFollow == 0 {
+		t.Skip("O_NOFOLLOW unavailable on this build; per-component symlink safety only enforced on darwin")
+	}
+	base, err := os.MkdirTemp("/tmp", "launchpal-symlink-*")
+	if err != nil {
+		t.Fatalf("mktemp: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(base) }()
+
+	// "outside" stands in for a location the attacker wants the root helper
+	// redirected to. It lives under the same /tmp sandbox so cleanup is easy;
+	// the symlink hop is the thing the resolver must refuse to follow.
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(outside, 0755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+	// Build /tmp/<base>/svc/link -> outside and route log paths through it.
+	svc := filepath.Join(base, "svc")
+	if err := os.MkdirAll(svc, 0755); err != nil {
+		t.Fatalf("mkdir svc: %v", err)
+	}
+	link := filepath.Join(svc, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	t.Run("EnsureLogAccess does not create through an intermediate symlink", func(t *testing.T) {
+		h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}})
+		logPath := filepath.Join(link, "out.log") // .../svc/link/out.log
+		params, _ := json.Marshal(EnsureLogAccessParams{Paths: []string{logPath}})
+		_, errR := h.Handle(context.Background(), &Request{Method: MethodEnsureLogAccess, Params: params})
+		if errR == nil {
+			t.Fatal("expected rejection for intermediate symlink")
+		}
+		if _, statErr := os.Stat(filepath.Join(outside, "out.log")); !os.IsNotExist(statErr) {
+			t.Errorf("helper created a file through the symlink outside the allowlist: %v", statErr)
+		}
+	})
+
+	t.Run("TruncateLog does not truncate through an intermediate symlink", func(t *testing.T) {
+		victim := filepath.Join(outside, "victim.log")
+		const content = "must survive\n"
+		if err := os.WriteFile(victim, []byte(content), 0644); err != nil {
+			t.Fatalf("seed victim: %v", err)
+		}
+		h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}})
+		logPath := filepath.Join(link, "victim.log")
+		params, _ := json.Marshal(TruncateLogParams{Path: logPath})
+		_, errR := h.Handle(context.Background(), &Request{Method: MethodTruncateLog, Params: params})
+		if errR == nil {
+			t.Fatal("expected rejection for intermediate symlink")
+		}
+		got, err := os.ReadFile(victim)
+		if err != nil {
+			t.Fatalf("read victim: %v", err)
+		}
+		if string(got) != content {
+			t.Error("victim file was truncated through the intermediate symlink")
+		}
+	})
+
+	t.Run("DeleteLogPaths does not delete through an intermediate symlink", func(t *testing.T) {
+		victim := filepath.Join(outside, "victim-del.log")
+		if err := os.WriteFile(victim, []byte("x"), 0644); err != nil {
+			t.Fatalf("seed victim: %v", err)
+		}
+		h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}})
+		logPath := filepath.Join(link, "victim-del.log")
+		params, _ := json.Marshal(DeleteLogPathsParams{Paths: []string{logPath}})
+		out, errR := h.Handle(context.Background(), &Request{Method: MethodDeleteLogPaths, Params: params})
+		if errR != nil {
+			t.Fatalf("handler err = %+v", errR)
+		}
+		res, _ := out.(DeleteLogPathsResult)
+		if len(res.Errors) != 1 {
+			t.Fatalf("errors = %v, want one rejection", res.Errors)
+		}
+		if _, statErr := os.Stat(victim); statErr != nil {
+			t.Errorf("victim deleted through the intermediate symlink: %v", statErr)
+		}
+	})
+
+	t.Run("legitimate deeply-nested path still works", func(t *testing.T) {
+		h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}})
+		logPath := filepath.Join(base, "a", "b", "c", "out.log")
+		params, _ := json.Marshal(EnsureLogAccessParams{Paths: []string{logPath}})
+		_, errR := h.Handle(context.Background(), &Request{Method: MethodEnsureLogAccess, Params: params})
+		if errR != nil {
+			t.Fatalf("legitimate nested path rejected: %+v", errR)
+		}
+		if _, statErr := os.Stat(logPath); statErr != nil {
+			t.Errorf("legitimate log file not created: %v", statErr)
+		}
+		info, err := os.Stat(filepath.Dir(logPath))
+		if err != nil {
+			t.Fatalf("parent stat: %v", err)
+		}
+		if info.Mode().Perm() != 0755 {
+			t.Errorf("leaf parent perm = %o, want 0755", info.Mode().Perm())
+		}
+	})
+}
+
 func TestHandlers_WritePlist_Base64Validation(t *testing.T) {
 	h := NewHandlers(HandlerOptions{Runner: &fakeRunner{}, UserHome: t.TempDir()})
 	badData := "!!!not-base64"

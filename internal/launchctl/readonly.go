@@ -54,8 +54,14 @@ func (m *readOnlyManager) list() ([]Service, error) {
 	return services, nil
 }
 
-// get returns a single service by name (queries status individually)
+// get returns a single service by name (queries status individually). The
+// routing name is confined to a single path component so a "../.."-style value
+// cannot escape basePath when joined into a plist path. list() does not route
+// through here — it iterates trusted os.ReadDir entries directly.
 func (m *readOnlyManager) get(name string) (*Service, error) {
+	if err := validateRoutingName(name); err != nil {
+		return nil, err
+	}
 	return m.getWithStatus(name, nil, nil, nil)
 }
 
@@ -123,6 +129,9 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 // same way for both domains. A missing file returns an empty Content
 // without error so the diff view can draw the backup as pure additions.
 func (m *readOnlyManager) getPlistContent(name string) (*plistutil.Content, error) {
+	if err := validateRoutingName(name); err != nil {
+		return nil, err
+	}
 	plistPath := filepath.Join(m.basePath, name+".plist")
 	content, err := plistutil.NormalizeFromPath(plistPath)
 	if err != nil {
@@ -135,6 +144,9 @@ func (m *readOnlyManager) getPlistContent(name string) (*plistutil.Content, erro
 }
 
 func (m *readOnlyManager) getPlist(name string) (string, error) {
+	if err := validateRoutingName(name); err != nil {
+		return "", err
+	}
 	plistPath := filepath.Join(m.basePath, name+".plist")
 
 	content, err := plistutil.NormalizeFromPath(plistPath)

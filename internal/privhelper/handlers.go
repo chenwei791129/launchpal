@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,6 +21,10 @@ import (
 // /System/Library/LaunchDaemons belongs to Apple (and SIP blocks writes there
 // anyway) so only this directory is ever a valid target.
 const SystemDaemonDir = "/Library/LaunchDaemons"
+
+// launchctlPath is the absolute path the helper invokes launchctl by, so the
+// resolved binary never depends on the $PATH inherited by the helper process.
+const launchctlPath = "/bin/launchctl"
 
 // SystemLogPathPrefixes bounds EnsureLogAccess (and the settings validator
 // for systemLogDir) to locations where creating a world-readable file is
@@ -205,7 +210,7 @@ func (h *Handlers) bootstrap(ctx context.Context, raw json.RawMessage) (any, *RP
 	if errR != nil {
 		return nil, errR
 	}
-	_, stderr, err := h.opts.Runner.Run(ctx, "launchctl", "bootstrap", "system", clean)
+	_, stderr, err := h.opts.Runner.Run(ctx, launchctlPath, "bootstrap", "system", clean)
 	if err != nil {
 		return nil, &RPCError{Code: ErrCodeLaunchctlFailed, Message: errMsg(err, stderr)}
 	}
@@ -220,7 +225,7 @@ func (h *Handlers) bootout(ctx context.Context, raw json.RawMessage) (any, *RPCE
 	if errR := validateLabel(p.Label); errR != nil {
 		return nil, errR
 	}
-	_, stderr, err := h.opts.Runner.Run(ctx, "launchctl", "bootout", "system/"+p.Label)
+	_, stderr, err := h.opts.Runner.Run(ctx, launchctlPath, "bootout", "system/"+p.Label)
 	if err != nil {
 		return nil, &RPCError{Code: ErrCodeLaunchctlFailed, Message: errMsg(err, stderr)}
 	}
@@ -235,7 +240,7 @@ func (h *Handlers) kickstart(ctx context.Context, raw json.RawMessage) (any, *RP
 	if errR := validateLabel(p.Label); errR != nil {
 		return nil, errR
 	}
-	_, stderr, err := h.opts.Runner.Run(ctx, "launchctl", "kickstart", "-k", "system/"+p.Label)
+	_, stderr, err := h.opts.Runner.Run(ctx, launchctlPath, "kickstart", "-k", "system/"+p.Label)
 	if err != nil {
 		return nil, &RPCError{Code: ErrCodeLaunchctlFailed, Message: errMsg(err, stderr)}
 	}
@@ -270,8 +275,14 @@ func (h *Handlers) writePlist(ctx context.Context, raw json.RawMessage) (any, *R
 }
 
 // validateLogPath accepts absolute paths under a small allowlist of
-// well-known log/temp prefixes. The cleaned path is returned so the caller
-// works with a canonical form. Rejects:
+// well-known log/temp prefixes. The cleaned path and the matched allowlist
+// prefix are returned so the caller can resolve the remaining components in a
+// symlink-safe manner (openat-style traversal anchored at the trusted prefix).
+// This lexical check is a fast pre-filter, NOT the enforcement boundary — the
+// allowlist includes world-writable directories (/tmp, /private/tmp) where a
+// same-UID process can plant a symlink at an intermediate component, so the
+// per-component O_NOFOLLOW walk in logpath_darwin.go is what actually confines
+// the operation. Rejects:
 //   - non-absolute paths
 //   - paths not under an allowed prefix (post-Clean, so "/var/log/../etc"
 //     is normalized to "/etc" and rejected)
@@ -279,46 +290,55 @@ func (h *Handlers) writePlist(ctx context.Context, raw json.RawMessage) (any, *R
 //   - paths whose immediate parent is the allowlist prefix itself — e.g.
 //     "/var/log/foo.log" would force a Chmod on /var/log, which we refuse
 //     because /var/log is a system directory we shouldn't re-mode.
-func validateLogPath(path string) (string, *RPCError) {
+func validateLogPath(path string) (clean, prefix string, errR *RPCError) {
 	if path == "" {
-		return "", &RPCError{Code: ErrCodeInvalidParams, Message: "log path must not be empty"}
+		return "", "", &RPCError{Code: ErrCodeInvalidParams, Message: "log path must not be empty"}
 	}
 	if !filepath.IsAbs(path) {
-		return "", &RPCError{Code: ErrCodeInvalidParams, Message: "log path must be absolute"}
+		return "", "", &RPCError{Code: ErrCodeInvalidParams, Message: "log path must be absolute"}
 	}
-	clean := filepath.Clean(path)
+	clean = filepath.Clean(path)
 	// Each allowlist prefix ends in "/", so HasPrefix naturally rejects
 	// both the prefix itself ("/tmp" has no trailing separator, so won't
 	// start with "/tmp/") and look-alike siblings ("/var/logX" won't start
 	// with "/var/log/").
-	var matchedPrefix string
-	for _, prefix := range SystemLogPathPrefixes {
-		if strings.HasPrefix(clean, prefix) {
-			matchedPrefix = prefix
+	for _, p := range SystemLogPathPrefixes {
+		if strings.HasPrefix(clean, p) {
+			prefix = p
 			break
 		}
 	}
-	if matchedPrefix == "" {
-		return "", &RPCError{Code: ErrCodeInvalidParams, Message: "log path not under an allowed prefix"}
+	if prefix == "" {
+		return "", "", &RPCError{Code: ErrCodeInvalidParams, Message: "log path not under an allowed prefix"}
 	}
 	// Require at least one sub-directory between the prefix root and the
 	// file — we don't want to chmod /var/log itself. remainder is e.g.
 	// "myservice/out.log" for an accepted path.
-	remainder := clean[len(matchedPrefix):]
+	remainder := clean[len(prefix):]
 	if !strings.Contains(remainder, string(filepath.Separator)) {
-		return "", &RPCError{Code: ErrCodeInvalidParams, Message: "log path must live in a sub-directory of " + strings.TrimSuffix(matchedPrefix, "/")}
+		return "", "", &RPCError{Code: ErrCodeInvalidParams, Message: "log path must live in a sub-directory of " + strings.TrimSuffix(prefix, "/")}
 	}
-	return clean, nil
+	return clean, prefix, nil
+}
+
+// logPathComponents splits a validated clean path into the directory
+// components below the trusted prefix and the leaf file name. validateLogPath
+// guarantees at least one sub-directory, so dirs is non-empty and leaf is a
+// bare file name.
+func logPathComponents(clean, prefix string) (dirs []string, leaf string) {
+	parts := strings.Split(strings.TrimPrefix(clean, prefix), string(filepath.Separator))
+	return parts[:len(parts)-1], parts[len(parts)-1]
 }
 
 // ensureLogAccess prepares log-file locations so the unprivileged GUI can
-// tail them. For each validated path:
-//   - MkdirAll(parent, 0755) so traversal bits are present.
-//   - Chmod(parent, 0755) in case the parent already existed with a
-//     restrictive mode (launchd creates per-service log dirs as root
-//     0744, which blocks the user from even entering the directory).
-//   - If the file does not yet exist, touch it as 0644 with O_NOFOLLOW so a
-//     pre-planted symlink can't redirect the root-privileged create.
+// tail them. For each validated path the leaf's parent chain is created and
+// tightened to 0755 (launchd creates per-service log dirs as root 0744, which
+// blocks the user from even entering the directory) and the file is touched as
+// 0644 if absent. Every path component is resolved with O_NOFOLLOW
+// (openat-style traversal anchored at the allowlist prefix, in
+// symlinkSafeEnsureLog), so a symlink planted at ANY component — intermediate
+// or leaf — fails the operation instead of redirecting the root-privileged
+// create/chmod outside the allowlist.
 //
 // Empty paths in the list are silently skipped (plists routinely omit
 // StandardErrorPath and we don't want to force the GUI to filter).
@@ -331,29 +351,12 @@ func (h *Handlers) ensureLogAccess(_ context.Context, raw json.RawMessage) (any,
 		if path == "" {
 			continue
 		}
-		clean, errR := validateLogPath(path)
+		clean, prefix, errR := validateLogPath(path)
 		if errR != nil {
 			return nil, errR
 		}
-		dir := filepath.Dir(clean)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
-		}
-		if err := os.Chmod(dir, 0755); err != nil {
-			return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
-		}
-		if _, err := os.Lstat(clean); os.IsNotExist(err) {
-			f, err := os.OpenFile(clean, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscallNoFollow, 0644)
-			if err != nil {
-				if os.IsExist(err) {
-					// Lost the race with another writer; honor whatever is
-					// there now.
-					continue
-				}
-				return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
-			}
-			_ = f.Close()
-		} else if err != nil {
+		dirs, leaf := logPathComponents(clean, prefix)
+		if err := symlinkSafeEnsureLog(prefix, dirs, leaf); err != nil {
 			return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
 		}
 	}
@@ -361,28 +364,26 @@ func (h *Handlers) ensureLogAccess(_ context.Context, raw json.RawMessage) (any,
 }
 
 // truncateLog opens an existing log file with O_WRONLY|O_TRUNC|O_NOFOLLOW
-// and immediately closes it. Without O_CREATE the call surfaces ENOENT for
-// missing files unchanged, so the helper cannot be coerced into materializing
-// a 0-byte root-owned file in /tmp/. The errno comes from OpenFile itself —
-// a pre-stat-then-open would re-introduce the symlink-substitution race the
-// allowlist + O_NOFOLLOW combination is designed to close.
+// relative to a symlink-safe parent and immediately closes it. Every path
+// component is resolved with O_NOFOLLOW (openat-style, in symlinkSafeTruncate),
+// so a symlink at an intermediate directory or the leaf cannot redirect the
+// truncate onto a real file outside the allowlist. Without O_CREATE the call
+// surfaces ENOENT for missing files unchanged, so the helper cannot be coerced
+// into materializing a 0-byte root-owned file in /tmp/.
 func (h *Handlers) truncateLog(_ context.Context, raw json.RawMessage) (any, *RPCError) {
 	p, errR := unmarshalParams[TruncateLogParams](raw)
 	if errR != nil {
 		return nil, errR
 	}
-	clean, errR := validateLogPath(p.Path)
+	clean, prefix, errR := validateLogPath(p.Path)
 	if errR != nil {
 		return nil, errR
 	}
-	f, err := os.OpenFile(clean, os.O_WRONLY|os.O_TRUNC|syscallNoFollow, 0)
-	if err != nil {
-		if os.IsNotExist(err) {
+	dirs, leaf := logPathComponents(clean, prefix)
+	if err := symlinkSafeTruncate(prefix, dirs, leaf); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, &RPCError{Code: ErrCodeNotFound, Message: clean}
 		}
-		return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
-	}
-	if err := f.Close(); err != nil {
 		return nil, &RPCError{Code: ErrCodeIOError, Message: err.Error()}
 	}
 	return OKResult{OK: true}, nil
@@ -414,33 +415,28 @@ func (h *Handlers) deleteLogPaths(_ context.Context, raw json.RawMessage) (any, 
 	return result, nil
 }
 
-// deleteOneLogPath validates path and removes the file (without following
-// symlinks), then best-effort removes the now-possibly-empty parent dir.
-// Errors are returned as-is from os.Lstat / os.Remove so callers can
+// deleteOneLogPath validates path and removes the file, resolving every path
+// component with O_NOFOLLOW (openat-style, in symlinkSafeDelete) so a symlink
+// at an intermediate directory or the leaf cannot redirect the removal onto a
+// real file outside the allowlist. It then best-effort removes the
+// now-possibly-empty parent dir. Errors bubble up as-is so callers can
 // substring-match the underlying errno (e.g. "no such file or directory").
 func deleteOneLogPath(path string) error {
-	clean, errR := validateLogPath(path)
+	clean, prefix, errR := validateLogPath(path)
 	if errR != nil {
 		return fmt.Errorf("%s", errR.Message)
 	}
-	info, err := os.Lstat(clean)
-	if err != nil {
+	dirs, leaf := logPathComponents(clean, prefix)
+	if err := symlinkSafeDelete(prefix, dirs, leaf); err != nil {
 		return err
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to delete symlink")
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("not a regular file")
-	}
-	if err := os.Remove(clean); err != nil {
-		return err
-	}
-	// Best-effort parent cleanup. os.Remove on a non-empty directory returns
-	// ENOTEMPTY which we deliberately ignore; any other parent-level failure
-	// is also non-fatal because the file delete (the user-visible operation)
-	// already succeeded.
-	_ = os.Remove(filepath.Dir(clean))
+	// Best-effort parent cleanup, resolved per-component with O_NOFOLLOW
+	// (symlinkSafeRemoveEmptyParent) so a symlink swapped into an intermediate
+	// directory cannot redirect the rmdir outside the allowlist — matching the
+	// symlink safety of the delete above rather than re-resolving the parent
+	// path by name. A non-empty directory (ENOTEMPTY) or any other failure is
+	// ignored because the file delete (the user-visible operation) succeeded.
+	symlinkSafeRemoveEmptyParent(prefix, dirs)
 	return nil
 }
 
@@ -542,48 +538,34 @@ func (h *Handlers) backupExisting(plistPath string, existingData []byte) *RPCErr
 		return &RPCError{Code: ErrCodeInvalidParams, Message: "cannot derive backup label"}
 	}
 	backupDir := filepath.Join(h.opts.UserHome, ".launchpal", "backups", label)
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
-		return &RPCError{Code: ErrCodeIOError, Message: err.Error()}
-	}
-	// chown newly-created directories up the chain to the user so they can
-	// traverse. MkdirAll may or may not have created intermediate dirs; we
-	// chown idempotently — no-op when they already belonged to the user.
-	h.chownPath(filepath.Join(h.opts.UserHome, ".launchpal"))
-	h.chownPath(filepath.Join(h.opts.UserHome, ".launchpal", "backups"))
-	h.chownPath(backupDir)
-
+	rel := []string{".launchpal", "backups", label}
 	id := h.opts.NowFn().Format("20060102-150405")
 	backupPath := filepath.Join(backupDir, id+".plist")
 	metaPath := filepath.Join(backupDir, id+".meta.json")
-	// O_NOFOLLOW refuses to open a pre-existing symlink — without this,
-	// a user-owned symlink at backupPath would redirect a root write to an
-	// arbitrary path.
-	if err := writeNoFollow(backupPath, existingData, 0644); err != nil {
+	// Create the backup directory chain AND write the leaf relative to the
+	// per-component O_NOFOLLOW-resolved directory fd (symlinkSafeWriteInDir), so
+	// a symlink at .launchpal / backups / <label> — whether pre-planted or
+	// swapped in mid-operation (same-UID attack against the user's own home) —
+	// cannot redirect the root-privileged write outside the backup tree. The
+	// leaf is opened O_NOFOLLOW too. (Writing by absolute path would only guard
+	// the leaf and re-follow intermediate symlinks.)
+	if err := symlinkSafeWriteInDir(h.opts.UserHome, rel, id+".plist", existingData, 0644); err != nil {
 		return &RPCError{Code: ErrCodeIOError, Message: err.Error()}
 	}
+	// chown the directory chain and the backup file to the launching user so the
+	// user-side LaunchPal can read them. symlinkSafeWriteInDir created any
+	// missing dirs; we chown idempotently — no-op when they already belonged to
+	// the user.
+	h.chownPath(filepath.Join(h.opts.UserHome, ".launchpal"))
+	h.chownPath(filepath.Join(h.opts.UserHome, ".launchpal", "backups"))
+	h.chownPath(backupDir)
 	h.chownPath(backupPath)
 	metaDoc := map[string]string{"originalPath": plistPath}
 	if raw, err := json.Marshal(metaDoc); err == nil {
-		_ = writeNoFollow(metaPath, raw, 0644)
+		_ = symlinkSafeWriteInDir(h.opts.UserHome, rel, id+".meta.json", raw, 0644)
 		h.chownPath(metaPath)
 	}
 	return nil
-}
-
-// writeNoFollow writes data to path with O_NOFOLLOW semantics so an
-// attacker-planted symlink cannot redirect a root-privileged write to an
-// arbitrary target. The file is truncated if it exists as a regular file.
-func writeNoFollow(path string, data []byte, mode os.FileMode) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscallNoFollow, mode)
-	if err != nil {
-		return err
-	}
-	_, wErr := f.Write(data)
-	cErr := f.Close()
-	if wErr != nil {
-		return wErr
-	}
-	return cErr
 }
 
 // chownPath sets ownership to the launching user when configured. Non-fatal;

@@ -1066,6 +1066,60 @@ func TestUserManager_CRUD(t *testing.T) {
 	}
 }
 
+func TestValidateRoutingName(t *testing.T) {
+	bad := []string{
+		"",                 // empty
+		".",                // current dir
+		"..",               // parent dir
+		"../../etc/passwd", // classic traversal
+		"foo/bar",          // path separator
+		"a/../b",           // separator + parent
+		"with\x00nul",      // NUL byte
+	}
+	for _, n := range bad {
+		if err := validateRoutingName(n); err == nil {
+			t.Errorf("validateRoutingName(%q) = nil, want error", n)
+		}
+	}
+	// Single components are accepted even when they contain consecutive dots:
+	// no path separator means they cannot escape the base directory, and such
+	// labels are legal launchd identifiers that must stay manageable.
+	good := []string{"com.example.foo", "com.example.daemon", "my-service_1", "a.b.c", "..hidden", "foo..bar", "com.example..worker"}
+	for _, n := range good {
+		if err := validateRoutingName(n); err != nil {
+			t.Errorf("validateRoutingName(%q) = %v, want nil", n, err)
+		}
+	}
+}
+
+func TestUserManager_RejectsTraversalName(t *testing.T) {
+	tmp := t.TempDir()
+	m := &UserManager{launchAgentsPath: tmp}
+	const name = "../evil"
+	ops := []struct {
+		op string
+		fn func() error
+	}{
+		{"Get", func() error { _, e := m.Get(name); return e }},
+		{"Start", func() error { return m.Start(name) }},
+		{"Stop", func() error { return m.Stop(name) }},
+		{"Delete", func() error { return m.Delete(name) }},
+		{"Update", func() error { return m.Update(name, &ServiceConfig{Label: "x", Program: "/bin/true"}) }},
+		{"Create", func() error { return m.Create(&ServiceConfig{Label: name, Program: "/bin/true"}) }},
+		{"Kickstart", func() error { return m.Kickstart(name) }},
+		{"GetPlist", func() error { _, e := m.GetPlist(name); return e }},
+	}
+	for _, op := range ops {
+		if err := op.fn(); err == nil {
+			t.Errorf("%s(%q) = nil, want validation error", op.op, name)
+		}
+	}
+	// The traversal must not have created a plist one level up from the base.
+	if _, err := os.Stat(filepath.Join(tmp, "..", "evil.plist")); !os.IsNotExist(err) {
+		t.Errorf("traversal created a file outside the base dir: %v", err)
+	}
+}
+
 func TestParseSchedule_SingleDict(t *testing.T) {
 	// Single dict (not wrapped in an array)
 	dict := map[string]interface{}{

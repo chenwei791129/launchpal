@@ -103,6 +103,9 @@ func (m *UserManager) List() ([]Service, error) {
 
 // Get returns a single service by name
 func (m *UserManager) Get(name string) (*Service, error) {
+	if err := validateRoutingName(name); err != nil {
+		return nil, err
+	}
 	return m.getWithStatus(name, nil)
 }
 
@@ -308,6 +311,9 @@ func getServiceStatus(label string) (string, int) {
 
 // Start loads and starts a service
 func (m *UserManager) Start(name string) error {
+	if err := validateRoutingName(name); err != nil {
+		return err
+	}
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
 
 	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
@@ -356,6 +362,9 @@ func (m *UserManager) Create(config *ServiceConfig) error {
 	if config.Label == "" {
 		return fmt.Errorf("service label is required")
 	}
+	if err := validateRoutingName(config.Label); err != nil {
+		return err
+	}
 	if err := validateProgramOrArguments(config); err != nil {
 		return err
 	}
@@ -395,6 +404,9 @@ func (m *UserManager) Create(config *ServiceConfig) error {
 
 // Update updates an existing service
 func (m *UserManager) Update(name string, config *ServiceConfig) error {
+	if err := validateRoutingName(name); err != nil {
+		return err
+	}
 	if err := validateProgramOrArguments(config); err != nil {
 		return err
 	}
@@ -453,6 +465,32 @@ func validateProgramOrArguments(config *ServiceConfig) error {
 	return nil
 }
 
+// validateRoutingName rejects any service routing name (or CreateService's
+// config.Label) that is not a single path component, so it cannot escape the
+// manager's base directory when joined into a plist path. filepath.Join alone
+// does not confine a "../.." value. A name containing a path separator or a NUL
+// byte, or equal to "." or "..", is rejected; any other single component passes
+// — including a reverse-DNS label that merely contains consecutive dots (e.g.
+// "com.example..worker"), which is a legal launchd label and, having no
+// separator, cannot traverse out of the base directory. (Rejecting the ".."
+// substring outright would wrongly make such an on-disk service unmanageable
+// while list() still surfaces it.) This is the single source of truth shared by
+// the user, system, and read-only managers — a GUI-side defense in depth (the
+// privileged helper independently re-validates system-domain writes, but the
+// managers must not rely on that alone).
+func validateRoutingName(name string) error {
+	if name == "" {
+		return fmt.Errorf("service name is required")
+	}
+	if strings.ContainsAny(name, "/\x00") {
+		return fmt.Errorf("service name %q must not contain a path separator or NUL byte", name)
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("service name %q must be a single path component", name)
+	}
+	return nil
+}
+
 // validateSchedule checks that a ScheduleConfig has valid values
 func validateSchedule(s *ScheduleConfig) error {
 	if s == nil {
@@ -493,6 +531,9 @@ func validateCalendarEntry(index int, e CalendarEntry) error {
 
 // Delete removes a service
 func (m *UserManager) Delete(name string) error {
+	if err := validateRoutingName(name); err != nil {
+		return err
+	}
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
 
 	// Check if service exists
@@ -513,6 +554,9 @@ func (m *UserManager) Delete(name string) error {
 
 // GetPlist returns the raw plist content
 func (m *UserManager) GetPlist(name string) (string, error) {
+	if err := validateRoutingName(name); err != nil {
+		return "", err
+	}
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
 
 	data, err := os.ReadFile(plistPath)
@@ -528,6 +572,9 @@ func (m *UserManager) GetPlist(name string) (string, error) {
 // Content is returned with no error so callers (e.g. the diff preview) can
 // represent the service as having no current version.
 func (m *UserManager) GetPlistContent(name string) (*plistutil.Content, error) {
+	if err := validateRoutingName(name); err != nil {
+		return nil, err
+	}
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
 
 	content, err := plistutil.NormalizeFromPath(plistPath)
@@ -610,6 +657,9 @@ func (m *UserManager) writePlistDict(path string, pd map[string]any) error {
 // Kickstart immediately runs a user service using launchctl kickstart -k.
 // If the service is not loaded, it bootstraps it first.
 func (m *UserManager) Kickstart(name string) error {
+	if err := validateRoutingName(name); err != nil {
+		return err
+	}
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
 
 	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
