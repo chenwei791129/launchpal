@@ -57,11 +57,11 @@ A GUI for managing macOS LaunchAgents.
 │   ├── app/
 │   │   ├── app.vue           # Root component
 │   │   ├── pages/            # Pages (index, system, apple-system, settings, services/[name])
-│   │   ├── components/       # Vue components
-│   │   ├── composables/      # Composables
+│   │   ├── components/       # Vue components (incl. ServiceFilterBar.vue + ServiceFilterDropdown.vue — shared Status/Type filter bar)
+│   │   ├── composables/      # Composables (incl. useServiceListFilters.ts — per-page filter state factory)
 │   │   ├── layouts/          # Layouts
 │   │   ├── assets/           # Static assets
-│   │   ├── utils/            # Utility helpers
+│   │   ├── utils/            # Utility helpers (incl. serviceFilters.ts — shared list filter predicates)
 │   │   └── types/            # TypeScript types
 │   └── nuxt.config.ts
 ├── build/
@@ -129,6 +129,23 @@ LaunchPal supports three service categories:
    - macOS built-in services.
    - Many of these use the binary plist format and are automatically converted to XML for display.
    - The Clear Logs control is hidden entirely on apple-system pages.
+
+## Service List Filters
+
+- All three list pages render a shared `ServiceFilterBar.vue` between the page header and the table header row. The three surfaces are **separate files**: `pages/index.vue` (User), `pages/system.vue` (System), and `components/ReadOnlyServiceList.vue` (Apple System only). `system.vue` is **not** a `ReadOnlyServiceList` consumer — `3c4ed37 feat(admin-mode)` split it back out to carry the Admin Mode banner, the New Service button, and the delete-with-logs dialog. Anything added to the list UI must be wired into all three individually; `app/pages/__tests__/serviceListFilterBar.test.ts` pins the set so a page cannot silently drop out of it.
+- The feature is three layers, and a page must use all three rather than reimplementing any of them:
+  - `app/utils/serviceFilters.ts` — the pure predicates and types: `StatusFilterValue`, `TypeFilterValue`, `FilterOption<T>`, `STATUS_FILTER_OPTIONS`, `TYPE_FILTER_OPTIONS`, `hasActiveFilter`, `matchesStatusFilter`, `matchesTypeFilter`, `filterServices`.
+  - `app/composables/useServiceListFilters.ts` — the reactive wiring: `useServiceListFilters(services, searchQuery)` returns `{ statusFilter, typeFilter, hasActiveFilter, filteredServices }`. It is a **factory** (fresh refs per call), unlike the module-level singletons `useAdminMode` / `useSettings`, because filter selection is a per-page choice that must not leak between surfaces. Pages must NOT declare their own `statusFilter` / `typeFilter` refs — `serviceListFilterBar.test.ts` asserts they don't.
+  - `app/components/ServiceFilterBar.vue` — the UI, built from the reusable `ServiceFilterDropdown.vue` (one generic `<script setup generic="T extends string">` dropdown used for both Status and Type; testids are composed from its `testid` prop as `${testid}-filter-trigger` / `-filter-menu` / `-option-${value}`).
+- Extracting only the predicate is not enough: the first cut of this feature did exactly that and the *wiring* around it still got copy-pasted into three files. A pure function guarantees the pages filter the same way; the composable is what guarantees they are wired the same way.
+- `StatusFilterValue` / `TypeFilterValue` are threaded through `ServiceFilters`, all three predicates, the composable's refs, and `ServiceFilterBar`'s props/emits — not just the option tables. A typo like `'stoped'` or `'sheduled'` is a compile error (TS2820), not a filter that silently matches nothing.
+- **Status** options are `Running` / `Loaded` / `Unloaded` / `Unknown`. The option `value` is the raw `Service.status` string, so the user-facing "Unloaded" → `stopped` mapping is a single table entry rather than a branch in the predicate.
+- **Type** options are `Scheduled` / `KeepAlive` / `RunAtLoad` / `None`, mirroring the three launch-policy badges `ServiceRow.vue` renders in the Type column. The badge picks **one** label by precedence (`schedule` > `keepAlive` > `runAtLoad`); the filter instead matches **every** applicable option, so a scheduled + runAtLoad service is found under either. `None` is the negation of all three — critically it must exclude `keepAlive.enabled`, because a Keep Alive service carries `runAtLoad === false` (launchd implies RunAtLoad from KeepAlive) and would otherwise be mislabeled `None` while visibly wearing a `KeepAlive` badge.
+- An empty selection means "All" (filter inactive), which is what lets Status, Type and the text search combine with AND while each is independently skippable. `filterServices` short-circuits and returns the original array when no filter is active, expressing that check via the shared `hasActiveFilter` so there is only one definition of "a filter is narrowing the list". The 4-element option arrays are deliberately scanned with `includes`/`some` rather than converted to `Set`s.
+- `ServiceFilterBar` emits new arrays (`update:statusFilter` / `update:typeFilter`) and never mutates the incoming prop. It owns both the selection and which menu is open, so only one menu is open at a time; the menu stays open after a selection so several options can be picked in one visit, and closes on outside click or Escape.
+- `ServiceFilterDropdown` carries the ARIA contract — `aria-haspopup="listbox"` + `aria-expanded` + `aria-controls` on the trigger, `role="listbox"` + `aria-multiselectable` on the menu, `role="option"` + `aria-selected` per option, `aria-hidden` on the decorative checkbox glyph, and `type="button"` on every button. `ServiceFilterBar.test.ts` pins all of it.
+- `ServiceFilterBar.test.ts` mounts with `attachTo: document.body`, so every wrapper MUST be unmounted in `afterEach` — the component registers document-level click/keydown listeners in `onMounted` and they otherwise accumulate across the file (same reason `ServiceLogs.test.ts` unmounts).
+- `hasActiveFilter` (from the composable) drives the empty state: with a filter active, an empty list renders "No services match the selected filters", and `index.vue` suppresses the "Create your first service" prompt (an empty result means the filters excluded everything, not that the user has no services).
 
 ## Routing Name & Schedule Input Hardening
 
