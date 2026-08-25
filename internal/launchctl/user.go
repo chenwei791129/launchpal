@@ -109,7 +109,10 @@ func (m *UserManager) Get(name string) (*Service, error) {
 	return m.getWithStatus(name, nil)
 }
 
-// getWithStatus returns a service, using pre-fetched statusMap if provided
+// getWithStatus returns a service, using pre-fetched statusMap if provided.
+// Status/PID/StatusConfidence are resolved by the switch below: an empty
+// Label short-circuits to StatusUnknown/ConfidenceUnverified without
+// querying launchd (see the comment on that switch for the full rationale).
 func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceStatus) (*Service, error) {
 	plistPath := filepath.Join(m.getLaunchAgentsPath(), name+".plist")
 
@@ -146,15 +149,26 @@ func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceSta
 	service.WakeSystem = pd.WakeSystem
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
-	// Use pre-fetched status if available, otherwise query individually
-	if statusMap != nil {
+	// Status and PID come exclusively from what launchd reports for this
+	// label, so the batch (List) and single-service (Get) paths classify an
+	// unchanged job identically. An empty Label is never queried: launchd
+	// cannot load such a job, so neither path can attribute a state to it.
+	switch {
+	case pd.Label == "":
+		// Matches the system domain's pairing (status_detect.go returns
+		// StatusUnknown with ConfidenceUnverified): we never queried launchd,
+		// so nothing here is verified.
+		service.Status = StatusUnknown
+		service.StatusConfidence = ConfidenceUnverified
+	case statusMap != nil:
+		// Use the pre-fetched batch status when available.
 		if s, ok := statusMap[pd.Label]; ok {
 			service.Status = s.status
 			service.PID = s.pid
 		} else {
 			service.Status = StatusStopped
 		}
-	} else {
+	default:
 		service.Status, service.PID = getServiceStatus(pd.Label)
 	}
 
@@ -226,6 +240,18 @@ type serviceStatus struct {
 	pid    int
 }
 
+// classifyPID turns the PID launchd reports for a job into a Status/PID pair.
+// It is the single source of truth for the running/loaded boundary, shared by
+// the batch (getBatchServiceStatus) and single-service (getServiceStatus)
+// paths so the two parsers — which read different launchctl output formats —
+// cannot drift back into disagreeing about the same job.
+func classifyPID(pid int) (string, int) {
+	if pid > 0 {
+		return StatusRunning, pid
+	}
+	return StatusLoaded, 0
+}
+
 // getBatchServiceStatus runs `launchctl list` once and returns a map of label -> status/pid
 func getBatchServiceStatus() map[string]serviceStatus {
 	cmd := exec.Command("launchctl", "list")
@@ -243,21 +269,26 @@ func getBatchServiceStatus() map[string]serviceStatus {
 		}
 		label := fields[2]
 		pid, _ := strconv.Atoi(fields[0])
-		if pid > 0 {
-			result[label] = serviceStatus{status: StatusRunning, pid: pid}
-		} else {
-			result[label] = serviceStatus{status: StatusLoaded, pid: 0}
-		}
+		status, statusPID := classifyPID(pid)
+		result[label] = serviceStatus{status: status, pid: statusPID}
 	}
 	return result
 }
 
-// getServiceStatus checks if a service is running via launchctl list
+// getServiceStatus classifies a single user service from launchd's report for
+// the label alone, matching getBatchServiceStatus: a positive PID means
+// running, a loaded job without one is loaded, and a label launchd does not
+// know is stopped.
+//
+// There is deliberately no process-name fallback. Matching `pgrep -f <program>`
+// attributed unrelated processes to the job whenever the program was a short
+// wrapper command (e.g. `open` matches any command line containing that
+// substring), so the detail view reported a fake PID and `running` while the
+// batch list path correctly reported `loaded`.
+//
+// Precondition: label is never empty — getWithStatus is the sole caller and
+// classifies an empty Label as StatusUnknown before reaching this path.
 func getServiceStatus(label string) (string, int) {
-	if label == "" {
-		return StatusUnknown, 0
-	}
-
 	cmd := exec.Command("launchctl", "list", label)
 	output, err := cmd.Output()
 	if err != nil {
@@ -265,48 +296,27 @@ func getServiceStatus(label string) (string, int) {
 		return StatusStopped, 0
 	}
 
-	// Parse output to find PID and Program
-	// Format: "PID" = <number> or similar
-	lines := strings.Split(string(output), "\n")
-	var program string
-	for _, line := range lines {
+	// Extract the PID launchd reports for this job, if any.
+	// Format: "PID" = <number>; or similar
+	pid := 0
+	for _, line := range strings.Split(string(output), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.Contains(line, "\"PID\"") || strings.HasPrefix(line, "PID") {
-			// Try to extract the number
-			parts := strings.Split(line, "=")
-			if len(parts) >= 2 {
-				pidStr := strings.TrimSpace(parts[1])
-				pidStr = strings.Trim(pidStr, ";\"")
-				if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
-					return StatusRunning, pid
-				}
-			}
+		if !strings.Contains(line, "\"PID\"") && !strings.HasPrefix(line, "PID") {
+			continue
 		}
-		// Extract Program path for fallback pgrep check
-		if strings.Contains(line, "\"Program\"") {
-			parts := strings.Split(line, "=")
-			if len(parts) >= 2 {
-				program = strings.TrimSpace(parts[1])
-				program = strings.Trim(program, ";\"")
-			}
+		parts := strings.Split(line, "=")
+		if len(parts) < 2 {
+			continue
+		}
+		pidStr := strings.TrimSpace(parts[1])
+		pidStr = strings.Trim(pidStr, ";\"")
+		if parsed, err := strconv.Atoi(pidStr); err == nil && parsed > 0 {
+			pid = parsed
+			break
 		}
 	}
 
-	// Fallback: use pgrep to check if process is running.
-	// Skip common shells as they would match unrelated processes;
-	// commonShells lives in status_detect.go and is shared across managers.
-	if program != "" && !commonShells[program] {
-		pgrepCmd := exec.Command("pgrep", "-f", program)
-		if pgrepOutput, err := pgrepCmd.Output(); err == nil {
-			pidStr := strings.TrimSpace(strings.Split(string(pgrepOutput), "\n")[0])
-			if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 {
-				return StatusRunning, pid
-			}
-		}
-	}
-
-	// Service is loaded but not running
-	return StatusLoaded, 0
+	return classifyPID(pid)
 }
 
 // Start loads and starts a service

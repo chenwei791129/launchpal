@@ -2055,3 +2055,137 @@ func toInt(v any) int {
 	}
 	return -1
 }
+
+// launchctlStatusShim emulates the two launchctl query shapes the user-domain
+// status path relies on: the batch `launchctl list` table and the per-label
+// `launchctl list <label>` dictionary. com.example.running is loaded with a
+// PID, com.example.loaded is loaded without one (its Program is the short
+// wrapper command `open`), and every other label is reported as not loaded.
+const launchctlStatusShim = `#!/bin/bash
+echo "launchctl $*" >> "__LOG__"
+if [ "$1" != "list" ]; then
+  exit 0
+fi
+if [ "$#" -lt 2 ]; then
+  printf 'PID\tStatus\tLabel\n'
+  printf '4321\t0\tcom.example.running\n'
+  printf -- '-\t0\tcom.example.loaded\n'
+  exit 0
+fi
+case "$2" in
+  com.example.running)
+    printf '{\n\t"PID" = 4321;\n\t"Program" = "/usr/bin/true";\n};\n'
+    exit 0
+    ;;
+  com.example.loaded)
+    printf '{\n\t"Program" = "open";\n};\n'
+    exit 0
+    ;;
+esac
+exit 1
+`
+
+// pgrepStatusShim stands in for an unrelated process whose command line
+// contains the substring `open`. If the user-domain status path ever consults
+// it again, the fake PID surfaces as a bogus `running` result.
+const pgrepStatusShim = `#!/bin/bash
+echo "pgrep $*" >> "__LOG__"
+echo 77777
+exit 0
+`
+
+// TestUserServiceStatusConsistency pins the contract that UserManager.List and
+// UserManager.Get classify an unchanged launchd job identically, deriving
+// Status and PID exclusively from what launchd reports for the label. The
+// pgrep shim would hand back PID 77777 for the `open` wrapper command, so any
+// reintroduced process-name fallback fails this test loudly.
+func TestUserServiceStatusConsistency(t *testing.T) {
+	agentsDir := t.TempDir()
+	binDir := t.TempDir()
+	logFile := filepath.Join(binDir, "calls.log")
+
+	shims := map[string]string{
+		"launchctl": launchctlStatusShim,
+		"pgrep":     pgrepStatusShim,
+	}
+	for name, template := range shims {
+		script := strings.ReplaceAll(template, "__LOG__", logFile)
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte(script), 0755); err != nil {
+			t.Fatalf("write shim %s: %v", name, err)
+		}
+	}
+
+	labeledPlist := func(label, program string) string {
+		return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key><string>%s</string>
+	<key>Program</key><string>%s</string>
+</dict>
+</plist>`, label, program)
+	}
+
+	writeSystemPlist(t, agentsDir, "com.example.running", labeledPlist("com.example.running", "/usr/bin/true"))
+	writeSystemPlist(t, agentsDir, "com.example.loaded", labeledPlist("com.example.loaded", "open"))
+	writeSystemPlist(t, agentsDir, "com.example.stopped", labeledPlist("com.example.stopped", "/usr/bin/true"))
+	writeSystemPlist(t, agentsDir, "com.example.empty", emptyPlistXML)
+
+	t.Setenv("PATH", binDir)
+
+	m := &UserManager{launchAgentsPath: agentsDir}
+
+	listed, err := m.List()
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	byName := make(map[string]Service, len(listed))
+	for _, s := range listed {
+		byName[s.Name] = s
+	}
+
+	cases := []struct {
+		name           string
+		wantStatus     string
+		wantPID        int
+		wantConfidence string
+	}{
+		{"com.example.running", StatusRunning, 4321, ConfidenceVerified},
+		{"com.example.loaded", StatusLoaded, 0, ConfidenceVerified},
+		{"com.example.stopped", StatusStopped, 0, ConfidenceVerified},
+		// No Label means launchd was never queried, so nothing here is
+		// verified — matches the system domain's StatusUnknown/Unverified
+		// pairing in status_detect.go.
+		{"com.example.empty", StatusUnknown, 0, ConfidenceUnverified},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fromList, ok := byName[tc.name]
+			if !ok {
+				t.Fatalf("List() did not return service %q", tc.name)
+			}
+			fromGet, err := m.Get(tc.name)
+			if err != nil {
+				t.Fatalf("Get(%q) error = %v", tc.name, err)
+			}
+
+			if fromList.Status != tc.wantStatus || fromList.PID != tc.wantPID || fromList.StatusConfidence != tc.wantConfidence {
+				t.Errorf("List: Status/PID/Confidence = %q/%d/%q, want %q/%d/%q",
+					fromList.Status, fromList.PID, fromList.StatusConfidence, tc.wantStatus, tc.wantPID, tc.wantConfidence)
+			}
+			if fromGet.Status != tc.wantStatus || fromGet.PID != tc.wantPID || fromGet.StatusConfidence != tc.wantConfidence {
+				t.Errorf("Get: Status/PID/Confidence = %q/%d/%q, want %q/%d/%q",
+					fromGet.Status, fromGet.PID, fromGet.StatusConfidence, tc.wantStatus, tc.wantPID, tc.wantConfidence)
+			}
+		})
+	}
+
+	logged, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatalf("read call log: %v", err)
+	}
+	if calls := string(logged); strings.Contains(calls, "pgrep ") {
+		t.Errorf("pgrep was invoked; user service status must derive from launchd alone. calls=%q", calls)
+	}
+}
