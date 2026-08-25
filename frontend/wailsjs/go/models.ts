@@ -106,6 +106,7 @@ export namespace launchctl {
 	    logPath: string;
 	    exists: boolean;
 	    userWritable: boolean;
+	    size: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new LogClearStatus(source);
@@ -116,6 +117,7 @@ export namespace launchctl {
 	        this.logPath = source["logPath"];
 	        this.exists = source["exists"];
 	        this.userWritable = source["userWritable"];
+	        this.size = source["size"];
 	    }
 	}
 	export class LogsResult {

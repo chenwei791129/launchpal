@@ -117,6 +117,9 @@ func TestLogClearStatusFor(t *testing.T) {
 		if got.LogPath != path || got.Exists || got.UserWritable {
 			t.Errorf("got = %+v, want path=%s exists=false writable=false", got, path)
 		}
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 for a missing file", got.Size)
+		}
 	})
 
 	t.Run("existing writable file", func(t *testing.T) {
@@ -131,12 +134,70 @@ func TestLogClearStatusFor(t *testing.T) {
 		if !got.UserWritable {
 			t.Errorf("expected writable=true")
 		}
+		if got.Size != 1 {
+			t.Errorf("Size = %d, want 1", got.Size)
+		}
+	})
+
+	t.Run("existing file reports its byte count", func(t *testing.T) {
+		path := filepath.Join(tmp, "sized.log")
+		const want = 4096
+		if err := os.WriteFile(path, make([]byte, want), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		got := logClearStatusFor(path)
+		if got.Size != want {
+			t.Errorf("Size = %d, want %d", got.Size, want)
+		}
+	})
+
+	t.Run("empty file: exists=true, size=0", func(t *testing.T) {
+		path := filepath.Join(tmp, "empty.log")
+		if err := os.WriteFile(path, nil, 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		got := logClearStatusFor(path)
+		if !got.Exists {
+			t.Errorf("expected exists=true")
+		}
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 for an empty file", got.Size)
+		}
+	})
+
+	t.Run("unopenable file: size=0", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root bypasses mode bits, so the open never fails")
+		}
+		path := filepath.Join(tmp, "denied.log")
+		if err := os.WriteFile(path, []byte("payload"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		if err := os.Chmod(path, 0); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(path, 0644) })
+		got := logClearStatusFor(path)
+		if !got.Exists {
+			t.Errorf("expected exists=true for a permission-denied file")
+		}
+		if got.UserWritable {
+			t.Errorf("expected writable=false")
+		}
+		// The descriptor was never obtained, so no size could be measured —
+		// it must not fall back to a separate os.Stat.
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 when the file could not be opened", got.Size)
+		}
 	})
 
 	t.Run("empty path", func(t *testing.T) {
 		got := logClearStatusFor("")
 		if got.LogPath != "" || got.Exists || got.UserWritable {
 			t.Errorf("got = %+v, want all zero", got)
+		}
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 for an empty path", got.Size)
 		}
 	})
 }

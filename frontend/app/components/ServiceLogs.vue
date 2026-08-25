@@ -89,6 +89,26 @@
       </div>
     </div>
 
+    <!-- Log file info row: resolved path + size for the selected stream -->
+    <div
+      data-testid="log-info-row"
+      class="flex items-center gap-2 px-4 py-1.5 border-b border-surface-100 text-xs text-gray-400 font-mono"
+    >
+      <template v-if="logInfo.state === 'ready'">
+        <span class="shrink-0 text-gray-500">{{ logType }}</span>
+        <span class="shrink-0 text-gray-600">·</span>
+        <span
+          data-testid="log-info-path"
+          class="truncate"
+          :title="logInfo.fullPath"
+        >{{ logInfo.displayPath }}</span>
+        <span class="shrink-0 text-gray-600">·</span>
+        <span data-testid="log-info-size" class="shrink-0 tabular-nums">{{ logInfo.size }}</span>
+      </template>
+      <span v-else-if="logInfo.state === 'no-path'">No {{ logType }} path configured</span>
+      <span v-else class="text-gray-500">{{ logType }} · Loading...</span>
+    </div>
+
     <!-- Transient feedback row -->
     <div v-if="clearError || clearSuccess" class="px-4 py-2 border-b border-surface-100 text-sm">
       <span v-if="clearError" class="text-red-400">{{ clearError }}</span>
@@ -210,6 +230,54 @@ let loadSeq = 0
 let clearStatusSeq = 0
 const logContainer = ref<HTMLElement | null>(null)
 
+// Info-row formatting helpers. Both are pure and live here rather than in a
+// shared util because the info row is the only consumer; promote them if a
+// second call site appears.
+
+const LOG_SIZE_UNITS = ['B', 'KB', 'MB', 'GB'] as const
+const LOG_SIZE_BASE = 1024
+
+// formatLogSize renders a byte count in base-1024 units: integer precision for
+// bytes ("512 B"), one decimal above that ("1.0 KB", "2.4 MB", "1.1 GB"). GB is
+// the largest unit, so a petabyte-scale value keeps scaling the GB number
+// rather than falling off the end of the table. Non-finite and negative
+// inputs cannot come from a Go int64 Stat but would render as "NaN"/"-1.0 KB"
+// if they ever did, so they clamp to "0 B".
+function formatLogSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  let value = bytes
+  let unit = 0
+  while (value >= LOG_SIZE_BASE && unit < LOG_SIZE_UNITS.length - 1) {
+    value /= LOG_SIZE_BASE
+    unit++
+  }
+  // Bytes are whole units; anything scaled carries one decimal.
+  const rendered = unit === 0 ? String(Math.round(value)) : value.toFixed(1)
+  return `${rendered} ${LOG_SIZE_UNITS[unit]}`
+}
+
+const PATH_ELLIPSIS = '\u2026'
+// Character budget for the rendered path. The row is a single line in a
+// fixed-width panel, so a character count is the practical stand-in for
+// measuring rendered width; the untruncated path is always available in the
+// title tooltip.
+const PATH_MAX_LEN = 72
+
+// truncatePathMiddle drops characters from the middle of an over-long path,
+// biasing the surviving half toward the tail so the basename (the part that
+// identifies which log file this is) stays readable. A path already within
+// budget is returned untouched.
+function truncatePathMiddle(path: string, maxLen: number): string {
+  if (path.length <= maxLen) return path
+  // Too tight to hold even the ellipsis plus a character on each side: fall
+  // back to the tail, which is the segment worth keeping.
+  if (maxLen <= PATH_ELLIPSIS.length + 1) return path.slice(path.length - maxLen)
+  const budget = maxLen - PATH_ELLIPSIS.length
+  const tailLen = Math.ceil(budget / 2)
+  const headLen = budget - tailLen
+  return path.slice(0, headLen) + PATH_ELLIPSIS + path.slice(path.length - tailLen)
+}
+
 // renderedLogs converts ANSI SGR escape sequences in the LogsResult content
 // into styled HTML for v-html. Empty/absent content short-circuits to '' so
 // the placeholder branch still owns the empty state.
@@ -226,6 +294,31 @@ const placeholder = computed(() => {
     return { text: 'Log file does not exist yet', subtext: logs.value.path }
   }
   return { text: `No logs available for ${logType.value}`, subtext: null }
+})
+
+// LogInfoRow is the rendered state of the Logs tab info row. "pending" is a
+// state of its own rather than being folded into "no-path": logClearStatus is
+// null until the first GetLogClearStatus resolves (and stays null in the
+// development fallback with no Wails bindings), and rendering "No stdout path
+// configured" then would assert something the backend has not said yet.
+type LogInfoRow =
+  | { state: 'pending' }
+  | { state: 'no-path' }
+  | { state: 'ready', fullPath: string, displayPath: string, size: string }
+
+const logInfo = computed<LogInfoRow>(() => {
+  const status = logClearStatus.value
+  if (!status) return { state: 'pending' }
+  if (!status.logPath) return { state: 'no-path' }
+  return {
+    state: 'ready',
+    fullPath: status.logPath,
+    displayPath: truncatePathMiddle(status.logPath, PATH_MAX_LEN),
+    // A file that does not exist has no size to report. The em dash says
+    // "nothing to measure" where "0 B" would claim the file is there and
+    // empty — the same distinction Size=0 alone cannot carry.
+    size: status.exists ? formatLogSize(status.size) : '\u2014',
+  }
 })
 
 // logClearStatus is null until the first GetLogClearStatus resolves; the
@@ -314,6 +407,9 @@ function startPolling() {
     // Skip this tick if a load is still in flight; don't queue or overlap.
     if (loading.value) return
     loadLogs()
+    // The info row rides this timer rather than owning one: a size pinned to
+    // the first load would read as stale next to a live-updating log body.
+    loadLogClearStatus()
   }, AUTO_REFRESH_INTERVAL_MS)
 }
 
@@ -325,12 +421,10 @@ function stopPolling() {
 }
 
 async function loadLogClearStatus() {
-  // Apple-system has no Clear button, so the status query is wasted. Skip
-  // entirely to keep List/detail loads fast.
-  if (props.serviceType === 'apple-system') {
-    logClearStatus.value = null
-    return
-  }
+  // Runs for all three service types: apple-system has no Clear button, but
+  // the info row above renders this status's path and size for every domain.
+  // clearControlState gates the button on serviceType alone, so a populated
+  // status here cannot surface it in the read-only domains.
   const app = window.go?.main?.App
   if (!app?.GetLogClearStatus) return
   // Claim a sequence token before the await; a superseded query (an older

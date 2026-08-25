@@ -180,7 +180,10 @@ func TestAppleSystemManager_ClearLogs(t *testing.T) {
 func TestAppleSystemManager_GetLogClearStatus(t *testing.T) {
 	tmpDir := t.TempDir()
 	logFile := filepath.Join(tmpDir, "log.log")
-	if err := os.WriteFile(logFile, []byte("x"), 0644); err != nil {
+	// A multi-byte payload so the Size assertion below distinguishes a real
+	// Stat from an incidental 1 or 0.
+	const logFileSize = 777
+	if err := os.WriteFile(logFile, make([]byte, logFileSize), 0644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	plistContent := `<?xml version="1.0" encoding="UTF-8"?>
@@ -202,6 +205,14 @@ func TestAppleSystemManager_GetLogClearStatus(t *testing.T) {
 	}
 	if got.LogPath != logFile {
 		t.Errorf("LogPath = %q, want %q", got.LogPath, logFile)
+	}
+	// The read-only domain still produces a meaningful Size: the Logs tab
+	// info row renders it for Apple system services too.
+	if !got.Exists {
+		t.Errorf("Exists = false, want true")
+	}
+	if got.Size != logFileSize {
+		t.Errorf("Size = %d, want %d", got.Size, logFileSize)
 	}
 }
 

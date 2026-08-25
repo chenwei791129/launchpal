@@ -61,6 +61,11 @@ export interface LogClearStatus {
   logPath: string
   exists: boolean
   userWritable: boolean
+  // Byte count from Stat() on the same descriptor the writability probe
+  // opened; 0 whenever no descriptor was obtained (empty path, missing file,
+  // unopenable file) as well as for a genuinely empty file. Pair with
+  // `exists` to tell those apart.
+  size: number
 }
 
 export interface LogsResult {

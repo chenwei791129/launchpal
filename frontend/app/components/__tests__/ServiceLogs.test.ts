@@ -33,6 +33,7 @@ function installAppMock(overrides: Partial<MockedApp> = {}) {
       logPath: '/tmp/log.log',
       exists: true,
       userWritable: true,
+      size: 2516582,
     }),
     ClearLogs: vi.fn().mockResolvedValue(undefined),
     ClearSystemLogs: vi.fn().mockResolvedValue(undefined),
@@ -58,9 +59,11 @@ describe('ServiceLogs – Clear Logs control visibility', () => {
     })
     await flushPromises()
     expect(wrapper.find('[data-testid="clear-logs-button"]').exists()).toBe(false)
-    // Status query must not run for apple-system: the spec says it should
-    // be cheap and skip the round trip entirely.
-    expect(mockedApp.GetLogClearStatus).not.toHaveBeenCalled()
+    // The status query DOES run for apple-system — the Logs tab info row
+    // renders its path and size for all three service types. Only the Clear
+    // button is withheld, and clearControlState gates that on serviceType
+    // alone, so a populated status cannot make it appear.
+    expect(mockedApp.GetLogClearStatus).toHaveBeenCalledWith('com.apple.x', 'apple-system', 'stdout')
   })
 
   it('shows the button for user services and queries status on mount', async () => {
@@ -837,5 +840,179 @@ describe('ServiceLogs – Discard superseded concurrent log load results', () =>
     expect(wrapper.find('[data-testid="clear-logs-button"]').attributes('disabled')).toBeDefined()
     expect(wrapper.find('[data-testid="clear-logs-button"]').attributes('title')).toBe('No log path configured')
     wrapper.unmount()
+  })
+})
+
+// Helper for the info-row suites: mount with a GetLogClearStatus that resolves
+// to the given status, and wait for both the log load and the status query.
+async function mountWithStatus(
+  status: { logPath: string, exists: boolean, userWritable: boolean, size: number },
+  props: { serviceName: string, serviceType?: string } = { serviceName: 'com.user.x', serviceType: 'user' },
+) {
+  installAppMock({ GetLogClearStatus: vi.fn().mockResolvedValue(status) })
+  const wrapper = mount(ServiceLogs, { props })
+  await flushPromises()
+  return wrapper
+}
+
+describe('ServiceLogs – Logs tab info row', () => {
+  it('renders the resolved path and formatted size for a user service whose log exists', async () => {
+    const wrapper = await mountWithStatus({
+      logPath: '/Users/alice/Library/Logs/com.example.stdout.log',
+      exists: true,
+      userWritable: true,
+      size: 2516582,
+    })
+    const row = wrapper.find('[data-testid="log-info-row"]')
+    expect(row.exists()).toBe(true)
+    // The stream label anchors the row to the toggle above it.
+    expect(row.text()).toContain('stdout')
+    expect(wrapper.find('[data-testid="log-info-path"]').text())
+      .toBe('/Users/alice/Library/Logs/com.example.stdout.log')
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe('2.4 MB')
+  })
+
+  it('exposes the unabbreviated path in a tooltip and middle-truncates the rendered text', async () => {
+    const longPath = `/Users/alice/Library/Logs/${'nested/'.repeat(12)}com.example.stdout.log`
+    const wrapper = await mountWithStatus({
+      logPath: longPath, exists: true, userWritable: true, size: 512,
+    })
+    const path = wrapper.find('[data-testid="log-info-path"]')
+    // Full path in the tooltip, abbreviated in the visible text.
+    expect(path.attributes('title')).toBe(longPath)
+    expect(path.text()).not.toBe(longPath)
+    expect(path.text()).toContain('…')
+    // The basename survives truncation — it is what identifies the file.
+    expect(path.text().endsWith('com.example.stdout.log')).toBe(true)
+  })
+
+  it('renders the info row for apple-system services (not skipped)', async () => {
+    const wrapper = await mountWithStatus(
+      { logPath: '/var/log/com.apple.x.log', exists: true, userWritable: false, size: 1024 },
+      { serviceName: 'com.apple.x', serviceType: 'apple-system' },
+    )
+    expect(wrapper.find('[data-testid="log-info-row"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="log-info-path"]').text()).toBe('/var/log/com.apple.x.log')
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe('1.0 KB')
+    // Parity of the row must not leak the Clear button into the read-only domain.
+    expect(wrapper.find('[data-testid="clear-logs-button"]').exists()).toBe(false)
+  })
+
+  it('renders the info row for system services', async () => {
+    const wrapper = await mountWithStatus(
+      { logPath: '/Library/Logs/testd.log', exists: true, userWritable: true, size: 512 },
+      { serviceName: 'com.test.d', serviceType: 'system' },
+    )
+    expect(wrapper.find('[data-testid="log-info-path"]').text()).toBe('/Library/Logs/testd.log')
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe('512 B')
+  })
+
+  it('shows "No stdout path configured" and omits the size when logPath is empty', async () => {
+    const wrapper = await mountWithStatus({
+      logPath: '', exists: false, userWritable: false, size: 0,
+    })
+    const row = wrapper.find('[data-testid="log-info-row"]')
+    expect(row.exists()).toBe(true)
+    expect(row.text()).toContain('No stdout path configured')
+    expect(wrapper.find('[data-testid="log-info-size"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="log-info-path"]').exists()).toBe(false)
+  })
+
+  it('shows "No stderr path configured" after switching to a stream with no path', async () => {
+    installAppMock({
+      GetLogClearStatus: vi.fn()
+        .mockResolvedValueOnce({ logPath: '/tmp/out.log', exists: true, userWritable: true, size: 512 })
+        .mockResolvedValueOnce({ logPath: '', exists: false, userWritable: false, size: 0 }),
+    })
+    const wrapper = mount(ServiceLogs, { props: { serviceName: 'com.user.x', serviceType: 'user' } })
+    await flushPromises()
+    clickStderr(wrapper)
+    await flushPromises()
+    expect(wrapper.find('[data-testid="log-info-row"]').text()).toContain('No stderr path configured')
+  })
+
+  it('renders an em dash for the size when the log file does not exist', async () => {
+    const wrapper = await mountWithStatus({
+      logPath: '/Users/alice/Library/Logs/com.example.stdout.log',
+      exists: false,
+      userWritable: false,
+      size: 0,
+    })
+    expect(wrapper.find('[data-testid="log-info-path"]').text())
+      .toBe('/Users/alice/Library/Logs/com.example.stdout.log')
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe('—')
+  })
+
+  // The spec's size boundary table, one case per row.
+  it.each([
+    [0, '0 B'],
+    [512, '512 B'],
+    [1024, '1.0 KB'],
+    [2516582, '2.4 MB'],
+    [1181116006, '1.1 GB'],
+  ])('formats a %i-byte log as %s', async (size, expected) => {
+    const wrapper = await mountWithStatus({
+      logPath: '/tmp/out.log', exists: true, userWritable: true, size: size as number,
+    })
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe(expected)
+  })
+
+  it('updates the info row when toggling between stdout and stderr', async () => {
+    installAppMock({
+      GetLogClearStatus: vi.fn()
+        .mockResolvedValueOnce({ logPath: '/tmp/out.log', exists: true, userWritable: true, size: 512 })
+        .mockResolvedValueOnce({ logPath: '/tmp/err.log', exists: true, userWritable: true, size: 1024 }),
+    })
+    const wrapper = mount(ServiceLogs, { props: { serviceName: 'com.user.x', serviceType: 'user' } })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="log-info-path"]').text()).toBe('/tmp/out.log')
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe('512 B')
+
+    clickStderr(wrapper)
+    await flushPromises()
+
+    // Both the content and the metadata follow the stream switch.
+    expect(mockedApp.GetLogs).toHaveBeenCalledWith('com.user.x', 'stderr')
+    expect(mockedApp.GetLogClearStatus).toHaveBeenCalledWith('com.user.x', 'user', 'stderr')
+    expect(wrapper.find('[data-testid="log-info-path"]').text()).toBe('/tmp/err.log')
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe('1.0 KB')
+  })
+})
+
+describe('ServiceLogs – info row rides the Auto-refresh poll tick', () => {
+  useAutoRefreshFakeTimers()
+
+  it('refreshes the path and size on each poll tick so the size tracks the content', async () => {
+    installAppMock({
+      GetLogClearStatus: vi.fn()
+        .mockResolvedValueOnce({ logPath: '/tmp/out.log', exists: true, userWritable: true, size: 512 })
+        .mockResolvedValue({ logPath: '/tmp/out.log', exists: true, userWritable: true, size: 2048 }),
+    })
+    const wrapper = mount(ServiceLogs, { props: { serviceName: 'com.user.x', serviceType: 'user' } })
+    await settle()
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe('512 B')
+
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+
+    // The size must advance with the content; a pinned first-load size would
+    // read as a stale-info bug next to a live-updating log body.
+    expect(mockedApp.GetLogClearStatus).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-testid="log-info-size"]').text()).toBe('2.0 KB')
+  })
+
+  it('stops refreshing the info row once Auto-refresh is unchecked', async () => {
+    const wrapper = mount(ServiceLogs, { props: { serviceName: 'com.user.x', serviceType: 'user' } })
+    await settle()
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS)
+    const afterOneTick = mockedApp.GetLogClearStatus.mock.calls.length
+
+    await clickToggle(wrapper, 'auto-refresh-toggle')
+    await vi.advanceTimersByTimeAsync(AUTO_REFRESH_INTERVAL_MS * 3)
+
+    // The info row owns no timer of its own — unchecking the box is the only
+    // thing that has to stop it.
+    expect(mockedApp.GetLogClearStatus).toHaveBeenCalledTimes(afterOneTick)
   })
 })

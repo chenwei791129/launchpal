@@ -898,7 +898,10 @@ func TestUserManager_GetLogClearStatus(t *testing.T) {
 	logDir := t.TempDir()
 
 	writableLog := filepath.Join(logDir, "writable.log")
-	if err := os.WriteFile(writableLog, []byte("x"), 0644); err != nil {
+	// A multi-byte payload so a Size assertion below distinguishes a real
+	// Stat from an incidental 1 or 0.
+	const writableLogSize = 2048
+	if err := os.WriteFile(writableLog, make([]byte, writableLogSize), 0644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	missingLog := filepath.Join(logDir, "missing.log")
@@ -942,6 +945,9 @@ func TestUserManager_GetLogClearStatus(t *testing.T) {
 		if !got.Exists || !got.UserWritable {
 			t.Errorf("got = %+v, want exists=true writable=true", got)
 		}
+		if got.Size != writableLogSize {
+			t.Errorf("Size = %d, want %d", got.Size, writableLogSize)
+		}
 	})
 
 	t.Run("path configured but missing", func(t *testing.T) {
@@ -955,6 +961,9 @@ func TestUserManager_GetLogClearStatus(t *testing.T) {
 		if got.Exists || got.UserWritable {
 			t.Errorf("got = %+v, want exists=false writable=false", got)
 		}
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 for a missing file", got.Size)
+		}
 	})
 
 	t.Run("no log path in plist", func(t *testing.T) {
@@ -964,6 +973,9 @@ func TestUserManager_GetLogClearStatus(t *testing.T) {
 		}
 		if got.LogPath != "" || got.Exists || got.UserWritable {
 			t.Errorf("got = %+v, want all zero", got)
+		}
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 when no log path is configured", got.Size)
 		}
 	})
 
@@ -1003,6 +1015,10 @@ func TestUserManager_GetLogClearStatus(t *testing.T) {
 		}
 		if got.UserWritable {
 			t.Error("expected writable=false for 0444 file")
+		}
+		// The O_WRONLY probe never got a descriptor, so no size was measured.
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 when the file could not be opened for writing", got.Size)
 		}
 	})
 }

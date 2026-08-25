@@ -1036,9 +1036,13 @@ func TestSystemManager_GetLogClearStatus(t *testing.T) {
 	logDir := t.TempDir()
 
 	logPath := filepath.Join(logDir, "out.log")
-	if err := os.WriteFile(logPath, []byte("x"), 0644); err != nil {
+	// A multi-byte payload so the Size assertion below distinguishes a real
+	// Stat from an incidental 1 or 0.
+	const logSize = 1536
+	if err := os.WriteFile(logPath, make([]byte, logSize), 0644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
+	missingPath := filepath.Join(logDir, "err.log")
 
 	plist := `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -1046,6 +1050,7 @@ func TestSystemManager_GetLogClearStatus(t *testing.T) {
   <key>Label</key><string>com.test.status</string>
   <key>Program</key><string>/usr/sbin/x</string>
   <key>StandardOutPath</key><string>` + logPath + `</string>
+  <key>StandardErrorPath</key><string>` + missingPath + `</string>
 </dict></plist>`
 	if err := os.WriteFile(filepath.Join(tmpDir, "com.test.status.plist"), []byte(plist), 0644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1073,6 +1078,25 @@ func TestSystemManager_GetLogClearStatus(t *testing.T) {
 		if !got.Exists || !got.UserWritable {
 			t.Errorf("got = %+v, want exists=true writable=true", got)
 		}
+		if got.Size != logSize {
+			t.Errorf("Size = %d, want %d", got.Size, logSize)
+		}
+	})
+
+	t.Run("path configured but file missing", func(t *testing.T) {
+		got, err := m.GetLogClearStatus("com.test.status", LogTypeStderr)
+		if err != nil {
+			t.Fatalf("err = %v", err)
+		}
+		if got.LogPath != missingPath {
+			t.Errorf("LogPath = %q, want %q", got.LogPath, missingPath)
+		}
+		if got.Exists || got.UserWritable {
+			t.Errorf("got = %+v, want exists=false writable=false", got)
+		}
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 for a missing file", got.Size)
+		}
 	})
 
 	t.Run("no log path configured", func(t *testing.T) {
@@ -1082,6 +1106,9 @@ func TestSystemManager_GetLogClearStatus(t *testing.T) {
 		}
 		if got.LogPath != "" || got.Exists || got.UserWritable {
 			t.Errorf("got = %+v, want all zero", got)
+		}
+		if got.Size != 0 {
+			t.Errorf("Size = %d, want 0 when no log path is configured", got.Size)
 		}
 	})
 }

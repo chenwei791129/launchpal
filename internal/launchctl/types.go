@@ -115,16 +115,30 @@ type LogsResult struct {
 	Path    string `json:"path"`
 }
 
-// LogClearStatus describes whether a service's log file can be truncated.
+// LogClearStatus describes whether a service's log file can be truncated, and
+// carries the log file metadata the Logs tab's info row renders.
 // LogPath is the resolved (post-tilde-expansion) path or "" when the service
 // has no log path configured for the requested type. Exists is whether
 // LogPath exists on disk; UserWritable is whether the current process can
 // open LogPath for writing without following symlinks. Both Exists and
 // UserWritable are false when LogPath is empty.
+//
+// Size is the file size in bytes, taken from Stat() on the same descriptor
+// used for the UserWritable probe. It is 0 in every case where that Stat
+// cannot report a meaningful size:
+//
+//   - empty LogPath (nothing was opened)
+//   - the file does not exist (ENOENT)
+//   - the open failed for any other reason (EACCES, ELOOP, EISDIR, …)
+//   - the file exists and is genuinely empty
+//
+// A caller therefore cannot distinguish "empty file" from "size unknown" by
+// Size alone; pair it with Exists, which is true only in the first case.
 type LogClearStatus struct {
 	LogPath      string `json:"logPath"`
 	Exists       bool   `json:"exists"`
 	UserWritable bool   `json:"userWritable"`
+	Size         int64  `json:"size"`
 }
 
 // ErrReadOnlyManager is returned when attempting write operations on read-only managers
@@ -285,9 +299,14 @@ func truncateLogFile(path string) error {
 // path using a single OpenFile attempt. Stat-then-open would race; the
 // kernel's response to one OpenFile is the only authoritative answer.
 //
-//   - success → exists=true, writable=true
-//   - ENOENT → exists=false, writable=false
-//   - any other error (EACCES, ELOOP, EISDIR, …) → exists=true, writable=false
+//   - success → exists=true, writable=true, size from Stat() on that fd
+//   - ENOENT → exists=false, writable=false, size=0
+//   - any other error (EACCES, ELOOP, EISDIR, …) → exists=true, writable=false,
+//     size=0 (no descriptor was obtained, so no size can be measured)
+//
+// Size comes from the already-open descriptor rather than a second os.Stat so
+// the reported size describes the same file the writability probe answered
+// for; a separate path-based Stat would reopen the same race this avoids.
 func logClearStatusFor(resolvedPath string) LogClearStatus {
 	status := LogClearStatus{LogPath: resolvedPath}
 	if resolvedPath == "" {
@@ -295,6 +314,11 @@ func logClearStatusFor(resolvedPath string) LogClearStatus {
 	}
 	f, err := os.OpenFile(resolvedPath, os.O_WRONLY|nofollowFlag, 0)
 	if err == nil {
+		// A failing Stat leaves Size at 0, matching the other unknown-size
+		// states; the writability answer the open already gave stands.
+		if info, statErr := f.Stat(); statErr == nil {
+			status.Size = info.Size()
+		}
 		_ = f.Close()
 		status.Exists = true
 		status.UserWritable = true
