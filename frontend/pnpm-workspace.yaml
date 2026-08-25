@@ -1,0 +1,11 @@
+# pnpm 10+ requires an explicit decision for dependencies with install scripts.
+# All three ship their native binaries as optionalDependencies, which pnpm
+# installs as ordinary packages, so their scripts are only fallback paths
+# (esbuild re-downloads the binary, @parcel/watcher compiles from source,
+# unrs-resolver verifies the napi binding). Denying them keeps installs free of
+# third-party install-time code; flip an entry to true if a target platform
+# ever lacks a prebuilt binary.
+allowBuilds:
+  '@parcel/watcher': false
+  esbuild: false
+  unrs-resolver: false
