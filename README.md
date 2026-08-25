@@ -12,6 +12,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 📋 View service logs (stdout/stderr) with ANSI color rendering (16-color SGR sequences are shown as colored text instead of raw `[31m` escape codes); services without a configured log path or a not-yet-created log file show a clear placeholder instead of a generic error
 - 🧹 Clear stdout / stderr logs from the Logs tab (one-click in-place truncate; system daemons fall back to the privileged helper only when the file is not user-writable)
 - 🔄 Auto-refresh the Logs tab (`tail -f`-style): an optional toggle reloads the current stream every 2 seconds; it turns itself off when a load has no path, is not found, or fails, and stays independent of Auto-scroll
+- 📏 A persistent info row under the stdout/stderr toggle shows the resolved log path (middle-truncated, full path on hover) and the file size (`512 B` / `2.4 MB` / `1.1 GB`); it appears for user, system, and Apple system services, shows `—` when the file does not exist, and refreshes alongside the log content
 - ➕ Create and configure new services
 - ⏰ Schedule services with Calendar Interval or Fixed Interval
 - 📅 Cron-style range (`9-17`) and enumeration (`1,3,5`) syntax with automatic expansion
