@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.21.1](https://github.com/chenwei791129/launchpal/compare/v1.21.0...v1.21.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* derive user service status solely from launchd ([c250caf](https://github.com/chenwei791129/launchpal/commit/c250cafb5539edf3c9eba8855a7358b302d1d68f))
+
 ## [1.21.0](https://github.com/chenwei791129/launchpal/compare/v1.20.0...v1.21.0) (2026-07-23)
 
 
