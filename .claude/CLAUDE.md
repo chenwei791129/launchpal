@@ -36,7 +36,7 @@ A GUI for managing macOS LaunchAgents.
 │   │   ├── system.go         # SystemManager — dual mode: read-only by default, Admin Mode delegates writes via AdminClient
 │   │   ├── apple_system.go   # AppleSystemManager (/System/Library/LaunchDaemons, always read-only)
 │   │   ├── readonly.go       # Shared read-only logic for SystemManager and AppleSystemManager
-│   │   └── status_detect.go  # Heuristic status detection for the system domain (pgrep -u + ppid=1 filter)
+│   │   └── status_detect.go  # Heuristic status detection for the system domain (single ps scan + uid/ppid=1 filter)
 │   ├── privhelper/           # RPC protocol + server + client shared by app.go and the helper binary
 │   │   ├── protocol.go       # Request/Response types, method name + error code constants
 │   │   ├── server.go         # Newline-delimited JSON server, peer UID verification, idle/parent watchdog
@@ -175,11 +175,14 @@ Because LaunchPal is unsigned and cannot register a persistent `SMAppService` da
 
 ### User domain (`UserManager`)
 
-1. Query `launchctl list <label>` for the service entry.
-2. Parse a PID from the output (present ⇒ running).
-3. If no PID, fall back to `pgrep -f <program>`.
-4. Skip the pgrep fallback for common shells (bash, sh, zsh) to avoid false matches.
-5. `StatusConfidence` is always `verified` because `launchctl list` is authoritative in the user domain.
+Status and PID derive **exclusively** from what launchd reports for the service label, so `List` (batch) and `Get` (single-service) classify an unchanged job identically.
+
+1. `List` runs `launchctl list` once (`getBatchServiceStatus`, tabular output) and reuses the resulting label → status/PID map for every service; `Get` runs `launchctl list <label>` (`getServiceStatus`, dict output) for the one label.
+2. Both parsers hand their parsed PID to the shared `classifyPID` helper — the single source of truth for the running/loaded boundary, so the two output formats cannot drift back into disagreeing about the same job.
+3. Classification: positive PID ⇒ `StatusRunning` with that PID; loaded without a positive PID ⇒ `StatusLoaded` / PID 0; label unknown to launchd ⇒ `StatusStopped` / PID 0.
+4. An empty `Label` is classified as `StatusUnknown` / PID 0 / `unverified` in `getWithStatus` — the single chokepoint covering both paths (the batch path never reaches `getServiceStatus`), and launchd is never queried for an empty label. `unverified` mirrors the system domain's `StatusUnknown`/`unverified` pairing in `status_detect.go` — nothing was actually confirmed with launchd, so labeling it `verified` would be a lie the frontend's confidence tooltip is supposed to catch.
+5. There is deliberately **no** `pgrep -f <program>` fallback. It attributed unrelated processes to a job whenever the program was a short wrapper command (e.g. `open` matches any command line containing that substring), so the detail view showed a fake PID and `running` while the list view correctly showed `loaded`. `TestUserServiceStatusConsistency` pins this: it shims `pgrep` to return a fake PID and fails if the fallback is reintroduced. (`commonShells` still exists, but is now used only by the system-domain heuristic in `status_detect.go`.)
+6. `StatusConfidence` is `verified` for every other case, because `launchctl list` is authoritative in the user domain once a label exists to query.
 
 ### System domain (`SystemManager` / `AppleSystemManager`)
 
