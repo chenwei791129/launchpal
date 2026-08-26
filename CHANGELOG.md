@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.22.0](https://github.com/chenwei791129/launchpal/compare/v1.21.1...v1.22.0) (2026-08-26)
+
+
+### Features
+
+* add Status and Type filters to service list pages ([75f8d2f](https://github.com/chenwei791129/launchpal/commit/75f8d2fd536de518d971a50d11a15a4d89e091ba))
+* show resolved log path and file size in the Logs tab ([6a707f5](https://github.com/chenwei791129/launchpal/commit/6a707f533817238e0eec9169c999598060f85ea8))
+
+
+### Bug Fixes
+
+* raise the minimum supported macOS version to 13 Ventura ([534d770](https://github.com/chenwei791129/launchpal/commit/534d770017499d0b89c65a200d18c67816150bd9))
+
 ## [1.21.1](https://github.com/chenwei791129/launchpal/compare/v1.21.0...v1.21.1) (2026-08-25)
 
 
