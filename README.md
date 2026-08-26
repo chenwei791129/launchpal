@@ -49,6 +49,12 @@ A modern GUI for managing macOS LaunchAgents.
   <img src="docs/screenshots/inspect.png" alt="Plist Inspector" width="800">
 </p>
 
+## System Requirements
+
+- **macOS 13 Ventura or later.**
+
+This is a hard requirement, not a recommendation. LaunchPal is built with a Go toolchain that marks its binaries as requiring macOS 13, and dyld refuses to load them on anything older — there is no flag or workaround that makes the app run on macOS 12 Monterey or earlier.
+
 ## Installation
 
 ### Homebrew (Recommended)

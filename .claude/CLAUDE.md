@@ -19,6 +19,31 @@ A GUI for managing macOS LaunchAgents.
 - **Frontend**: Nuxt 4 + Vue 3 + TailwindCSS
 - **Platform**: macOS only (`launchctl` is macOS-specific)
 
+## Minimum macOS Version
+
+- The minimum supported version is **macOS 13 Ventura**. It is declared in three places that must agree, and nothing checks all three automatically:
+  1. `LSMinimumSystemVersion` = `13.0.0` in `build/darwin/Info.plist` and `build/darwin/Info.dev.plist` — pinned by `build_metadata_test.go`.
+  2. `MACOS_MIN_VERSION` in `Makefile` — the deployment target passed to the Wails build. Nothing pins this.
+  3. The `LC_BUILD_VERSION` `minos` actually stamped into each shipped binary. Nothing pins this either; `otool` is the only check.
+- **Declaration and `minos` must be equal.** Launch Services decides whether to *start* the app from the declaration, while dyld decides whether to *load* it from `minos`. Declaring lower than `minos` means Launch Services starts the app and dyld then rejects it with an unexplained failure; declaring higher excludes systems the binary would in fact run on.
+- **`minos` does not come from one place — the two shipped binaries get it differently:**
+  - `launchpal-privhelper` is built by `make build-helper` with a plain `go build`. No Objective-C, no build tags → **internal** linking → Go's linker writes `minos` itself, using the Go release's own default (13.0 as of Go 1.27). CGO flags are ignored on this path.
+  - The main `launchpal` binary is built by `go tool wails build`, whose `desktop,production` tags pull in the Wails darwin Objective-C backend → **external** linking → clang writes `minos` from the deployment target, and Go's default never applies. Wails hardcodes `-mmacosx-version-min=10.13` into `CGO_CFLAGS`/`CGO_LDFLAGS` (`pkg/commands/build/base.go`), which arm64 clamps to 11.0 — so without intervention this binary sits at 11.0 regardless of the Go version.
+  - Tell the two apart in `otool` output: `ntools 0` / `cmdsize 24` is internal, `ntools 1` / `cmdsize 32` is external.
+- **This is why `MACOS_MIN_VERSION` exists in the Makefile.** Do not remove it assuming Go's default will take over — it will not for the main binary. Do not "fix" it by deleting the flag either: with external linking and no deployment target, clang falls back to the *build machine's* SDK version (15.0 on a macOS 15 host), making `minos` vary per machine. Upgrading Wails does not remove the need: v2.15.0 is the last v2 and carries the hardcode; v3 moves the value into a project-owned `build/darwin/Taskfile.yml` but still defaults it to 12.0.
+- **Whenever the `go` directive in `go.mod` is bumped — or Wails is upgraded — re-verify all three values.** Build and check the binaries directly:
+
+  ```bash
+  make build
+  otool -l build/bin/launchpal.app/Contents/MacOS/launchpal              | grep -A 4 LC_BUILD_VERSION
+  otool -l build/bin/launchpal.app/Contents/MacOS/launchpal-privhelper   | grep -A 4 LC_BUILD_VERSION
+  ```
+
+  A `ld: warning: object file ... was built for newer 'macOS' version (X) than being linked (Y)` during the build is the signal that the deployment target has fallen behind the Go default.
+- If the values disagree, resolve by direction of travel: raise the declaration to match an honest `minos`, or raise `MACOS_MIN_VERSION` to match Go's floor. Never push `minos` *down* with a linker override to preserve support for an older macOS — the Go runtime is free to call libSystem APIs above its supported floor without that being a bug, and `launchpal-privhelper` runs as root, where an unsupported configuration is especially expensive.
+- `build_metadata_test.go` (package main) pins only the two Info.plist declarations against a single constant. It deliberately does **not** parse build output — the `otool` check above is the compensating manual step, and it is the only thing that catches the toolchain or Wails moving underneath the declaration.
+- Downstream declarations must be kept in step: the README "System Requirements" section, and the `depends_on macos:` stanza in the `Casks/launchpal.rb` formula in `chenwei791129/homebrew-apps` (a separate repo — no test or CI job here can enforce it).
+
 ## Directory Layout
 
 ```
