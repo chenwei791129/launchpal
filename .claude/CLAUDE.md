@@ -307,7 +307,10 @@ This project uses [release-please](https://github.com/googleapis/release-please)
 - Homebrew tap: `chenwei791129/homebrew-apps` (a standalone repo, shareable across multiple apps).
 - Install command: `brew install --cask chenwei791129/apps/launchpal`.
 - The cask formula lives at `Casks/launchpal.rb` inside the `homebrew-apps` repo.
-- Because the app is not code-signed, a `postflight` block automatically clears the quarantine attribute.
+- Because the app is not code-signed, a `postflight_steps` block automatically clears the quarantine attribute
+  (`run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/launchpal.app"]`). Homebrew 6.0.22
+  deprecated the free-form `postflight` block; inside a steps block `args` is serialised verbatim, so the app path
+  must use the install-steps template token `{{appdir}}`, never Ruby interpolation.
 - The `update-homebrew` job in `release-please.yml` updates the formula (version + SHA256) on each release.
 - Cross-repo writes use `HOMEBREW_TAP_TOKEN` (a fine-grained PAT scoped to `homebrew-apps`).
 

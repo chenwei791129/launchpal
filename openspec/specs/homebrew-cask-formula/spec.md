@@ -39,15 +39,15 @@ code:
 -->
 
 ---
-### Requirement: Postflight removes quarantine attribute
+### Requirement: Postflight steps remove quarantine attribute
 
-The cask formula SHALL include a `postflight` stanza that executes `xattr -dr com.apple.quarantine` on the installed app bundle.
+The cask formula SHALL include a `postflight_steps` stanza whose `run` step executes `xattr -dr com.apple.quarantine` on the installed app bundle. The app path SHALL be written as the install-steps template token `{{appdir}}/launchpal.app`, because a steps block serialises `args` verbatim and does not evaluate Ruby interpolation.
 
 This is required because the app is not code-signed or notarized, and macOS Gatekeeper would otherwise block the app from opening.
 
 #### Scenario: App opens without Gatekeeper warning after installation
 
-- **WHEN** the cask installation completes (including postflight)
+- **WHEN** the cask installation completes (including the postflight steps)
 - **THEN** the quarantine extended attribute is removed from `LaunchPal.app`
 - **THEN** user can open the app without macOS displaying a Gatekeeper warning
 
