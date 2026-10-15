@@ -18,11 +18,13 @@
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
+    "@golar/vue": "^0.1.10",
     "@nuxt/eslint": "^1.17.0",
     "@nuxtjs/tailwindcss": "^6.14.0",
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/test-utils": "^2.5.1",
     "eslint": "^10.12.0",
+    "golar": "^0.1.10",
     "happy-dom": "^20.8.9",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"
