@@ -160,7 +160,6 @@ export function ansiToHtml(input: string): string {
     const next = input[i + 1]
     if (next === undefined) {
       // Lone trailing ESC — drop it.
-      i = len
       break
     }
 
@@ -173,7 +172,6 @@ export function ansiToHtml(input: string): string {
       while (j < len && input.charCodeAt(j) >= 0x20 && input.charCodeAt(j) <= 0x2f) j += 1
       if (j >= len) {
         // Unterminated CSI: strip through end of input.
-        i = len
         break
       }
       const finalCode = input.charCodeAt(j)
