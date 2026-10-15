@@ -3,8 +3,8 @@ module launchpal
 go 1.27.0
 
 require (
-	github.com/wailsapp/wails/v2 v2.15.0
-	golang.org/x/sys v0.46.0
+	github.com/wailsapp/wails/v2 v2.16.0
+	golang.org/x/sys v0.49.0
 	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9
 )
 
