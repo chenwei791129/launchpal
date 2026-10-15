@@ -33,7 +33,7 @@ jobs:
     - name: Install pnpm
       uses: pnpm/action-setup@v6
       with:
-        version: 11
+        version: 12
 
     - name: Install Wails CLI
       run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
