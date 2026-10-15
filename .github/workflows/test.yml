@@ -1,0 +1,74 @@
+name: Test LaunchPal
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'CHANGELOG.md'
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  # One group per PR, so a new push supersedes that PR's stale run; one group
+  # per commit on main, so every push to main is tested to completion (a shared
+  # group would let GitHub drop queued main runs).
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name == 'pull_request'
+    && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # macOS, like build.yml: the Go tests exercise darwin-only code paths
+    # (O_NOFOLLOW symlink rejection) and shell out to plutil.
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      # Keep the Node and pnpm versions in step with build.yml and with
+      # packageManager in frontend/package.json.
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12
+
+      # Not `make setup`: neither the tests nor the linters need create-dmg or
+      # a separate `go mod download`.
+      - name: Install frontend dependencies
+        run: cd frontend && pnpm install
+
+      - name: Build frontend
+        id: frontend
+        # package main embeds frontend/.output/public via //go:embed, so
+        # neither the Go tests nor golangci-lint can load it until the
+        # frontend has been generated.
+        run: cd frontend && pnpm run generate
+
+      - name: Run tests
+        # The Makefile `test` target is the single source of truth:
+        # go test -race ./..., vitest, and nuxi typecheck.
+        run: make test
+
+      - name: Run linters
+        # The Makefile `lint` target: golangci-lint and eslint. Runs even when
+        # the tests fail, so one run reports both; skipped if the run is
+        # cancelled or setup did not get as far as a generated frontend.
+        if: ${{ !cancelled() && steps.frontend.outcome == 'success' }}
+        run: make lint
