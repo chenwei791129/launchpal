@@ -12,21 +12,21 @@
   },
   "dependencies": {
     "diff": "^9.0.0",
-    "nuxt": "^4.6.1",
+    "nuxt": "^4.6.2",
     "shiki": "^4.5.0",
-    "vue": "^3.5.43",
+    "vue": "^3.5.44",
     "vue-router": "^5.4.0"
   },
   "devDependencies": {
-    "@golar/vue": "^0.1.10",
+    "@golar/vue": "^0.1.11",
     "@nuxt/eslint": "^1.17.0",
     "@nuxtjs/tailwindcss": "^6.14.0",
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/test-utils": "^2.5.1",
-    "eslint": "^10.12.0",
-    "golar": "^0.1.10",
-    "happy-dom": "^21.0.1",
+    "eslint": "^10.13.0",
+    "golar": "^0.1.11",
+    "happy-dom": "^21.0.3",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   }
 }
