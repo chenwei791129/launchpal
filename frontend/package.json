@@ -25,7 +25,7 @@
     "@vue/test-utils": "^2.5.1",
     "eslint": "^10.13.0",
     "golar": "^0.1.11",
-    "happy-dom": "^21.0.3",
+    "happy-dom": "^21.0.4",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5"
   }
