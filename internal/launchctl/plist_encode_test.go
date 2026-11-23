@@ -170,18 +170,19 @@ func TestModeledPlistKeys(t *testing.T) {
 	minute := 0
 	maximal := func(sched *ScheduleConfig) *ServiceConfig {
 		return &ServiceConfig{
-			Label:            "com.example",
-			Program:          "/usr/bin/true",
-			Arguments:        []string{"/usr/bin/true", "-x"},
-			RunAtLoad:        true,
-			KeepAlive:        KeepAliveConfig{Enabled: true, Mode: KeepAliveModeBoolean},
-			ThrottleInterval: &throttle,
-			WorkingDir:       "/tmp",
-			StdoutPath:       "/tmp/out.log",
-			StderrPath:       "/tmp/err.log",
-			WakeSystem:       true,
-			Environment:      map[string]string{"FOO": "bar"},
-			Schedule:         sched,
+			Label:               "com.example",
+			Program:             "/usr/bin/true",
+			Arguments:           []string{"/usr/bin/true", "-x"},
+			RunAtLoad:           true,
+			KeepAlive:           KeepAliveConfig{Enabled: true, Mode: KeepAliveModeBoolean},
+			ThrottleInterval:    &throttle,
+			WorkingDir:          "/tmp",
+			StdoutPath:          "/tmp/out.log",
+			StderrPath:          "/tmp/err.log",
+			WakeSystem:          true,
+			AbandonProcessGroup: true,
+			Environment:         map[string]string{"FOO": "bar"},
+			Schedule:            sched,
 		}
 	}
 	configs := []*ServiceConfig{

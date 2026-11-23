@@ -1,10 +1,25 @@
 <template>
   <div class="space-y-3">
-    <!-- Enable Schedule -->
-    <label class="flex items-center gap-2 text-sm text-gray-300">
-      <input v-model="enabled" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
-      Enable Schedule
-    </label>
+    <div class="flex flex-wrap items-start gap-x-6 gap-y-2">
+      <label class="flex items-center gap-2 text-sm text-gray-300">
+        <input v-model="enabled" type="checkbox" class="rounded bg-surface-400 border-surface-100" >
+        Enable Schedule
+      </label>
+      <div class="w-64 max-w-full">
+        <label class="flex items-center gap-2 text-sm text-gray-300">
+          <input
+            v-model="abandonProcessGroup"
+            type="checkbox"
+            class="rounded bg-surface-400 border-surface-100"
+            :aria-describedby="abandonHintId"
+          >
+          Abandon Process Group
+        </label>
+        <p :id="abandonHintId" class="mt-1 pl-6 text-xs text-gray-400">
+          When the job exits, launchd leaves other processes in the same process group running.
+        </p>
+      </div>
+    </div>
 
     <div v-if="enabled" class="space-y-3 pl-1">
       <!-- Schedule Sub-type -->
@@ -119,6 +134,7 @@
 </template>
 
 <script setup lang="ts">
+import { useId } from 'vue'
 import type { ScheduleConfig, CalendarEntry } from '~/types/wails.d'
 import { getNextOccurrences, formatDateTime, WEEKDAY_NAMES } from '~/composables/useNextOccurrences'
 
@@ -132,6 +148,8 @@ const emit = defineEmits<{
   'update:wakeSystem': [value: boolean]
 }>()
 
+const abandonProcessGroup = defineModel<boolean>('abandonProcessGroup')
+const abandonHintId = useId()
 const enabled = ref(false)
 const scheduleType = ref<'calendar' | 'interval'>('calendar')
 const intervalSeconds = ref<number | undefined>(undefined)

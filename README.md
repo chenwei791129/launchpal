@@ -16,6 +16,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 🔎 Filter service lists by Status (Running / Loaded / Unloaded / Unknown) and Type (Scheduled / KeepAlive / RunAtLoad / None) with multi-select dropdowns; options within a dropdown combine with OR, and Status, Type and the search box combine with AND. Available on the User, System, and Apple System pages
 - ➕ Create and configure new services
 - ⏰ Schedule services with Calendar Interval or Fixed Interval
+- Configure **Abandon Process Group** independently of scheduling to let other processes in the job's process group keep running after the job exits
 - 📅 Cron-style range (`9-17`) and enumeration (`1,3,5`) syntax, with automatic expansion up to 50 calendar entries and a preview of upcoming calendar runs
 - 🌐 Configure environment variables for services
 - ✏️ Edit existing service configurations or clone a User Service under a new label

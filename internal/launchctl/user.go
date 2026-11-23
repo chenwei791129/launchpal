@@ -65,6 +65,7 @@ type plistData struct {
 	StandardErrorPath     string            `plist:"StandardErrorPath"`
 	WorkingDirectory      string            `plist:"WorkingDirectory"`
 	WakeSystem            bool              `plist:"WakeSystem"`
+	AbandonProcessGroup   any               `plist:"AbandonProcessGroup"` // Ignore non-boolean values without rejecting the plist.
 }
 
 // List returns all services in ~/Library/LaunchAgents
@@ -147,6 +148,7 @@ func (m *UserManager) getWithStatus(name string, statusMap map[string]serviceSta
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
 	service.ThrottleInterval = pd.ThrottleInterval
 	service.WakeSystem = pd.WakeSystem
+	service.AbandonProcessGroup, _ = pd.AbandonProcessGroup.(bool)
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
 	// Status and PID come exclusively from what launchd reports for this

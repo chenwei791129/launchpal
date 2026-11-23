@@ -85,6 +85,10 @@
         <label class="text-xs text-gray-400 uppercase tracking-wider">Wake System</label>
         <p class="text-gray-100 mt-1">{{ service.wakeSystem ? 'Yes' : 'No' }}</p>
       </div>
+      <div>
+        <label class="text-xs text-gray-400 uppercase tracking-wider">Abandon Process Group</label>
+        <p class="text-gray-100 mt-1" data-testid="abandon-process-group-summary">{{ service.abandonProcessGroup ? 'Yes' : 'No' }}</p>
+      </div>
       <div v-if="service.throttleInterval !== undefined">
         <label class="text-xs text-gray-400 uppercase tracking-wider">Throttle Interval</label>
         <p class="text-gray-100 mt-1" data-testid="throttle-interval">{{ service.throttleInterval }}s</p>

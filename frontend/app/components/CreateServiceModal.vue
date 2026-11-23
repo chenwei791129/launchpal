@@ -124,7 +124,11 @@
         </div>
 
         <!-- Schedule -->
-        <ScheduleForm v-model="schedule" v-model:wake-system="wakeSystem" />
+        <ScheduleForm
+          v-model="schedule"
+          v-model:wake-system="wakeSystem"
+          v-model:abandon-process-group="abandonProcessGroup"
+        />
 
         <!-- Log Paths (Auto-generated) -->
         <div v-if="form.label">
@@ -173,6 +177,7 @@ import { composeLogPaths } from '~/utils/logPaths'
 import { hasProgramOrArguments, PROGRAM_PATH_HINT } from '~/utils/serviceValidation'
 import { useSettings } from '~/composables/useSettings'
 import LaunchPolicyForm from '~/components/LaunchPolicyForm.vue'
+import ScheduleForm from '~/components/ScheduleForm.vue'
 import {
   applyLaunchPolicy,
   cloneKeepAlive,
@@ -213,6 +218,7 @@ const envVars = reactive<Array<{ key: string; value: string }>>([])
 const envVisibility = reactive(new Set<number>())
 const schedule = ref<ScheduleConfig | undefined>(undefined)
 const wakeSystem = ref(false)
+const abandonProcessGroup = ref(false)
 const loading = ref(false)
 const error = ref('')
 
@@ -245,6 +251,7 @@ function initFormState(source?: ServiceConfig | null) {
   }
   schedule.value = source?.schedule ? { ...source.schedule } : undefined
   wakeSystem.value = source?.wakeSystem ?? false
+  abandonProcessGroup.value = source?.abandonProcessGroup ?? false
   error.value = ''
 }
 
@@ -314,6 +321,7 @@ async function handleSubmit() {
       environment: Object.keys(environment).length > 0 ? environment : undefined,
       schedule: schedule.value,
       wakeSystem: wakeSystem.value,
+      abandonProcessGroup: abandonProcessGroup.value,
       stdoutPath: logPaths.value.stdout,
       stderrPath: logPaths.value.stderr,
     }

@@ -70,6 +70,7 @@ function makeService(overrides: Partial<Service> = {}): Service {
     runAtLoad: true,
     keepAlive: { enabled: true, mode: 'boolean' },
     wakeSystem: false,
+    abandonProcessGroup: false,
     schedule: { interval: 60 },
     environment: { LOG_LEVEL: 'debug' },
     stdoutPath: '~/Library/Logs/com.example.copy-source/stdout.log',

@@ -14,26 +14,27 @@ import (
 
 // Service represents a LaunchAgent service
 type Service struct {
-	Name             string            `json:"name"`
-	Label            string            `json:"label"`
-	Status           string            `json:"status"` // "running", "stopped", "unknown"
-	PID              int               `json:"pid,omitempty"`
-	Path             string            `json:"path"`
-	Program          string            `json:"program,omitempty"`
-	Arguments        []string          `json:"arguments,omitempty"`
-	RunAtLoad        bool              `json:"runAtLoad"`
-	KeepAlive        KeepAliveConfig   `json:"keepAlive"`
-	ThrottleInterval *int              `json:"throttleInterval,omitempty"`
-	Schedule         *ScheduleConfig   `json:"schedule,omitempty"`
-	Environment      map[string]string `json:"environment,omitempty"`
-	StdoutPath       string            `json:"stdoutPath,omitempty"`
-	StderrPath       string            `json:"stderrPath,omitempty"`
-	WakeSystem       bool              `json:"wakeSystem"`
-	WorkingDir       string            `json:"workingDirectory,omitempty"`
-	Type             string            `json:"type"`             // "user", "system", "apple-system"
-	ReadOnly         bool              `json:"readOnly"`         // true for system services
-	PlistFormat      string            `json:"plistFormat"`      // "xml", "binary", "unknown"
-	StatusConfidence string            `json:"statusConfidence"` // "verified", "unverified"
+	Name                string            `json:"name"`
+	Label               string            `json:"label"`
+	Status              string            `json:"status"` // "running", "stopped", "unknown"
+	PID                 int               `json:"pid,omitempty"`
+	Path                string            `json:"path"`
+	Program             string            `json:"program,omitempty"`
+	Arguments           []string          `json:"arguments,omitempty"`
+	RunAtLoad           bool              `json:"runAtLoad"`
+	KeepAlive           KeepAliveConfig   `json:"keepAlive"`
+	ThrottleInterval    *int              `json:"throttleInterval,omitempty"`
+	Schedule            *ScheduleConfig   `json:"schedule,omitempty"`
+	Environment         map[string]string `json:"environment,omitempty"`
+	StdoutPath          string            `json:"stdoutPath,omitempty"`
+	StderrPath          string            `json:"stderrPath,omitempty"`
+	WakeSystem          bool              `json:"wakeSystem"`
+	AbandonProcessGroup bool              `json:"abandonProcessGroup"`
+	WorkingDir          string            `json:"workingDirectory,omitempty"`
+	Type                string            `json:"type"`             // "user", "system", "apple-system"
+	ReadOnly            bool              `json:"readOnly"`         // true for system services
+	PlistFormat         string            `json:"plistFormat"`      // "xml", "binary", "unknown"
+	StatusConfidence    string            `json:"statusConfidence"` // "verified", "unverified"
 }
 
 // CalendarEntry represents a single StartCalendarInterval entry
@@ -53,18 +54,19 @@ type ScheduleConfig struct {
 
 // ServiceConfig is used for creating/updating services
 type ServiceConfig struct {
-	Label            string            `json:"label"`
-	Program          string            `json:"program,omitempty"`
-	Arguments        []string          `json:"arguments,omitempty"`
-	RunAtLoad        bool              `json:"runAtLoad"`
-	KeepAlive        KeepAliveConfig   `json:"keepAlive"`
-	ThrottleInterval *int              `json:"throttleInterval,omitempty"`
-	Schedule         *ScheduleConfig   `json:"schedule,omitempty"`
-	Environment      map[string]string `json:"environment,omitempty"`
-	WakeSystem       bool              `json:"wakeSystem"`
-	StdoutPath       string            `json:"stdoutPath,omitempty"`
-	StderrPath       string            `json:"stderrPath,omitempty"`
-	WorkingDir       string            `json:"workingDirectory,omitempty"`
+	Label               string            `json:"label"`
+	Program             string            `json:"program,omitempty"`
+	Arguments           []string          `json:"arguments,omitempty"`
+	RunAtLoad           bool              `json:"runAtLoad"`
+	KeepAlive           KeepAliveConfig   `json:"keepAlive"`
+	ThrottleInterval    *int              `json:"throttleInterval,omitempty"`
+	Schedule            *ScheduleConfig   `json:"schedule,omitempty"`
+	Environment         map[string]string `json:"environment,omitempty"`
+	WakeSystem          bool              `json:"wakeSystem"`
+	AbandonProcessGroup bool              `json:"abandonProcessGroup"`
+	StdoutPath          string            `json:"stdoutPath,omitempty"`
+	StderrPath          string            `json:"stderrPath,omitempty"`
+	WorkingDir          string            `json:"workingDirectory,omitempty"`
 }
 
 // Service type constants

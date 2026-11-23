@@ -14,6 +14,7 @@ function makeService(overrides: Partial<Service> = {}): Service {
     runAtLoad: true,
     keepAlive: { enabled: false, mode: '' },
     wakeSystem: false,
+    abandonProcessGroup: false,
     type: 'user',
     readOnly: false,
     plistFormat: 'xml',
@@ -55,6 +56,10 @@ describe('serviceToConfig', () => {
 
     expect(svc.keepAlive.enabled).toBe(true)
     expect(svc.keepAlive.pathState!['/tmp/flag']).toBe(true)
+  })
+
+  it('copies Abandon Process Group from the source', () => {
+    expect(serviceToConfig(makeService({ abandonProcessGroup: true })).abandonProcessGroup).toBe(true)
   })
 
   it('leaves throttleInterval undefined when the source has none', () => {
