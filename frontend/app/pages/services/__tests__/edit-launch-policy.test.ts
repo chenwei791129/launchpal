@@ -41,6 +41,7 @@ const EditHost = defineComponent({
         keepAlive: policy.keepAlive,
         throttleInterval: editThrottleInterval.value,
         wakeSystem: props.service.wakeSystem,
+        abandonProcessGroup: props.service.abandonProcessGroup,
       }
     }
 
@@ -70,6 +71,7 @@ function makeService(overrides: Partial<Service> = {}): Service {
     runAtLoad: false,
     keepAlive: emptyKeepAlive(),
     wakeSystem: false,
+    abandonProcessGroup: false,
     type: 'user',
     readOnly: false,
     plistFormat: 'xml',

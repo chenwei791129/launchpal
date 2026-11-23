@@ -15,6 +15,7 @@ export function serviceToConfig(svc: Service): ServiceConfig {
     keepAlive: cloneKeepAlive(svc.keepAlive),
     throttleInterval: svc.throttleInterval,
     wakeSystem: svc.wakeSystem,
+    abandonProcessGroup: svc.abandonProcessGroup,
     schedule: svc.schedule ? { ...svc.schedule } : undefined,
     environment: svc.environment ? { ...svc.environment } : undefined,
     workingDirectory: svc.workingDirectory,

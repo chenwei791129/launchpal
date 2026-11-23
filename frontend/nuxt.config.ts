@@ -6,7 +6,8 @@ export default defineNuxtConfig({
   modules: ['@nuxtjs/tailwindcss', '@nuxt/eslint'],
   css: ['~/assets/css/main.css'],
   app: {
-    baseURL: './',
+    // Wails serves the app at the origin root; a relative base breaks Nitro prerendering.
+    baseURL: '/',
     buildAssetsDir: 'assets',
   },
   vite: {

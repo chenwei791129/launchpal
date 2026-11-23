@@ -184,6 +184,7 @@ export namespace launchctl {
 	    stdoutPath?: string;
 	    stderrPath?: string;
 	    wakeSystem: boolean;
+	    abandonProcessGroup: boolean;
 	    workingDirectory?: string;
 	    type: string;
 	    readOnly: boolean;
@@ -211,6 +212,7 @@ export namespace launchctl {
 	        this.stdoutPath = source["stdoutPath"];
 	        this.stderrPath = source["stderrPath"];
 	        this.wakeSystem = source["wakeSystem"];
+	        this.abandonProcessGroup = source["abandonProcessGroup"];
 	        this.workingDirectory = source["workingDirectory"];
 	        this.type = source["type"];
 	        this.readOnly = source["readOnly"];
@@ -246,6 +248,7 @@ export namespace launchctl {
 	    schedule?: ScheduleConfig;
 	    environment?: Record<string, string>;
 	    wakeSystem: boolean;
+	    abandonProcessGroup: boolean;
 	    stdoutPath?: string;
 	    stderrPath?: string;
 	    workingDirectory?: string;
@@ -265,6 +268,7 @@ export namespace launchctl {
 	        this.schedule = this.convertValues(source["schedule"], ScheduleConfig);
 	        this.environment = source["environment"];
 	        this.wakeSystem = source["wakeSystem"];
+	        this.abandonProcessGroup = source["abandonProcessGroup"];
 	        this.stdoutPath = source["stdoutPath"];
 	        this.stderrPath = source["stderrPath"];
 	        this.workingDirectory = source["workingDirectory"];

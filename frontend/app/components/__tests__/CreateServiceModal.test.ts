@@ -331,6 +331,30 @@ describe('CreateServiceModal — settings integration', () => {
     })
   }
 
+  it('keeps Abandon Process Group independent of scheduling and submits it', async () => {
+    const wrapper = mount(CreateServiceModal, { props: { isOpen: true, serviceType: 'user' } })
+    try {
+      const checkbox = wrapper.get<HTMLInputElement>('input[aria-describedby]')
+      const schedule = wrapper.findAll<HTMLInputElement>('input[type="checkbox"]').find(input => input.element !== checkbox.element)!
+      expect(checkbox.element.checked).toBe(false)
+      expect(schedule.element.checked).toBe(false)
+      await checkbox.setValue(true)
+      expect(schedule.element.checked).toBe(false)
+      await schedule.setValue(true)
+      await schedule.setValue(false)
+      await wrapper.get('[data-testid="launch-policy-onDemand"]').setValue(true)
+      expect(checkbox.element.checked).toBe(true)
+      const hint = wrapper.get(`#${checkbox.attributes('aria-describedby')}`)
+      expect(hint.text()).toContain('same process group')
+      await wrapper.get('input[placeholder="com.example.myservice"]').setValue('com.example.worker')
+      await wrapper.get('input[placeholder="/usr/local/bin/myapp"]').setValue('/usr/bin/true')
+      await wrapper.get('form').trigger('submit')
+      expect(CreateService).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ abandonProcessGroup: true, schedule: undefined }))
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it('re-reads settings each time the modal opens', async () => {
     const wrapper = await mountModal('user')
     await flushPromises()
@@ -430,6 +454,7 @@ describe('CreateServiceModal — settings integration', () => {
       runAtLoad: true,
       keepAlive: { enabled: true, mode: 'boolean' },
       wakeSystem: true,
+      abandonProcessGroup: true,
       schedule: { interval: 60 },
       environment: { LOG_LEVEL: 'debug', API_KEY: 'secret' },
       workingDirectory: '/Users/dev/project',
@@ -439,9 +464,9 @@ describe('CreateServiceModal — settings integration', () => {
     const mod = await import('../CreateServiceModal.vue')
     const wrapper = mount(mod.default, {
       props: { isOpen: true, serviceType: 'user', prefill },
-      global: { stubs: { ScheduleForm: true } },
     })
     await flushPromises()
+    expect(wrapper.get<HTMLInputElement>('input[aria-describedby]').element.checked).toBe(true)
 
     const labelInput = wrapper.find('input[placeholder="com.example.myservice"]')
     expect((labelInput.element as HTMLInputElement).value).toBe('')
@@ -465,6 +490,11 @@ describe('CreateServiceModal — settings integration', () => {
     expect(envKeys).toHaveLength(2)
     expect((envKeys[0]!.element as HTMLInputElement).value).toBe('LOG_LEVEL')
     expect((envKeys[1]!.element as HTMLInputElement).value).toBe('API_KEY')
+
+    await wrapper.setProps({ isOpen: false })
+    await wrapper.setProps({ isOpen: true, prefill: null })
+    expect(wrapper.get<HTMLInputElement>('input[aria-describedby]').element.checked).toBe(false)
+    wrapper.unmount()
   })
 
   it('reopening modal with a different prefill re-initializes form (no stale values)', async () => {
@@ -475,6 +505,7 @@ describe('CreateServiceModal — settings integration', () => {
       runAtLoad: false,
       keepAlive: { enabled: false, mode: '' },
       wakeSystem: false,
+      abandonProcessGroup: false,
       workingDirectory: '/tmp/alpha',
     }
     const second: ServiceConfig = {
@@ -484,6 +515,7 @@ describe('CreateServiceModal — settings integration', () => {
       runAtLoad: true,
       keepAlive: { enabled: true, mode: 'boolean' },
       wakeSystem: false,
+      abandonProcessGroup: false,
       workingDirectory: '/tmp/beta',
     }
     const mod = await import('../CreateServiceModal.vue')
@@ -570,6 +602,7 @@ describe('CreateServiceModal — settings integration', () => {
       runAtLoad: true,
       keepAlive: { enabled: true, mode: 'boolean' },
       wakeSystem: false,
+      abandonProcessGroup: false,
       schedule: { interval: 60 },
       environment: { LOG_LEVEL: 'debug' },
       workingDirectory: '/Users/dev/project',
@@ -612,6 +645,7 @@ describe('CreateServiceModal — settings integration', () => {
       runAtLoad: true,
       keepAlive: { enabled: false, mode: '' },
       wakeSystem: false,
+      abandonProcessGroup: false,
     }
     const mod = await import('../CreateServiceModal.vue')
     const wrapper = mount(mod.default, {
@@ -654,6 +688,7 @@ describe('CreateServiceModal — settings integration', () => {
         pathState: { '/tmp/flag': true },
       },
       wakeSystem: false,
+      abandonProcessGroup: false,
     }
     const mod = await import('../CreateServiceModal.vue')
     const wrapper = mount(mod.default, {

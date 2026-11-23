@@ -104,6 +104,7 @@ func (m *readOnlyManager) getWithStatus(name string, statusMap map[string]servic
 	service.KeepAlive = parseKeepAlive(pd.KeepAlive)
 	service.ThrottleInterval = pd.ThrottleInterval
 	service.WakeSystem = pd.WakeSystem
+	service.AbandonProcessGroup, _ = pd.AbandonProcessGroup.(bool)
 	service.Schedule = parseSchedule(pd.StartCalendarInterval, pd.StartInterval)
 
 	// Resolve status/PID/confidence. For system-domain managers, `launchctl

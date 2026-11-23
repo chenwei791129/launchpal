@@ -35,11 +35,20 @@ const makeService = (environment?: Record<string, string>, overrides: Partial<Se
   runAtLoad: false,
   keepAlive: { enabled: false, mode: '' },
   wakeSystem: false,
+  abandonProcessGroup: false,
   type: 'user',
   readOnly: false,
   plistFormat: 'xml',
   environment,
   ...overrides,
+})
+
+it.each([false, true])('shows Abandon Process Group when set to %s', (enabled) => {
+  const wrapper = mount(ServiceSummary, {
+    props: { service: makeService(undefined, { type: 'apple-system', readOnly: true, abandonProcessGroup: enabled }) },
+  })
+  expect(wrapper.get('[data-testid="abandon-process-group-summary"]').text()).toBe(enabled ? 'Yes' : 'No')
+  wrapper.unmount()
 })
 
 describe('ServiceSummary – environment variable masking', () => {

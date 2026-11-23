@@ -16,6 +16,7 @@ export interface KeepAliveConfig {
 }
 
 export interface Service {
+  abandonProcessGroup: boolean
   name: string
   label: string
   status: 'running' | 'stopped' | 'unknown' | 'loaded'
@@ -83,6 +84,7 @@ export interface Backup {
 }
 
 export interface ServiceConfig {
+  abandonProcessGroup: boolean
   label: string
   program?: string
   arguments?: string[]

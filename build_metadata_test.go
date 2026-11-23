@@ -1,11 +1,22 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"testing"
 
 	"howett.net/plist"
 )
+
+func TestEmbeddedFrontendEntryPoint(t *testing.T) {
+	html, err := assets.ReadFile("frontend/.output/public/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(html, []byte(`id="__nuxt"`)) {
+		t.Fatal("embedded index.html has no Nuxt mount point; check the generated frontend")
+	}
+}
 
 // wantMinimumSystemVersion is the single source of truth for the minimum macOS
 // version LaunchPal declares. It must equal the LC_BUILD_VERSION minos value

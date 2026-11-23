@@ -12,6 +12,7 @@ function svc(overrides: Partial<Service> = {}): Service {
     runAtLoad: false,
     keepAlive: { enabled: false, mode: '' },
     wakeSystem: false,
+    abandonProcessGroup: false,
     type: 'user',
     readOnly: false,
     plistFormat: 'xml',

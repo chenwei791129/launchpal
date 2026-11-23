@@ -28,6 +28,7 @@ var modeledPlistKeys = map[string]bool{
 	"StandardOutPath":       true,
 	"StandardErrorPath":     true,
 	"WakeSystem":            true,
+	"AbandonProcessGroup":   true,
 	"EnvironmentVariables":  true,
 	"StartInterval":         true,
 	"StartCalendarInterval": true,
@@ -71,6 +72,9 @@ func BuildPlistDict(config *ServiceConfig, expandPaths bool) map[string]any {
 	}
 	if config.WakeSystem {
 		pd["WakeSystem"] = true
+	}
+	if config.AbandonProcessGroup {
+		pd["AbandonProcessGroup"] = true
 	}
 	if len(config.Environment) > 0 {
 		pd["EnvironmentVariables"] = config.Environment

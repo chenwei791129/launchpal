@@ -277,7 +277,11 @@
             </div>
 
             <!-- Schedule -->
-            <ScheduleForm v-model="editSchedule" v-model:wake-system="editWakeSystem" />
+            <ScheduleForm
+              v-model="editSchedule"
+              v-model:wake-system="editWakeSystem"
+              v-model:abandon-process-group="editAbandonProcessGroup"
+            />
 
             <!-- Save button -->
             <div class="flex items-center gap-3 pt-2">
@@ -376,6 +380,7 @@ import { parseShellArgs, serializeShellArgs } from '~/utils/shell-args'
 import { hasProgramOrArguments, PROGRAM_PATH_HINT } from '~/utils/serviceValidation'
 import { serviceToConfig } from '~/utils/serviceToConfig'
 import LaunchPolicyForm from '~/components/LaunchPolicyForm.vue'
+import ScheduleForm from '~/components/ScheduleForm.vue'
 import {
   applyLaunchPolicy,
   cloneKeepAlive,
@@ -643,6 +648,7 @@ function removeEditEnvVar(index: number) {
 }
 const editSchedule = ref<ScheduleConfig | undefined>(undefined)
 const editWakeSystem = ref(false)
+const editAbandonProcessGroup = ref(false)
 const saving = ref(false)
 const saveError = ref('')
 const saveSuccess = ref(false)
@@ -674,6 +680,7 @@ function populateEditForm() {
   }
   editSchedule.value = service.value.schedule ? { ...service.value.schedule } : undefined
   editWakeSystem.value = service.value.wakeSystem ?? false
+  editAbandonProcessGroup.value = service.value.abandonProcessGroup ?? false
 }
 
 async function handleSave() {
@@ -703,6 +710,7 @@ async function handleSave() {
       workingDirectory: editForm.workingDirectory,
       schedule: editSchedule.value,
       wakeSystem: editWakeSystem.value,
+      abandonProcessGroup: editAbandonProcessGroup.value,
       stdoutPath: service.value.stdoutPath,
       stderrPath: service.value.stderrPath,
     }
