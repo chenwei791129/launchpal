@@ -1,10 +1,30 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount, shallowMount, flushPromises } from '@vue/test-utils'
+import CreateServiceModal from '../CreateServiceModal.vue'
 import { reactive, defineComponent, nextTick  } from 'vue'
 import { composeLogPaths } from '~/utils/logPaths'
 import { useSettings } from '~/composables/useSettings'
 import type { Settings, ServiceConfig } from '~/types/wails'
 
+
+it('masks new environment values and reveals only the selected row', async () => {
+  const wrapper = shallowMount(CreateServiceModal, {
+    props: { isOpen: true },
+    global: { stubs: { ScheduleForm: true } },
+  })
+  try {
+    await flushPromises()
+    const add = wrapper.findAll('button').find(button => button.text() === '+ Add')!
+    await add.trigger('click')
+    await add.trigger('click')
+    const types = () => wrapper.findAll('input[placeholder="Value"]').map(input => input.attributes('type'))
+    expect(types()).toEqual(['password', 'password'])
+    await wrapper.get('button[title="Show value"]').trigger('click')
+    expect(types()).toEqual(['text', 'password'])
+  } finally {
+    wrapper.unmount()
+  }
+})
 
 const EnvVarSection = defineComponent({
   setup() {
