@@ -48,7 +48,7 @@ install-helper: ## Copy the prebuilt privhelper into the app bundle
 # truth for it. It must stay equal to LSMinimumSystemVersion in
 # build/darwin/Info.plist and Info.dev.plist — build_metadata_test.go pins the
 # plist side, and `otool -l ... | grep -A 4 LC_BUILD_VERSION` is the manual
-# check for this side (see .claude/CLAUDE.md "Minimum macOS Version").
+# check for this side (see AGENTS.md "Minimum macOS Version").
 #
 # Why this has to be set at all: the `desktop,production` tags pull in the Wails
 # darwin Objective-C backend, which forces external linking, and under external
