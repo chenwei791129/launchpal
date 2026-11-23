@@ -106,6 +106,8 @@ make build
 # The app will be in build/bin/launchpal.app
 ```
 
+When testing frontend build configuration, regenerate the embedded assets with `pnpm --dir frontend run generate` before running `make test`. The tests use the existing `frontend/.output/public` and do not regenerate it.
+
 ## Admin Mode
 
 LaunchPal can manage system services under `/Library/LaunchDaemons` via an optional **Admin Mode**:
