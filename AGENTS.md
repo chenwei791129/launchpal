@@ -8,8 +8,8 @@ LaunchPal is a macOS GUI for inspecting and managing launchd services.
 
 ## Issue & Release Policy
 
-- Do not close GitHub issues until the release PR workflow is complete and merged.
-- When implementation is done, update the issue with a comment summarizing the changes, but leave it open for the release process to close.
+- If an issue tracks a change that will ship, comment with an implementation summary and leave it open for the release process to close after the release PR merges.
+- If no product change is planned (for example, a report describes expected platform behavior), document the evidence and close the issue as `not planned` without waiting for a release.
 
 ## Post-Implementation Checklist
 
