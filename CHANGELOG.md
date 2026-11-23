@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.23.0](https://github.com/chenwei791129/launchpal/compare/v1.22.0...v1.23.0) (2026-11-23)
+
+
+### Features
+
+* make Abandon Process Group editable ([#66](https://github.com/chenwei791129/launchpal/issues/66)) ([377a566](https://github.com/chenwei791129/launchpal/commit/377a5666e6ec67e4d6b3f71adaa1e6cd0cb6b119))
+
 ## [1.22.0](https://github.com/chenwei791129/launchpal/compare/v1.21.1...v1.22.0) (2026-08-26)
 
 
