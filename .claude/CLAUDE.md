@@ -66,7 +66,7 @@ A GUI for managing macOS LaunchAgents.
 │   │   ├── protocol.go       # Request/Response types, method name + error code constants
 │   │   ├── server.go         # Newline-delimited JSON server, peer UID verification, idle/parent watchdog
 │   │   ├── client.go         # Client side: Connect (retry), LaunchHelper (osascript), typed method wrappers
-│   │   ├── handlers.go       # Bootstrap/Bootout/Kickstart/WritePlist/DeletePlist/List handlers, path + label validation
+│   │   ├── handlers.go       # Bootstrap/Bootout/Kickstart/WritePlist/DeletePlist handlers, path + label validation
 │   │   ├── integrity.go      # ProtectedHelperPath constant, FileSHA256, protected-copy ownership/permission verification
 │   │   ├── install.go        # Root-owned protected-copy install from the running image (O_NOFOLLOW, idempotent)
 │   │   ├── logpath_darwin.go # Per-component O_NOFOLLOW/openat resolution for log-path ops + backup mkdir chain
@@ -122,7 +122,7 @@ make clean       # Remove build artifacts
 - Settings file: `~/.launchpal/settings.json` (atomic write via `os.Rename`, missing/corrupt files fall back to `Default()` so first-run never errors).
 - Wails bindings: `GetSettings()` and `UpdateSettings(s)` on `App`. Validation runs in front-end (`utils/settingsValidation.ts`) and back-end (`internal/settings.Validate`) — back-end is the source of truth.
 - Settings page exposes a **Log Storage** section (immediately after Backup Storage) with two independent controls — User Log Directory (default `~/Library/Logs`) and System Log Directory (default `/Library/Logs`). Each has Save and Reset to Default buttons. Save persists via `UpdateSettings`; inline error appears on validation failure; success indicator flashes briefly on success.
-- New Service modal sources the default `stdoutPath` / `stderrPath` from these settings via `composeLogPaths` (`<dir>/<label>/<stream>.log`). Settings are re-read every time the modal opens (Decision 8); existing services are not migrated when settings change (Decision 9).
+- New Service modal sources the default `stdoutPath` / `stderrPath` from these settings via `composeLogPaths` (`<dir>/<label>/<stream>.log`). Settings are re-read every time the modal opens; existing services are not migrated when settings change.
 - The system-log path allowlist (`/var/log/`, `/private/var/log/`, `/Library/Logs/`, `/tmp/`, `/private/tmp/`) is the single source of truth at `internal/privhelper.SystemLogPathPrefixes`. Both the privileged helper (`EnsureLogAccess`/`TruncateLog`) and the settings validator import from here — never duplicate the slice.
 
 ## Service Types
@@ -285,7 +285,7 @@ The `Service` struct carries a `StatusConfidence string` (`verified` / `unverifi
 - `ServiceLogs.vue` exposes an **Auto-refresh** checkbox next to Auto-scroll for all three service types. It is component-local and session-only (never persisted to settings) and defaults to unchecked — polling is an explicit opt-in because each tick re-reads the whole ≤1MB tail and re-runs `ansiToHtml`.
 - While checked, a `setInterval` (`AUTO_REFRESH_INTERVAL_MS = 2000`, handle in `pollTimer`) reloads the current stream through the same `loadLogs` path as the manual Refresh button, and calls `loadLogClearStatus()` alongside it so the info row's size tracks the content (see Log File Info Row). The tick is guarded by `if (loading.value) return` so a slow load never stacks concurrent polls. A single `watch(autoRefresh)` owns the timer lifecycle (start/stop); nothing else calls `setInterval`/`clearInterval`.
 - **Auto-disable on non-ok outcome**: `loadLogs` computes `loadOk = logs.value?.status === 'ok'` (reading the lowercase runtime key) and, on any non-ok result — `no-path` / `not-found` / promise rejection / development fallback with no `LogsResult` — sets `autoRefresh = false`, which routes through the watcher to `stopPolling`. The check lives on the shared post-load path so polling, manual Refresh, and stream switches behave identically. There is no auto-resume; the user re-checks the box. The `loadOk` flag is required rather than re-deriving from `logs.value` because the catch path leaves `logs.value` holding the previous successful result.
-- **Orthogonal to Auto-scroll** (Decision 4): Auto-refresh controls *when* to reload; Auto-scroll controls *whether* to scroll to bottom after a load. Follow mode = both checked.
+- **Orthogonal to Auto-scroll**: Auto-refresh controls *when* to reload; Auto-scroll controls *whether* to scroll to bottom after a load. Follow mode = both checked.
 - **Lifecycle**: `onBeforeUnmount` calls `stopPolling` alongside the existing `clearSuccessTimeout` cleanup. `watch(logType)` preserves the toggle across a stdout/stderr switch (loadLogs auto-disables if the new stream is non-ok). `watch(() => props.serviceName)` resets the toggle to unchecked and stops polling — the detail page has no `:key` on `ServiceLogs`, so a hypothetical in-place `serviceName` change would not remount it; Auto-refresh is a per-service choice and must not silently carry over.
 
 ## Concurrent Load Request Sequencing

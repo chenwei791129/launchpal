@@ -219,8 +219,8 @@ const error = ref('')
 // When `source` is provided, the form mirrors the clone source but forces
 // `label` empty (user must pick a new identifier). The launch policy follows
 // the clone rule: a Keep Alive source is preserved, anything else defaults to
-// On Demand so a clone doesn't inherit a standalone RunAtLoad (Decision 3 /
-// clone spec). A fresh form defaults to Run at Load (the historical default).
+// On Demand so a clone doesn't inherit a standalone RunAtLoad.
+// A fresh form defaults to Run at Load (the historical default).
 function initFormState(source?: ServiceConfig | null) {
   form.label = ''
   form.program = source?.program ?? ''
@@ -269,7 +269,7 @@ function removeEnvVar(index: number) {
 }
 
 // Settings live as a module-level singleton via useSettings; we re-read them
-// every time the modal opens (Decision 8) so changes saved on the Settings
+// every time the modal opens so changes saved on the Settings
 // page take effect on the next New Service interaction without a restart.
 const { settings, load: loadSettings } = useSettings()
 

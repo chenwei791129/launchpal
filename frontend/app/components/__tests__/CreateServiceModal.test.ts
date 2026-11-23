@@ -235,8 +235,6 @@ describe('CreateServiceModal – env var visibility masking', () => {
   })
 })
 
-// Path composition table mirrors the example block in
-// specs/log-path-customization/spec.md. Each row is one parameterized case.
 describe('CreateServiceModal — log path composition', () => {
   const cases: Array<{
     serviceType: 'user' | 'system'
@@ -289,7 +287,7 @@ describe('CreateServiceModal — log path composition', () => {
 })
 
 // Mounts the actual modal to verify it re-reads settings each time it is
-// opened (Decision 8) and that saving Settings does NOT issue any helper or
+// opened and that saving Settings does NOT issue any helper or
 // CreateService RPC (Existing services are not migrated).
 describe('CreateServiceModal — settings integration', () => {
   let GetSettings: ReturnType<typeof vi.fn>
@@ -333,7 +331,7 @@ describe('CreateServiceModal — settings integration', () => {
     })
   }
 
-  it('re-reads settings each time the modal opens (Decision 8)', async () => {
+  it('re-reads settings each time the modal opens', async () => {
     const wrapper = await mountModal('user')
     await flushPromises()
     expect(GetSettings).toHaveBeenCalled()

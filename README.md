@@ -8,7 +8,7 @@ A modern GUI for managing macOS LaunchAgents.
 - 👁️ View user-level and system-level services
 - 📊 View service status in real-time
 - ▶️ Start/Stop user services with one click
-- ⚡ Run Now (Kickstart) — start a service immediately with one click (`launchctl kickstart -k`)
+- ⚡ Run Now (Kickstart) — run a User Service immediately, loading it first if needed. With Admin Mode enabled, Run Now also works for loaded System Services; use **Start** for an unloaded System Service. If the service is shown as Running, LaunchPal asks before replacing its process.
 - 📋 View service logs (stdout/stderr) with ANSI color rendering (16-color SGR sequences are shown as colored text instead of raw `[31m` escape codes); services without a configured log path or a not-yet-created log file show a clear placeholder instead of a generic error
 - 🧹 Clear stdout / stderr logs from the Logs tab (one-click in-place truncate; system daemons fall back to the privileged helper only when the file is not user-writable)
 - 🔄 Auto-refresh the Logs tab (`tail -f`-style): an optional toggle reloads the current stream every 2 seconds; it turns itself off when a load has no path, is not found, or fails, and stays independent of Auto-scroll
@@ -16,9 +16,9 @@ A modern GUI for managing macOS LaunchAgents.
 - 🔎 Filter service lists by Status (Running / Loaded / Unloaded / Unknown) and Type (Scheduled / KeepAlive / RunAtLoad / None) with multi-select dropdowns; options within a dropdown combine with OR, and Status, Type and the search box combine with AND. Available on the User, System, and Apple System pages
 - ➕ Create and configure new services
 - ⏰ Schedule services with Calendar Interval or Fixed Interval
-- 📅 Cron-style range (`9-17`) and enumeration (`1,3,5`) syntax with automatic expansion
+- 📅 Cron-style range (`9-17`) and enumeration (`1,3,5`) syntax, with automatic expansion up to 50 calendar entries and a preview of upcoming calendar runs
 - 🌐 Configure environment variables for services
-- ✏️ Edit existing service configurations
+- ✏️ Edit existing service configurations or clone a User Service under a new label
 - 🧬 Preserve advanced launchd keys on edit — keys LaunchPal has no UI for (e.g. `ProcessType`, `Nice`, `MachServices`, `Sockets`, resource limits) are kept verbatim when you update a service, instead of being dropped
 - 🔍 Browse system services (read-only) with heuristic status detection (no elevation required); ambiguous matches are flagged with an info icon
 - 🔐 **Admin Mode** — manage `/Library/LaunchDaemons` system services with a single authorization per session (no persistent root process; helper exits when LaunchPal does)
@@ -113,18 +113,19 @@ LaunchPal can manage system services under `/Library/LaunchDaemons` via an optio
 1. Open **Settings** → **Admin Mode** → **Enable Admin Mode**.
 2. macOS prompts once for your password (or Touch ID) and launches a root-privileged helper process.
 3. While Admin Mode is enabled, the **System Services** page lets you Start / Stop / Restart / Edit / Delete / Create daemons.
-4. Click **Disable Admin Mode** (or quit LaunchPal) to stop the helper — nothing persists on the system.
+4. Click **Disable Admin Mode** (or quit LaunchPal) to stop the helper process. The protected executable can remain on disk, but no privileged process stays running.
 
-**Why session-scoped?** LaunchPal is unsigned and cannot register a persistent privileged helper. The session-scoped model trades "enter your password once per launch" for "no root daemon lingers on your machine after LaunchPal exits". The helper exits automatically if LaunchPal crashes or is force-quit (parent PID watchdog, 2-second response time).
+**Why session-scoped?** LaunchPal is unsigned and cannot register a persistent privileged helper. Authorize once per Admin Mode session rather than for each operation, without keeping a root daemon running. The helper also exits if LaunchPal crashes or after five minutes without RPC activity. If the session ends while LaunchPal is open, re-enable Admin Mode in Settings to continue.
 
-**Scope of Admin Mode writes**: only `/Library/LaunchDaemons/`. `/System/Library/LaunchDaemons/` remains read-only under Admin Mode (SIP would reject writes anyway).
+**Scope of Admin Mode writes**: daemon plist writes are limited to `/Library/LaunchDaemons/`. Apple System Services remain read-only. Log operations routed through the privileged helper have their own allowed directories. When deleting a System Service, its log files are kept unless you select **Also delete log files**. A log cleanup failure is reported separately and does not undo the service deletion.
 
 **Helper launch integrity**: because LaunchPal is unsigned, it protects the root-privileged helper against tampering with a root-owned trust anchor. The first time you enable Admin Mode, the helper installs a copy of itself at `/Library/Application Support/LaunchPal/launchpal-privhelper`, owned `root:wheel` with mode `0755` — a location no non-root process can write. Every subsequent enable launches that protected copy directly, so a helper planted in the (user-writable) app bundle can never be run as root once the protected copy exists. As defense-in-depth, the SHA-256 of the packaged helper is pinned into the app binary at build time and checked before a bundle copy is ever launched (first install or a legitimate app update); the pin only gates the bundle copy and is never required to launch the protected copy. This requires no extra prompts — provisioning happens inside the same one-per-session authorization, and `brew install` never asks for `sudo`. Residual risk: the very first enable (and the first enable after each app update) still runs the bundle copy once — this bootstrap window cannot be fully closed without a paid Apple Developer signing identity.
 
 ## Known Limitations
 
 - User services (`~/Library/LaunchAgents`) can be managed without authorization.
-- System services (`/Library/LaunchDaemons`) require Admin Mode; authorization is prompted **once per LaunchPal session** and not cached across sessions (by design — no persistent root daemon).
+- Modifying System Services requires an active Admin Mode session.
+- If a calendar expression is invalid or exceeds the expansion limit, it does not replace the last valid schedule. The error does not block saving the form, so correct the expression before saving.
 - Apple system services (`/System/Library/LaunchDaemons`) are always read-only.
 - Some system services may require Full Disk Access permission to view.
 - Editing a system daemon requires LaunchPal to read its existing plist to preserve advanced (unmodeled) keys; without Full Disk Access that read fails and the edit falls back to writing only the keys shown in the form.

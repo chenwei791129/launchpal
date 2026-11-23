@@ -39,6 +39,4 @@ coverage/
 # Backup files
 *.bak
 *.backup
-.spectra/
-openspec/.vector-search.db*
 /launchpal-privhelper

@@ -1,6 +1,6 @@
 // Command launchpal-privhelper is a root-privileged RPC server launched on
 // demand by LaunchPal when the user enables Admin Mode. See
-// internal/privhelper and openspec/specs for the full protocol description.
+// docs/privileged-helper.md and internal/privhelper for the protocol.
 package main
 
 import (
@@ -147,14 +147,13 @@ func makeParentAlive(recordedStart time.Time, startTimeOf func(int) (time.Time, 
 }
 
 // idleTimeout is the dormant-period after which the helper shuts itself
-// down (spec: "Idle timeout"). Kept short so an idle-but-still-connected
+// down. Kept short so an idle-but-still-connected
 // Admin Mode session bounds how long a root socket stays alive; an actively
 // used session is unaffected because every RPC resets the timer. Exposed as
 // a var so tests can override. This is the single adjustable constant.
 var idleTimeout = 5 * time.Minute
 
-// parentCheckInterval is how often the parent-watchdog polls (spec: "Parent
-// PID watchdog"). Exposed as a var for the same reason as idleTimeout.
+// parentCheckInterval is how often the parent watchdog polls. Tests can override it.
 var parentCheckInterval = 1 * time.Second
 
 func main() {

@@ -135,13 +135,12 @@ func maybeStrPtr(s string) *string {
 }
 
 // Enable starts the helper if Admin Mode is currently Disabled. If already
-// Enabled it is a no-op (spec: EnableAdminMode while already enabled).
+// Enabled it is a no-op.
 func (a *adminModeManager) Enable(ctx context.Context) error {
 	a.mu.Lock()
 	if a.state == AdminModeEnabled || a.state == AdminModeRequesting {
 		// No-op: an already-requesting/enabled Enable must NOT clear a pending
-		// disable recorded during this Requesting window (spec: only a fresh
-		// request cycle clears the intent).
+		// disable recorded during this Requesting window.
 		a.mu.Unlock()
 		return nil
 	}

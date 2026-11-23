@@ -331,7 +331,7 @@ type LaunchHelperOptions struct {
 	UserHome     string
 
 	// HandshakeTimeout is how long to wait for the helper to come up and
-	// respond to Ping. Defaults to 10 seconds per the spec.
+	// respond to Ping. Defaults to 10 seconds.
 	HandshakeTimeout time.Duration
 
 	// OnDisconnect is wired into the resulting Client so callers can react
